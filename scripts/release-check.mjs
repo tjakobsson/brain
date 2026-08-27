@@ -72,12 +72,21 @@ function inspectAttestation(field) {
   const reference = `ghcr.io/tjakobsson/brain-manual@${candidate.imageDigest}`;
   const result = spawnSync(
     "docker",
-    ["buildx", "imagetools", "inspect", reference, "--format", `{{ json .${field} }}`],
+    [
+      "buildx",
+      "imagetools",
+      "inspect",
+      reference,
+      "--format",
+      `{{ if .${field} }}present{{ else }}missing{{ end }}`,
+    ],
     { encoding: "utf8" },
   );
-  if (result.status !== 0) throw new Error(result.stderr.trim() || `Unable to inspect ${field}.`);
+  if (result.status !== 0) {
+    throw new Error(result.error?.message || result.stderr.trim() || result.stdout.trim() || `Unable to inspect ${field}.`);
+  }
   const value = result.stdout.trim();
-  if (value === "" || value === "null" || value === "{}") throw new Error(`${field} attestation is missing.`);
+  if (value !== "present") throw new Error(`${field} attestation is missing.`);
   return "verified in OCI index";
 }
 
