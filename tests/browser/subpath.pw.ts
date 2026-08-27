@@ -219,6 +219,11 @@ test("mobile navigation stays within the deployment base", async ({ page }, test
   const { base } = deployment(testInfo);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${base}/`);
+  const graphHeader = page.locator(".site-header");
+  await expect(page.locator(".site-header-slot")).toHaveCSS("position", "fixed");
+  await expect(graphHeader).toHaveCSS("flex-direction", "column");
+  await expect(graphHeader).toHaveCSS("width", "48px");
+  await expect(graphHeader.locator(".search-icon")).toBeVisible();
   const filterToggle = page.getByRole("button", { name: "Filters" });
   await expect(filterToggle).toHaveAttribute("aria-expanded", "false");
   await expect(page.locator("#graph-sidebar")).toHaveJSProperty("inert", true);
@@ -259,6 +264,11 @@ test("mobile navigation stays within the deployment base", async ({ page }, test
   await noteHeader.locator(".mobile-nav summary").click();
   await page.locator(".mobile-nav-panel").getByRole("link", { name: "Recent" }).click();
   await expect(page).toHaveURL(new RegExp(`${base}/recent/?$`));
+  await expect(page.locator(".site-header")).toHaveCSS("flex-direction", "column");
+  await expect(page.getByRole("heading", { name: "Recently changed" })).toHaveCSS(
+    "padding-right",
+    "48px",
+  );
 });
 
 test("touch layouts leave the local graph to page scrolling", async ({ browser }, testInfo) => {
@@ -272,5 +282,8 @@ test("touch layouts leave the local graph to page scrolling", async ({ browser }
     "flex-direction",
     "column",
   );
+  await page.goto(`${origin}${base}/tags`);
+  await expect(page.locator(".site-header")).toHaveCSS("flex-direction", "column");
+  await expect(page.getByRole("heading", { name: "Tags" })).toHaveCSS("padding-right", "48px");
   await context.close();
 });

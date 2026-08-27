@@ -24,7 +24,7 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
     <title>{title}</title>
   </head>
   <body>
-    <div class:list={["site-header-slot", { "has-floating-header": compactHeader }]}>
+    <div class="site-header-slot has-floating-header">
       <header class="site-header" data-scroll-compact={compactHeader ? "" : undefined}>
         <nav class="site-nav" aria-label="Primary navigation">
           <a href={url(routes.home)}>Graph</a>
