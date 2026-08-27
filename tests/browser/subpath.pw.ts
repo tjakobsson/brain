@@ -26,6 +26,18 @@ test("all site features stay within the deployment base", async ({ page }, testI
   await expect(page.locator("#global-graph canvas.sigma-nodes")).toBeVisible();
   await expect(page.locator("#graph-count")).toContainText("2 of 2 notes");
 
+  const filterToggle = page.getByRole("button", { name: "Close filters" });
+  await expect(filterToggle).toHaveAttribute("aria-expanded", "true");
+  await filterToggle.click();
+  await expect(page.locator("#graph-sidebar")).toBeHidden();
+  await expect(page.getByRole("button", { name: "Filters" })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+  await page.getByRole("button", { name: "Filters" }).click();
+  await expect(page.locator("#graph-sidebar")).toBeVisible();
+  await page.getByRole("button", { name: "Fit view" }).click();
+
   await page.locator("#graph-search").fill("Portable notes");
   await expect(page.locator("#graph-search-results button")).toHaveText("Portable notes");
   await page.locator("#graph-search-results button").click();
@@ -50,6 +62,8 @@ test("all site features stay within the deployment base", async ({ page }, testI
   await page.getByRole("option", { name: /^Welcome/ }).click();
   await expect(page).toHaveURL(new RegExp(`${base}/notes/welcome/?$`));
   await expect(page.locator(".local-graph canvas.sigma-nodes")).toBeVisible();
+  await expect(page.locator("main")).toHaveCSS("max-width", "864px");
+  await expect(page.locator(".local-graph")).toHaveCSS("height", "420px");
 
   await attachmentResponse;
   await expect(page.locator("article img")).toHaveAttribute(
@@ -96,8 +110,22 @@ test("all site features stay within the deployment base", async ({ page }, testI
 
 test("mobile navigation stays within the deployment base", async ({ page }, testInfo) => {
   const { base } = deployment(testInfo);
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize({ width: 900, height: 844 });
   await page.goto(`${base}/`);
+  await page.locator("#graph-search").focus();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const filterToggle = page.getByRole("button", { name: "Filters" });
+  await expect(filterToggle).toBeFocused();
+  await expect(filterToggle).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator("#graph-sidebar")).toHaveJSProperty("inert", true);
+  await filterToggle.click();
+  await expect(page.getByRole("button", { name: "Close filters" })).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
+  await expect(page.locator("#graph-sidebar")).toHaveJSProperty("inert", false);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Filters" })).toBeFocused();
   await page.locator(".mobile-nav summary").click();
   await page.locator(".mobile-nav-panel").getByRole("link", { name: "Recent" }).click();
   await expect(page).toHaveURL(new RegExp(`${base}/recent/?$`));

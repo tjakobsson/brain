@@ -58,12 +58,19 @@ export class GraphMotionController {
     return true;
   }
 
+  fitView(ids: Iterable<string>): void {
+    this.cancel();
+    const visibleIds = [...new Set(ids)].filter((id) => this.graph.hasNode(id)).sort();
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    this.fitVisible(visibleIds, !reducedMotion, this.generations.next());
+  }
+
   settle(
     trigger: MotionTrigger,
     activeIds: Iterable<string>,
     pinnedId?: string,
     cameraIds?: Iterable<string>,
-    fitCamera = true,
+    fitCamera = trigger !== "drag" && trigger !== "zoom",
     sourceScale = 1,
   ): void {
     this.cancel();

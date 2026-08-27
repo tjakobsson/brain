@@ -13,13 +13,16 @@ for (const note of index.notes) {
 <BaseLayout title="Graph" fluid>
   <div class="graph-page">
     <div class="graph-shell">
-      <button
-        id="graph-filter-toggle"
-        class="graph-filter-toggle"
-        type="button"
-        aria-controls="graph-sidebar"
-        aria-expanded="false"
-      >Filters</button>
+      <div class="graph-controls">
+        <button
+          id="graph-filter-toggle"
+          class="graph-control graph-filter-toggle"
+          type="button"
+          aria-controls="graph-sidebar"
+          aria-expanded="true"
+        >Close filters</button>
+        <button id="graph-fit-view" class="graph-control" type="button">Fit view</button>
+      </div>
       <aside id="graph-sidebar" class="graph-sidebar">
         <h2>Search</h2>
         <input id="graph-search" type="search" placeholder="Find a note…" autocomplete="off" />
@@ -80,15 +83,18 @@ for (const note of index.notes) {
       statusFilters: document.querySelectorAll('[data-filter="status"]'),
       tagFilter: q<HTMLSelectElement>("#graph-tag-filter"),
       count: q("#graph-count"),
+      fitViewButton: q<HTMLButtonElement>("#graph-fit-view"),
     }).catch((err) => console.error("[graph] failed to mount", err));
 
+    const graphShell = q<HTMLElement>(".graph-shell");
     const filterToggle = q<HTMLButtonElement>("#graph-filter-toggle");
     const sidebar = q<HTMLElement>("#graph-sidebar");
     const mobileLayout = window.matchMedia("(max-width: 700px)");
 
     function setFiltersOpen(open: boolean): void {
       sidebar.classList.toggle("is-open", open);
-      sidebar.inert = mobileLayout.matches && !open;
+      sidebar.inert = !open;
+      graphShell.classList.toggle("filters-closed", !open);
       filterToggle.setAttribute("aria-expanded", String(open));
       filterToggle.textContent = open ? "Close filters" : "Filters";
     }
@@ -96,10 +102,17 @@ for (const note of index.notes) {
     filterToggle.addEventListener("click", () => {
       setFiltersOpen(filterToggle.getAttribute("aria-expanded") !== "true");
     });
-    mobileLayout.addEventListener("change", () => setFiltersOpen(false));
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") setFiltersOpen(false);
+    mobileLayout.addEventListener("change", () => {
+      const focusWasInSidebar = sidebar.contains(document.activeElement);
+      setFiltersOpen(!mobileLayout.matches);
+      if (mobileLayout.matches && focusWasInSidebar) filterToggle.focus();
     });
-    setFiltersOpen(false);
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && filterToggle.getAttribute("aria-expanded") === "true") {
+        setFiltersOpen(false);
+        filterToggle.focus();
+      }
+    });
+    setFiltersOpen(!mobileLayout.matches);
   </script>
 </BaseLayout>

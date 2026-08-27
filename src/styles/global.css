@@ -201,7 +201,7 @@ a:hover {
 }
 
 main {
-  max-width: 46rem;
+  max-width: 54rem;
   margin: 0 auto;
   padding: 2rem 1.5rem 4rem;
 }
@@ -434,6 +434,33 @@ div[data-callout] > .callout-title {
   height: calc(100dvh - 54px);
 }
 
+.graph-controls {
+  position: absolute;
+  top: 0.75rem;
+  left: calc(260px + 0.75rem);
+  z-index: 4;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.graph-control {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.5rem;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text);
+  background: var(--bg-elevated);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
+  font: inherit;
+  cursor: pointer;
+}
+
+.graph-control:hover {
+  border-color: var(--accent);
+}
+
 .graph-sidebar {
   border-right: 1px solid var(--border);
   padding: 1rem;
@@ -467,10 +494,6 @@ div[data-callout] > .callout-title {
   margin: 0;
 }
 
-.graph-filter-toggle {
-  display: none;
-}
-
 .graph-container {
   position: relative;
   min-width: 0;
@@ -488,12 +511,26 @@ div[data-callout] > .callout-title {
 
 .local-graph {
   position: relative;
-  height: 320px;
+  height: 420px;
   margin: 2rem 0;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--bg-soft);
   overflow: hidden;
+}
+
+@media (min-width: 701px) {
+  .graph-shell.filters-closed {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .graph-shell.filters-closed .graph-sidebar {
+    display: none;
+  }
+
+  .graph-shell.filters-closed .graph-controls {
+    left: 0.75rem;
+  }
 }
 
 /* --- Quick switcher ----------------------------------------------------- */
@@ -669,6 +706,10 @@ div[data-callout] > .callout-title {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .graph-controls {
+    left: 0.75rem;
+  }
+
   .graph-sidebar {
     position: absolute;
     inset: 0 auto 0 0;
@@ -686,26 +727,12 @@ div[data-callout] > .callout-title {
     transform: translateX(0);
   }
 
-  .graph-filter-toggle {
-    position: absolute;
-    top: 0.75rem;
-    left: 0.75rem;
-    z-index: 4;
-    display: inline-flex;
-    align-items: center;
-    min-height: 2.5rem;
-    padding: 0.45rem 0.75rem;
-    border: 1px solid var(--border);
-    border-radius: 7px;
-    color: var(--text);
-    background: var(--bg-elevated);
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
-    font: inherit;
-    cursor: pointer;
-  }
-
   .graph-container {
     min-height: 0;
+  }
+
+  .local-graph {
+    height: 360px;
   }
 
   .graph-sidebar .legend {

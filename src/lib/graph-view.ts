@@ -327,6 +327,7 @@ export interface GlobalGraphUI {
   statusFilters: NodeListOf<HTMLInputElement>;
   tagFilter: HTMLSelectElement;
   count: HTMLElement;
+  fitViewButton: HTMLButtonElement;
 }
 
 export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
@@ -452,6 +453,9 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     applyReducers();
   });
 
+  const onFitView = () => motion.fitView(visibleIds());
+  ui.fitViewButton.addEventListener("click", onFitView);
+
   wireHoverAndClick(renderer, graph, state);
   wireNodeDragging(renderer, graph, state, (node, neighborhood) => {
     motion.settle(
@@ -459,6 +463,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       neighborhood.filter((id) => !hidden.has(id)),
       node,
       visibleIds(),
+      false,
     );
   });
 
@@ -515,6 +520,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     if (zoomSettleTimer !== null) window.clearTimeout(zoomSettleTimer);
     resizeObserver.disconnect();
     resizeSettler.cancel();
+    ui.fitViewButton.removeEventListener("click", onFitView);
     document.removeEventListener("visibilitychange", onVisibilityChange);
     motion.destroy();
   });

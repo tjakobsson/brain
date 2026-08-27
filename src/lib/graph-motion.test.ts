@@ -153,6 +153,39 @@ describe("GraphMotionController", () => {
     controller.destroy();
   });
 
+  it("settles a dragged neighborhood without fitting the camera", () => {
+    const { camera, renderer, graph, data } = fixture();
+    const controller = new GraphMotionController(renderer as never, graph, data);
+
+    controller.settle("drag", graph.nodes(), "a", graph.nodes());
+    const worker = FakeWorker.instances[0];
+    const request = worker.request as { generation: number };
+    worker.emit("message", {
+      generation: request.generation,
+      positions: { a: { x: -1, y: 0 }, b: { x: 2, y: 1 }, c: { x: 0, y: 2 } },
+    });
+
+    expect(graph.getNodeAttributes("b")).toMatchObject({ x: 2, y: 1 });
+    expect(camera.setState).not.toHaveBeenCalled();
+    expect(camera.animate).not.toHaveBeenCalled();
+    controller.destroy();
+  });
+
+  it("fits the visible graph only when requested", () => {
+    const { camera, renderer, graph, data } = fixture(false);
+    const controller = new GraphMotionController(renderer as never, graph, data);
+
+    controller.fitView(["a", "b"]);
+
+    expect(renderer.setCustomBBox).toHaveBeenCalledOnce();
+    expect(camera.animate).toHaveBeenCalledWith(
+      { x: 0.5, y: 0.5, angle: 0, ratio: 1.12 },
+      { duration: 320, easing: "quadraticInOut" },
+      expect.any(Function),
+    );
+    controller.destroy();
+  });
+
   it("restores only a compatible graph and viewport cache entry", () => {
     const { storage, renderer, graph, data } = fixture();
     const signature = graphSignature(data.nodes, data.edges);
