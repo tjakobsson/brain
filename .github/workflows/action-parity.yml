@@ -11,9 +11,71 @@ permissions:
   packages: read
 
 env:
-  GENERATOR_IMAGE: ghcr.io/tjakobsson/brain@sha256:080fbc19fefffe70cc8e9a409d1faba2fe8d4db4e1ace5af34fb833bc172986d
+  GENERATOR_IMAGE: ghcr.io/tjakobsson/brain@sha256:bfcb6f65fc52cbffcce8c4e2bc52f177a090c3480ead670df717dce56778d403
 
 jobs:
+  image-platform:
+    name: Candidate image (${{ matrix.platform }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux/amd64, linux/arm64]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify platform output parity
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          node scripts/generator.mjs build \
+            --vault examples/demo-vault \
+            --output .generated/platform-source \
+            --site https://example.com \
+            --base /notes \
+            --exclude '.obsidian/**' \
+            --strict-links
+          mkdir -p .generated/platform-image .generated/platform-work .generated/platform-tmp
+          docker run --rm \
+            --platform "$PLATFORM" \
+            --read-only \
+            --network none \
+            --user "$(id -u):$(id -g)" \
+            --mount "type=bind,src=$PWD/examples/demo-vault,dst=/vault,readonly" \
+            --mount "type=bind,src=$PWD/.generated/platform-image,dst=/output" \
+            --mount "type=bind,src=$PWD/.generated/platform-work,dst=/work" \
+            --mount "type=bind,src=$PWD/.generated/platform-tmp,dst=/tmp" \
+            "$GENERATOR_IMAGE" build \
+            --vault /vault \
+            --output /output/site \
+            --site https://example.com \
+            --base /notes \
+            --exclude '.obsidian/**' \
+            --strict-links
+          node scripts/compare-output-trees.mjs \
+            .generated/platform-source \
+            .generated/platform-image/site
+
   parity:
     runs-on: ubuntu-latest
     steps:
