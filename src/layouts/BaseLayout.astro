@@ -24,7 +24,7 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
     <title>{title}</title>
   </head>
   <body>
-    <div class="site-header-slot">
+    <div class:list={["site-header-slot", { "has-floating-header": compactHeader }]}>
       <header class="site-header" data-scroll-compact={compactHeader ? "" : undefined}>
         <nav class="site-nav" aria-label="Primary navigation">
           <a href={url(routes.home)}>Graph</a>
@@ -49,10 +49,16 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
           class="search-trigger"
           data-open-switcher
           type="button"
+          aria-label="Search"
           aria-haspopup="dialog"
           aria-controls="quick-switcher"
         >
-          Search <kbd>⌘K</kbd>
+          <span class="search-label">Search</span>
+          <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="11" cy="11" r="6.5"></circle>
+            <path d="m16 16 4 4"></path>
+          </svg>
+          <kbd>⌘K</kbd>
         </button>
       </header>
     </div>

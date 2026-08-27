@@ -125,11 +125,22 @@ test("all site features stay within the deployment base", async ({ page }, testI
   await expect(noteHeader).toHaveClass(/is-compact/);
   await expect(noteHeader.locator(".site-nav")).toBeHidden();
   await expect(noteHeader.locator(".mobile-nav summary")).toBeVisible();
+  await expect(noteHeader).toHaveCSS("flex-direction", "column");
+  await expect(noteHeader).toHaveCSS("width", "48px");
+  await expect(noteHeader.locator(".search-label")).toBeHidden();
+  await expect(noteHeader.locator(".search-icon")).toBeVisible();
   const compactMenu = noteHeader.locator(".mobile-nav summary");
   await compactMenu.click();
+  await page.setViewportSize({ width: 900, height: 200 });
+  const compactMenuPanel = noteHeader.locator(".mobile-nav-panel");
+  await expect(compactMenuPanel).toHaveCSS("overflow-y", "auto");
+  expect(
+    await compactMenuPanel.evaluate((panel) => panel.getBoundingClientRect().bottom <= innerHeight),
+  ).toBe(true);
   await page.evaluate(() => window.scrollTo(0, 0));
   await expect(noteHeader).toHaveClass(/is-compact/);
   await compactMenu.click();
+  await page.setViewportSize({ width: 1280, height: 720 });
   await expect(noteHeader).not.toHaveClass(/is-compact/);
   await expect(noteHeader.locator(".search-trigger")).toBeFocused();
   await page.evaluate(() => {
@@ -226,7 +237,26 @@ test("mobile navigation stays within the deployment base", async ({ page }, test
   await expect(page.getByRole("button", { name: "Filters" })).toBeFocused();
   await page.goto(`${base}/notes/welcome`);
   await expect(page.locator(".local-graph")).toHaveCSS("pointer-events", "none");
-  await page.locator(".mobile-nav summary").click();
+  const noteHeader = page.locator(".site-header[data-scroll-compact]");
+  await expect(page.locator(".site-header-slot")).toHaveCSS("position", "fixed");
+  await expect(page.locator(".site-header-slot")).toHaveCSS("height", "0px");
+  await expect(noteHeader).toHaveCSS("flex-direction", "column");
+  await expect(noteHeader).toHaveCSS("width", "48px");
+  await expect(noteHeader.locator(".search-label")).toBeHidden();
+  await expect(noteHeader.locator(".search-icon")).toBeVisible();
+  const controlPositions = await noteHeader.evaluate((header) => {
+    const menu = header.querySelector("summary")!.getBoundingClientRect();
+    const search = header.querySelector(".search-trigger")!.getBoundingClientRect();
+    const rail = header.getBoundingClientRect();
+    return {
+      vertical: search.top >= menu.bottom,
+      rightMargin: window.innerWidth - rail.right,
+    };
+  });
+  expect(controlPositions.vertical).toBe(true);
+  expect(controlPositions.rightMargin).toBeGreaterThanOrEqual(7);
+  expect(controlPositions.rightMargin).toBeLessThanOrEqual(9);
+  await noteHeader.locator(".mobile-nav summary").click();
   await page.locator(".mobile-nav-panel").getByRole("link", { name: "Recent" }).click();
   await expect(page).toHaveURL(new RegExp(`${base}/recent/?$`));
 });
@@ -237,5 +267,10 @@ test("touch layouts leave the local graph to page scrolling", async ({ browser }
   const page = await context.newPage();
   await page.goto(`${origin}${base}/notes/welcome`);
   await expect(page.locator(".local-graph")).toHaveCSS("pointer-events", "none");
+  await expect(page.locator(".site-header-slot")).toHaveCSS("position", "fixed");
+  await expect(page.locator(".site-header[data-scroll-compact]")).toHaveCSS(
+    "flex-direction",
+    "column",
+  );
   await context.close();
 });
