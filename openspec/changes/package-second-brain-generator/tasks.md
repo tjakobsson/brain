@@ -41,7 +41,7 @@
 ## 7. Reusable GitHub Pages publication
 
 - [x] 7.1 Add a `workflow_call` Pages workflow that checks out the caller, obtains `origin` and `base_path` from Pages configuration, runs the pinned image, uploads one official Pages artifact, and deploys through the `github-pages` environment; verify workflow syntax and permission declarations with pinned official Action SHAs.
-- [ ] 7.2 Add workflow inputs for vault path, exclusions, and strict links while keeping output and mount details internal; verify fixture invocations cover defaults, custom exclusions, strict-link failure, and prevention of deployment after build failure.
+- [x] 7.2 Add workflow inputs for vault path, exclusions, and strict links while keeping output and mount details internal; verify fixture invocations cover defaults, custom exclusions, strict-link failure, and prevention of deployment after build failure.
 - [x] 7.3 Exercise generated artifacts with project Pages, root Pages, and custom-domain addressing; verify browser tests load notes, attachments, graph data, search, Pagefind, and navigation without base-path escapes.
 - [x] 7.4 Document minimal consumer workflows pinned by maintained major version and immutable commit SHA, required permissions, Pages source setup, and compatibility rules; verify the documented YAML parses and matches reusable-workflow inputs.
 
