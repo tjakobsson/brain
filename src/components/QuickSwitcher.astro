@@ -2,11 +2,19 @@
 /* Cmd+K quick switcher — included in BaseLayout so it exists on every page. */
 ---
 
-<div class="switcher-overlay" hidden>
-  <div class="switcher" role="dialog" aria-label="Quick switcher">
-    <input type="text" placeholder="Jump to a note or tag…" aria-label="Search notes and tags" />
-    <ul class="switcher-results" role="listbox"></ul>
-    <div class="switcher-empty" hidden>No matches.</div>
+<div id="quick-switcher" class="switcher-overlay" hidden>
+  <div class="switcher" role="dialog" aria-modal="true" aria-label="Quick switcher">
+    <input
+      type="text"
+      placeholder="Jump to a note or tag…"
+      role="combobox"
+      aria-label="Search notes and tags"
+      aria-controls="switcher-results"
+      aria-expanded="true"
+      aria-autocomplete="list"
+    />
+    <ul id="switcher-results" class="switcher-results" role="listbox"></ul>
+    <div class="switcher-empty" role="status" aria-live="polite" hidden>No matches.</div>
   </div>
 </div>
 
@@ -30,6 +38,12 @@
   let fuse: Fuse<Entry> | null = null;
   let results: Entry[] = [];
   let selected = 0;
+  let opener: HTMLElement | null = null;
+  let previousOverflow = "";
+  const pageRegions = [
+    document.querySelector<HTMLElement>(".site-header-slot"),
+    document.querySelector<HTMLElement>("main"),
+  ].filter((region): region is HTMLElement => region !== null);
 
   async function ensureIndex(): Promise<void> {
     if (!entries) {
@@ -45,7 +59,13 @@
   }
 
   function open(): void {
+    opener = document.activeElement instanceof HTMLElement && document.activeElement !== document.body
+      ? document.activeElement
+      : null;
     overlay.hidden = false;
+    previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    for (const region of pageRegions) region.inert = true;
     input.value = "";
     input.focus();
     void search();
@@ -53,6 +73,12 @@
 
   function close(): void {
     overlay.hidden = true;
+    document.body.style.overflow = previousOverflow;
+    for (const region of pageRegions) region.inert = false;
+    const fallback = document.querySelector<HTMLElement>(".search-trigger");
+    if (opener && opener.offsetParent !== null) opener.focus();
+    else fallback?.focus();
+    opener = null;
   }
 
   function renderResults(items: Entry[]): void {
@@ -62,6 +88,7 @@
     empty.hidden = items.length > 0;
     items.slice(0, 10).forEach((entry, i) => {
       const li = document.createElement("li");
+      li.id = `switcher-option-${i}`;
       li.setAttribute("role", "option");
       li.setAttribute("aria-selected", String(i === selected));
       const label = document.createElement("span");
@@ -74,6 +101,7 @@
       li.addEventListener("mousemove", () => select(i));
       resultsList.appendChild(li);
     });
+    select(0);
   }
 
   function select(i: number): void {
@@ -81,6 +109,17 @@
     [...resultsList.children].forEach((li, j) =>
       li.setAttribute("aria-selected", String(j === selected)),
     );
+    const option = resultsList.children.item(selected);
+    if (option) {
+      input.setAttribute("aria-activedescendant", option.id);
+      option.scrollIntoView({ block: "nearest" });
+      const optionRect = option.getBoundingClientRect();
+      const listRect = resultsList.getBoundingClientRect();
+      if (optionRect.top < listRect.top) resultsList.scrollTop -= listRect.top - optionRect.top;
+      else if (optionRect.bottom > listRect.bottom) {
+        resultsList.scrollTop += optionRect.bottom - listRect.bottom;
+      }
+    } else input.removeAttribute("aria-activedescendant");
   }
 
   function navigate(route: LogicalRoute): void {
@@ -100,7 +139,12 @@
       if (overlay.hidden) open();
       else close();
     } else if (!overlay.hidden && e.key === "Escape") {
+      e.stopImmediatePropagation();
       close();
+    } else if (!overlay.hidden && e.key === "Tab") {
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      input.focus();
     }
   });
 

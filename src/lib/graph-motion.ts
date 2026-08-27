@@ -5,11 +5,14 @@ import {
   adaptPositionsToViewport,
   animationDuration,
   graphSignature,
+  graphViewCacheKey,
+  loadGraphView,
   loadPositions,
   motionPlan,
   positionBounds,
   positionCacheKey,
   savePositions,
+  saveGraphView,
   viewportClass,
   type GraphPositions,
   type LayoutRequest,
@@ -48,14 +51,38 @@ export class GraphMotionController {
     }
   }
 
-  restoreSession(): boolean {
-    if (!this.storage) return false;
+  restoreSession(): { positions: boolean; view: boolean } {
+    if (!this.storage) return { positions: false, view: false };
     const { width, height } = this.renderer.getDimensions();
-    const key = positionCacheKey(this.signature, viewportClass(width, height));
-    const positions = loadPositions(this.storage, key, this.graph.nodes());
-    if (!positions) return false;
+    const viewClass = viewportClass(width, height);
+    const positions = loadPositions(
+      this.storage,
+      positionCacheKey(this.signature, viewClass),
+      this.graph.nodes(),
+    );
+    if (!positions) return { positions: false, view: false };
     this.applyPositions(positions);
-    return true;
+    const view = loadGraphView(this.storage, graphViewCacheKey(this.signature, viewClass));
+    if (!view) return { positions: true, view: false };
+    this.renderer.setCustomBBox(view.bbox);
+    this.renderer.refresh();
+    this.renderer.getCamera().setState(view.camera);
+    return { positions: true, view: true };
+  }
+
+  commitSession(): void {
+    if (!this.storage) return;
+    const { width, height } = this.renderer.getDimensions();
+    const viewClass = viewportClass(width, height);
+    savePositions(
+      this.storage,
+      positionCacheKey(this.signature, viewClass),
+      this.capturePositions(),
+    );
+    saveGraphView(this.storage, graphViewCacheKey(this.signature, viewClass), {
+      camera: this.renderer.getCamera().getState(),
+      bbox: this.renderer.getCustomBBox() ?? this.renderer.getBBox(),
+    });
   }
 
   fitView(ids: Iterable<string>): void {
@@ -238,10 +265,7 @@ export class GraphMotionController {
   ): void {
     if (!this.generations.isCurrent(generation)) return;
     if (fitCamera) this.fitVisible(visibleIds, animateCamera, generation);
-    if (!this.storage) return;
-    const { width, height } = this.renderer.getDimensions();
-    const key = positionCacheKey(this.signature, viewportClass(width, height));
-    savePositions(this.storage, key, this.capturePositions());
+    this.commitSession();
   }
 
   private fitVisible(ids: string[], animate: boolean, generation: number): void {

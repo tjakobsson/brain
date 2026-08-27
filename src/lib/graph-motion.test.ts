@@ -1,6 +1,13 @@
 import Graph from "graphology";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { graphSignature, positionCacheKey, savePositions, viewportClass } from "./graph-motion-core";
+import {
+  graphSignature,
+  graphViewCacheKey,
+  positionCacheKey,
+  saveGraphView,
+  savePositions,
+  viewportClass,
+} from "./graph-motion-core";
 import { GraphMotionController } from "./graph-motion";
 
 class MemoryStorage {
@@ -53,6 +60,8 @@ function fixture(reducedMotion = true) {
     getDimensions: vi.fn(() => ({ width: 390, height: 844 })),
     getCamera: vi.fn(() => camera),
     setCustomBBox: vi.fn(),
+    getCustomBBox: vi.fn(() => ({ x: [-2, 2], y: [-1, 2] })),
+    getBBox: vi.fn(() => ({ x: [-1, 1], y: [0, 1] })),
     refresh: vi.fn(),
     scheduleRefresh: vi.fn(),
   };
@@ -196,8 +205,31 @@ describe("GraphMotionController", () => {
       c: { x: 14, y: 15 },
     });
     const controller = new GraphMotionController(renderer as never, graph, data);
-    expect(controller.restoreSession()).toBe(true);
+    expect(controller.restoreSession()).toEqual({ positions: true, view: false });
     expect(graph.getNodeAttributes("c")).toMatchObject({ x: 14, y: 15 });
+    controller.destroy();
+  });
+
+  it("restores positions, bounds, and camera without animation", () => {
+    const { storage, camera, renderer, graph, data } = fixture();
+    const signature = graphSignature(data.nodes, data.edges);
+    const view = viewportClass(390, 844);
+    savePositions(storage, positionCacheKey(signature, view), {
+      a: { x: 10, y: 11 },
+      b: { x: 12, y: 13 },
+      c: { x: 14, y: 15 },
+    });
+    saveGraphView(storage, graphViewCacheKey(signature, view), {
+      camera: { x: 0.2, y: 0.8, angle: 0, ratio: 0.4 },
+      bbox: { x: [8, 16], y: [9, 17] },
+    });
+
+    const controller = new GraphMotionController(renderer as never, graph, data);
+    expect(controller.restoreSession()).toEqual({ positions: true, view: true });
+    expect(renderer.setCustomBBox).toHaveBeenCalledWith({ x: [8, 16], y: [9, 17] });
+    expect(renderer.refresh).toHaveBeenCalled();
+    expect(camera.setState).toHaveBeenCalledWith({ x: 0.2, y: 0.8, angle: 0, ratio: 0.4 });
+    expect(camera.animate).not.toHaveBeenCalled();
     controller.destroy();
   });
 });

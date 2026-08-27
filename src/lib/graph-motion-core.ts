@@ -46,6 +46,11 @@ export interface PositionStorage {
   setItem(key: string, value: string): void;
 }
 
+export interface GraphViewState {
+  camera: { x: number; y: number; angle: number; ratio: number };
+  bbox: { x: [number, number]; y: [number, number] };
+}
+
 const CACHE_VERSION = 1;
 
 function clamp(value: number, min: number, max: number): number {
@@ -184,6 +189,10 @@ export function positionCacheKey(signature: string, view: ViewportClass): string
   return `graph-motion:${CACHE_VERSION}:${signature}:${view}`;
 }
 
+export function graphViewCacheKey(signature: string, view: ViewportClass): string {
+  return `graph-view:${CACHE_VERSION}:${signature}:${view}`;
+}
+
 export function loadPositions(
   storage: PositionStorage,
   key: string,
@@ -212,6 +221,48 @@ export function loadPositions(
 export function savePositions(storage: PositionStorage, key: string, positions: GraphPositions): void {
   try {
     storage.setItem(key, JSON.stringify({ version: CACHE_VERSION, positions }));
+  } catch {
+    // Storage can be unavailable in private browsing or restricted embeds.
+  }
+}
+
+export function loadGraphView(storage: PositionStorage, key: string): GraphViewState | null {
+  try {
+    const raw = storage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { version?: unknown; view?: Partial<GraphViewState> };
+    const camera = parsed.view?.camera;
+    const bbox = parsed.view?.bbox;
+    const cameraValues = camera ? [camera.x, camera.y, camera.angle, camera.ratio] : [];
+    const bboxValues = bbox ? [...bbox.x, ...bbox.y] : [];
+    if (
+      parsed.version !== CACHE_VERSION ||
+      !camera ||
+      !bbox ||
+      !Array.isArray(bbox.x) ||
+      bbox.x.length !== 2 ||
+      !Array.isArray(bbox.y) ||
+      bbox.y.length !== 2 ||
+      cameraValues.some((value) => !Number.isFinite(value)) ||
+      camera.ratio <= 0 ||
+      bboxValues.some((value) => !Number.isFinite(value)) ||
+      bbox.x[0] > bbox.x[1] ||
+      bbox.y[0] > bbox.y[1]
+    ) {
+      return null;
+    }
+    return {
+      camera: { x: camera.x, y: camera.y, angle: camera.angle, ratio: camera.ratio },
+      bbox: { x: [bbox.x[0], bbox.x[1]], y: [bbox.y[0], bbox.y[1]] },
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function saveGraphView(storage: PositionStorage, key: string, view: GraphViewState): void {
+  try {
+    storage.setItem(key, JSON.stringify({ version: CACHE_VERSION, view }));
   } catch {
     // Storage can be unavailable in private browsing or restricted embeds.
   }
@@ -262,5 +313,11 @@ export class ResizeSettler {
   cancel(): void {
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
+  }
+
+  reset(width: number, height: number): void {
+    this.cancel();
+    this.width = width;
+    this.height = height;
   }
 }

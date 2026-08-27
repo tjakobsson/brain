@@ -12,18 +12,18 @@ for (const note of index.notes) {
 
 <BaseLayout title="Graph" fluid>
   <div class="graph-page">
-    <div class="graph-shell">
+    <div class="graph-shell filters-closed">
       <div class="graph-controls">
         <button
           id="graph-filter-toggle"
           class="graph-control graph-filter-toggle"
           type="button"
           aria-controls="graph-sidebar"
-          aria-expanded="true"
-        >Close filters</button>
+          aria-expanded="false"
+        >Filters</button>
         <button id="graph-fit-view" class="graph-control" type="button">Fit view</button>
       </div>
-      <aside id="graph-sidebar" class="graph-sidebar">
+      <aside id="graph-sidebar" class="graph-sidebar" inert>
         <h2>Search</h2>
         <input id="graph-search" type="search" placeholder="Find a note…" autocomplete="off" />
         <ul id="graph-search-results" class="graph-search-results"></ul>
@@ -75,44 +75,106 @@ for (const note of index.notes) {
       return el;
     };
 
-    mountGlobalGraph({
-      host: q("#global-graph"),
-      searchInput: q<HTMLInputElement>("#graph-search"),
-      searchResults: q("#graph-search-results"),
-      typeFilters: document.querySelectorAll('[data-filter="type"]'),
-      statusFilters: document.querySelectorAll('[data-filter="status"]'),
-      tagFilter: q<HTMLSelectElement>("#graph-tag-filter"),
-      count: q("#graph-count"),
-      fitViewButton: q<HTMLButtonElement>("#graph-fit-view"),
-    }).catch((err) => console.error("[graph] failed to mount", err));
-
     const graphShell = q<HTMLElement>(".graph-shell");
     const filterToggle = q<HTMLButtonElement>("#graph-filter-toggle");
     const sidebar = q<HTMLElement>("#graph-sidebar");
-    const mobileLayout = window.matchMedia("(max-width: 700px)");
+    const filterStateKey = "brain:graph-filters-open";
+    const graphFilterStateKey = "brain:graph-filter-values";
+    const typeFilters = document.querySelectorAll<HTMLInputElement>('[data-filter="type"]');
+    const statusFilters = document.querySelectorAll<HTMLInputElement>('[data-filter="status"]');
+    const tagFilter = q<HTMLSelectElement>("#graph-tag-filter");
 
-    function setFiltersOpen(open: boolean): void {
+    function setFiltersOpen(open: boolean, persist = true): void {
       sidebar.classList.toggle("is-open", open);
       sidebar.inert = !open;
       graphShell.classList.toggle("filters-closed", !open);
       filterToggle.setAttribute("aria-expanded", String(open));
       filterToggle.textContent = open ? "Close filters" : "Filters";
+      if (persist) {
+        try {
+          sessionStorage.setItem(filterStateKey, String(open));
+        } catch {
+          // Keep the in-page control usable when storage is unavailable.
+        }
+      }
+    }
+
+    function restoreFiltersOpen(): boolean {
+      try {
+        return sessionStorage.getItem(filterStateKey) === "true";
+      } catch {
+        return false;
+      }
+    }
+
+    function persistGraphFilters(): void {
+      try {
+        sessionStorage.setItem(
+          graphFilterStateKey,
+          JSON.stringify({
+            types: [...typeFilters].filter((control) => control.checked).map((control) => control.value),
+            statuses: [...statusFilters]
+              .filter((control) => control.checked)
+              .map((control) => control.value),
+            tag: tagFilter.value,
+          }),
+        );
+      } catch {
+        // Filters remain usable without persistence.
+      }
+    }
+
+    function restoreGraphFilters(): void {
+      try {
+        const raw = sessionStorage.getItem(graphFilterStateKey);
+        if (!raw) return;
+        const state = JSON.parse(raw) as { types?: unknown; statuses?: unknown; tag?: unknown };
+        if (Array.isArray(state.types) && state.types.every((value) => typeof value === "string")) {
+          for (const control of typeFilters) control.checked = state.types.includes(control.value);
+        }
+        if (
+          Array.isArray(state.statuses) &&
+          state.statuses.every((value) => typeof value === "string")
+        ) {
+          for (const control of statusFilters) control.checked = state.statuses.includes(control.value);
+        }
+        if (
+          typeof state.tag === "string" &&
+          [...tagFilter.options].some((option) => option.value === state.tag)
+        ) {
+          tagFilter.value = state.tag;
+        }
+      } catch {
+        // Ignore malformed or unavailable stored state.
+      }
     }
 
     filterToggle.addEventListener("click", () => {
       setFiltersOpen(filterToggle.getAttribute("aria-expanded") !== "true");
     });
-    mobileLayout.addEventListener("change", () => {
-      const focusWasInSidebar = sidebar.contains(document.activeElement);
-      setFiltersOpen(!mobileLayout.matches);
-      if (mobileLayout.matches && focusWasInSidebar) filterToggle.focus();
-    });
     document.addEventListener("keydown", (event) => {
+      if (document.querySelector("#quick-switcher:not([hidden])")) return;
       if (event.key === "Escape" && filterToggle.getAttribute("aria-expanded") === "true") {
         setFiltersOpen(false);
         filterToggle.focus();
       }
     });
-    setFiltersOpen(!mobileLayout.matches);
+    setFiltersOpen(restoreFiltersOpen(), false);
+    restoreGraphFilters();
+    for (const control of [...typeFilters, ...statusFilters]) {
+      control.addEventListener("change", persistGraphFilters);
+    }
+    tagFilter.addEventListener("change", persistGraphFilters);
+
+    mountGlobalGraph({
+      host: q("#global-graph"),
+      searchInput: q<HTMLInputElement>("#graph-search"),
+      searchResults: q("#graph-search-results"),
+      typeFilters,
+      statusFilters,
+      tagFilter,
+      count: q("#graph-count"),
+      fitViewButton: q<HTMLButtonElement>("#graph-fit-view"),
+    }).catch((err) => console.error("[graph] failed to mount", err));
   </script>
 </BaseLayout>

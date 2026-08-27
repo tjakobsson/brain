@@ -4,6 +4,7 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
 import NoteMeta from "../../components/NoteMeta.astro";
 import NoteMentions from "../../components/NoteMentions.astro";
 import { getLinkIndex } from "../../lib/link-index";
+import { joinBase, routes } from "../../lib/routes";
 
 export async function getStaticPaths() {
   const notes = await getCollection("notes");
@@ -17,9 +18,26 @@ const index = getLinkIndex();
 const note = index.notes.find((n) => n.slug === entry.id);
 const title = entry.data.title ?? note?.title ?? entry.id;
 const date = (d?: Date) => d?.toISOString().slice(0, 10);
+const adjacency = new Map<string, Set<string>>();
+for (const { source, target } of index.edges) {
+  adjacency.set(source, (adjacency.get(source) ?? new Set()).add(target));
+  adjacency.set(target, (adjacency.get(target) ?? new Set()).add(source));
+}
+const directConnections = adjacency.get(entry.id) ?? new Set<string>();
+const nearbySlugs = new Set(directConnections);
+for (const slug of directConnections) {
+  for (const nearby of adjacency.get(slug) ?? []) {
+    if (nearby !== entry.id) nearbySlugs.add(nearby);
+  }
+}
+const nearbyNotes = index.notes
+  .filter(({ slug }) => nearbySlugs.has(slug))
+  .sort((a, b) => a.title.localeCompare(b.title));
+const url = (route: import("../../lib/routes").LogicalRoute) =>
+  joinBase(import.meta.env.BASE_URL, route);
 ---
 
-<BaseLayout title={title}>
+<BaseLayout title={title} compactHeader>
   <article data-pagefind-body>
     <h1>{title}</h1>
     <NoteMeta
@@ -31,7 +49,26 @@ const date = (d?: Date) => d?.toISOString().slice(0, 10);
     />
     <Content />
   </article>
-  <div class="local-graph" data-slug={entry.id}></div>
+  {nearbyNotes.length > 0 && (
+    <section class="local-graph-panel" aria-labelledby="local-graph-heading">
+      <header class="local-graph-panel__header">
+        <div>
+          <h2 id="local-graph-heading">Connection map</h2>
+          <p>Notes up to two links away from this note.</p>
+        </div>
+        <a href={url(routes.home)}>Open full graph</a>
+      </header>
+      <div class="local-graph" data-slug={entry.id} aria-hidden="true"></div>
+      <nav class="local-graph-links" aria-label="Notes in the connection map">
+        <span>Nearby notes</span>
+        <ul>
+          {nearbyNotes.map((nearby) => (
+            <li><a href={url(routes.note(nearby.slug))}>{nearby.title}</a></li>
+          ))}
+        </ul>
+      </nav>
+    </section>
+  )}
   <NoteMentions slug={entry.id} />
 </BaseLayout>
 
