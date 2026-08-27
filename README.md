@@ -1,60 +1,206 @@
-# Astro Starter Kit: Minimal
+# Brain Manual
+
+Brain Manual turns a plain Markdown Obsidian vault into a static, searchable second-brain site. The same generator runs from source, as a non-root OCI image, through a composite GitHub Action, or through a reusable GitHub Pages workflow.
+
+The repository is preparing its first public release. Until `v1.0.0` is published, build the image from source; the documented `@v1` references describe the maintained release contract but are not available yet.
+
+## Vault Format
+
+Note filenames are titles and must be unique across the vault. Do not repeat the title as an H1. Optional frontmatter controls note type, maturity, tags, and dates:
+
+```yaml
+---
+type: permanent
+status: established
+tags: [pkm, web]
+created: 2026-08-26
+updated: 2026-08-27
+---
+```
+
+Wiki-links use titles, not paths: `[[Portable notes]]`, `[[Portable notes|an alias]]`, or `[[Portable notes#Heading]]`. Unresolved note links produce warnings unless strict validation is enabled.
+
+## Source Build
+
+Node.js 22.12 or newer is required:
 
 ```sh
-npm create astro@latest -- --template minimal
+npm ci
+node scripts/generator.mjs build \
+  --vault examples/demo-vault \
+  --output .generated/source-site \
+  --site https://example.com \
+  --base /notes \
+  --strict-links
 ```
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
-
-## 🚀 Project Structure
-
-Inside of your Astro project, you'll see the following folders and files:
-
-```text
-/
-├── public/
-├── src/
-│   └── pages/
-│       └── index.astro
-└── package.json
-```
-
-Astro looks for `.astro` or `.md` files in the `src/pages/` directory. Each page is exposed as a route based on its file name.
-
-There's nothing special about `src/components/`, but that's where we like to put any Astro/React/Vue/Svelte/Preact components.
-
-Any static assets, like images, can be placed in the `public/` directory.
-
-## 🧞 Commands
-
-All commands are run from the root of the project, from a terminal:
-
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
-| `npm run build`           | Build your production site to `./dist/`          |
-| `npm run preview`         | Preview your build locally, before deploying     |
-| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help` | Get help using the Astro CLI                     |
-
-## Testing another vault
-
-Use the generator command to build an external Obsidian vault. Paths resolve
-from the caller's working directory.
+Preview performs a fresh production build, then serves it without live reload or browser editing:
 
 ```sh
-node scripts/generator.mjs build --vault /path/to/vault --output ./site
-node scripts/generator.mjs preview --vault /path/to/vault --output ./site --port 4322
+node scripts/generator.mjs preview \
+  --vault examples/demo-vault \
+  --output .generated/source-preview \
+  --base /notes \
+  --port 4322
 ```
 
-To generate and preview the 2,000-note test vault through the full build pipeline:
+Open `http://localhost:4322/notes/`.
+
+## Docker
+
+Build the multi-stage image from this checkout and prepare caller-owned directories:
 
 ```sh
-npm run vault:generate
-npm run preview -- --vault .generated/stress-vault --output .generated/preview-site
+docker build --tag brain-manual:source .
+mkdir -p .generated/docker-output .generated/docker-work
 ```
 
-## 👀 Want to learn more?
+Generate the demo site without runtime network access:
 
-Feel free to check [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
+```sh
+docker run --rm \
+  --read-only \
+  --network none \
+  --user "$(id -u):$(id -g)" \
+  --mount "type=bind,src=$PWD/examples/demo-vault,dst=/vault,readonly" \
+  --mount "type=bind,src=$PWD/.generated/docker-output,dst=/output" \
+  --mount "type=bind,src=$PWD/.generated/docker-work,dst=/work" \
+  --tmpfs /tmp:rw,mode=1777 \
+  brain-manual:source build \
+  --vault /vault \
+  --output /output/site \
+  --site https://example.com \
+  --base /notes \
+  --strict-links
+```
+
+The output is `.generated/docker-output/site`. Mount a writable output parent and select a child such as `/output/site`; atomic replacement needs permission to rename within the parent.
+
+Container preview uses the same inputs and validation:
+
+```sh
+docker run --rm \
+  --read-only \
+  --user "$(id -u):$(id -g)" \
+  --publish 127.0.0.1:4322:4322 \
+  --mount "type=bind,src=$PWD/examples/demo-vault,dst=/vault,readonly" \
+  --mount "type=bind,src=$PWD/.generated/docker-output,dst=/output" \
+  --mount "type=bind,src=$PWD/.generated/docker-work,dst=/work" \
+  --tmpfs /tmp:rw,mode=1777 \
+  brain-manual:source preview \
+  --vault /vault \
+  --output /output/preview \
+  --base /notes \
+  --host 0.0.0.0 \
+  --port 4322
+```
+
+Open `http://127.0.0.1:4322/notes/`.
+
+## Podman
+
+Build and run the same Dockerfile. On Linux, `--userns=keep-id` maps generated files to the caller:
+
+```sh
+podman build --tag brain-manual:source .
+mkdir -p .generated/podman-output .generated/podman-work
+podman run --rm \
+  --read-only \
+  --network none \
+  --userns=keep-id \
+  --user "$(id -u):$(id -g)" \
+  --mount "type=bind,src=$PWD/examples/demo-vault,dst=/vault,readonly" \
+  --mount "type=bind,src=$PWD/.generated/podman-output,dst=/output" \
+  --mount "type=bind,src=$PWD/.generated/podman-work,dst=/work" \
+  --tmpfs /tmp:rw,mode=1777 \
+  brain-manual:source build \
+  --vault /vault \
+  --output /output/site \
+  --site https://example.com \
+  --base /notes \
+  --strict-links
+```
+
+Podman on macOS or Windows first requires a running Podman machine and shared access to the checkout directory.
+
+## Generator Inputs
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `--vault <path>` | `./vault` | Readable Obsidian vault |
+| `--output <path>` | `./dist` | Static output directory |
+| `--site <origin>` | unset | Canonical HTTP(S) origin without a path |
+| `--base <path>` | `/` | Root or project deployment path |
+| `--exclude <glob>` | none | Additional vault exclusion; repeatable |
+| `--strict-links` | off | Fail on unresolved wiki-links |
+| `--host <host>` | `localhost` | Preview bind host |
+| `--port <port>` | `4321` | Preview port |
+
+Hidden path segments, `.obsidian`, `.github`, and `Templates` are excluded by default. An excluded referenced attachment is an error. An excluded linked note becomes an unresolved-link warning or, with `--strict-links`, an error.
+
+The generator rejects invalid URLs, unsafe output locations, unreadable or empty vaults, duplicate titles, invalid frontmatter, missing or ambiguous attachments, and unwritable output parents. Output promotion is atomic, so a failed build preserves the previous site.
+
+## Attachments
+
+The generator publishes only referenced files while preserving their vault-relative paths. Supported references are:
+
+```md
+![Markdown image](media/diagram.svg)
+[Download](media/reference.txt)
+![[media/diagram.svg|Obsidian image alias]]
+```
+
+Paths may be relative to the note or vault root. A unique filename can resolve without a directory; ambiguous filenames fail. Missing, excluded, escaping-symlink, and outside-vault targets fail the build. Raw HTML references, plugin-specific embeds, and Markdown transclusion are not attachment inputs.
+
+## Deployment Addressing
+
+For project Pages, pass the origin separately from the repository base:
+
+```sh
+node scripts/generator.mjs build \
+  --vault examples/demo-vault \
+  --output .generated/project-pages \
+  --site https://user.github.io \
+  --base /vault-repo
+```
+
+For root Pages or a custom domain, use `/`:
+
+```sh
+node scripts/generator.mjs build \
+  --vault examples/demo-vault \
+  --output .generated/custom-domain \
+  --site https://notes.example.com \
+  --base /
+```
+
+The reusable Pages workflow derives both values from GitHub Pages configuration, including custom domains.
+
+## GitHub Action
+
+The Linux composite Action creates caller-owned directories, runs the immutable release image as the runner UID/GID, and returns `output-path`. `exclusions` is newline-delimited.
+
+Use `tjakobsson/brain-manual@v1` for compatible v1 updates or a full commit SHA for an immutable toolchain. Complete examples are in [`docs/examples/build-action-major.yml`](docs/examples/build-action-major.yml) and [`docs/examples/build-action-sha.yml`](docs/examples/build-action-sha.yml).
+
+## GitHub Pages
+
+In the vault repository, select **Settings > Pages > Build and deployment > Source > GitHub Actions**. The caller grants only `contents: read`, `pages: write`, and `id-token: write`; the reusable workflow uploads one official Pages artifact and deploys through the `github-pages` environment.
+
+Use `tjakobsson/brain-manual/.github/workflows/publish-pages.yml@v1` for compatible v1 updates or a full commit SHA for immutable deployment. See [`docs/examples/pages-major.yml`](docs/examples/pages-major.yml) and [`docs/examples/pages-sha.yml`](docs/examples/pages-sha.yml).
+
+Removing or renaming an input, changing a default or output, or changing supported behavior requires a new major release. Backward-compatible fixes update the maintained major reference. A full SHA never moves.
+
+## Rollback
+
+For a failed local generation, fix the input and rerun; atomic promotion leaves the prior output untouched. For automation regressions, pin the prior Action or reusable-workflow commit SHA and its associated image digest. Release notes identify the source commit, OCI digest, SBOM, provenance, and compatibility level. Repository migration rollback restores the vault from its verified consumer repository before changing publication workflows.
+
+## Verification
+
+```sh
+npm test
+npm run test:browser
+npx astro build
+actionlint .github/workflows/*.yml
+```
+
+Generate the deterministic 2,000-note stress vault with `npm run vault:generate`.

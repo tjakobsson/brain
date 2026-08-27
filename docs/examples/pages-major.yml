@@ -1,0 +1,19 @@
+name: Publish second brain
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  publish:
+    uses: tjakobsson/brain-manual/.github/workflows/publish-pages.yml@v1
+    with:
+      vault: vault
+      strict-links: true

@@ -65,10 +65,9 @@ describe("joinBase", () => {
     );
   });
 
-  it("rejects routes that already include the base", () => {
-    expect(() =>
-      joinBase("/vault-repo", "/vault-repo/notes/note-a" as LogicalRoute),
-    ).toThrow("already includes deployment base");
+  it("allows deployment bases that overlap application route segments", () => {
+    expect(joinBase("/notes", routes.note("note-a"))).toBe("/notes/notes/note-a");
+    expect(joinBase("/tags", routes.tag("pkm"))).toBe("/tags/tags/pkm");
   });
 
   it("rejects malformed bases and logical routes", () => {

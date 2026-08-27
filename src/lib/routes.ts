@@ -37,10 +37,6 @@ export function joinBase(base: string, route: LogicalRoute): string {
   if (prefix && (!prefix.startsWith("/") || prefix.startsWith("//"))) {
     throw new Error(`Invalid deployment base: ${base}`);
   }
-  if (prefix && (route === prefix || route.startsWith(`${prefix}/`))) {
-    throw new Error(`Logical route already includes deployment base ${prefix}: ${route}`);
-  }
-
   if (!prefix) return route;
   return route === "/" ? `${prefix}/` : `${prefix}${route}`;
 }
