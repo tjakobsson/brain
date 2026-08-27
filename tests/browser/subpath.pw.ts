@@ -329,5 +329,45 @@ test("touch layouts keep the local graph interactive", async ({ browser }, testI
   await page.goto(`${origin}${base}/tags`);
   await expect(page.locator(".site-header")).toHaveCSS("flex-direction", "column");
   await expect(page.getByRole("heading", { name: "Tags" })).toHaveCSS("padding-right", "48px");
+
+  await page.goto(`${origin}${base}/notes/welcome`);
+  await expect(page.locator(".local-graph canvas.sigma-nodes")).toBeVisible();
+  await page.locator(".local-graph").scrollIntoViewIfNeeded();
+  const labelPoint = await page.locator(".local-graph canvas.sigma-labels").evaluate((canvas) => {
+    const element = canvas as HTMLCanvasElement;
+    const context = element.getContext("2d")!;
+    const pixels = context.getImageData(0, 0, element.width, element.height).data;
+    const bands: { top: number; bottom: number; left: number; right: number }[] = [];
+    let band: (typeof bands)[number] | null = null;
+    for (let y = 0; y < element.height; y += 1) {
+      let left = element.width;
+      let right = -1;
+      for (let x = 0; x < element.width; x += 1) {
+        if (pixels[(y * element.width + x) * 4 + 3] === 0) continue;
+        left = Math.min(left, x);
+        right = x;
+      }
+      if (right < 0) {
+        if (band) bands.push(band);
+        band = null;
+      } else if (band) {
+        band.bottom = y;
+        band.left = Math.min(band.left, left);
+        band.right = Math.max(band.right, right);
+      } else {
+        band = { top: y, bottom: y, left, right };
+      }
+    }
+    if (band) bands.push(band);
+    const longest = bands.sort((a, b) => b.right - b.left - (a.right - a.left))[0];
+    if (!longest) throw new Error("No rendered graph title found");
+    const bounds = element.getBoundingClientRect();
+    return {
+      x: bounds.left + ((longest.left + longest.right) / 2 / element.width) * bounds.width,
+      y: bounds.top + ((longest.top + longest.bottom) / 2 / element.height) * bounds.height,
+    };
+  });
+  await page.touchscreen.tap(labelPoint.x, labelPoint.y);
+  await expect(page).toHaveURL(new RegExp(`${base}/notes/portable-notes/?$`));
   await context.close();
 });

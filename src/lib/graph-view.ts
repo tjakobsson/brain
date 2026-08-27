@@ -153,7 +153,48 @@ interface InteractionState {
   theme: GraphTheme;
 }
 
+function touchTargetNode(renderer: Sigma, graph: Graph, point: { x: number; y: number }): string | null {
+  const settings = renderer.getSettings();
+  const displayedLabels = renderer.getNodeDisplayedLabels();
+  const labelContext = renderer.getCanvases().labels?.getContext("2d");
+  if (labelContext) {
+    labelContext.font = `${settings.labelWeight} ${settings.labelSize}px ${settings.labelFont}`;
+  }
+
+  let closestLabel: { node: string; distance: number } | null = null;
+  let closestNode: { node: string; distance: number } | null = null;
+  graph.forEachNode((node) => {
+    const data = renderer.getNodeDisplayData(node);
+    if (!data || data.hidden) return;
+    const center = renderer.framedGraphToViewport(data);
+    const visualRadius = renderer.scaleSize(data.size);
+    const distance = Math.hypot(point.x - center.x, point.y - center.y);
+
+    if (distance <= Math.max(visualRadius, 22) && (!closestNode || distance < closestNode.distance)) {
+      closestNode = { node, distance };
+    }
+
+    if (!labelContext || !data.label || !displayedLabels.has(node)) return;
+    const labelLeft = center.x + visualRadius + 3;
+    const labelWidth = labelContext.measureText(data.label).width;
+    if (
+      point.x >= labelLeft - 8 &&
+      point.x <= labelLeft + labelWidth + 8 &&
+      point.y >= center.y - 22 &&
+      point.y <= center.y + 22 &&
+      (!closestLabel || distance < closestLabel.distance)
+    ) {
+      closestLabel = { node, distance };
+    }
+  });
+  return closestLabel?.node ?? closestNode?.node ?? null;
+}
+
 function wireHoverAndClick(renderer: Sigma, graph: Graph, state: InteractionState): void {
+  const navigateToNode = (node: string) => {
+    const route = graph.getNodeAttribute(node, "route") as LogicalRoute | undefined;
+    if (route) window.location.assign(joinBase(import.meta.env.BASE_URL, route));
+  };
   renderer.on("enterNode", ({ node }) => {
     state.hovered = node;
     state.neighbors = new Set(graph.neighbors(node));
@@ -171,8 +212,16 @@ function wireHoverAndClick(renderer: Sigma, graph: Graph, state: InteractionStat
       state.draggedMoved = false;
       return;
     }
-    const route = graph.getNodeAttribute(node, "route") as LogicalRoute | undefined;
-    if (route) window.location.assign(joinBase(import.meta.env.BASE_URL, route));
+    navigateToNode(node);
+  });
+  renderer.on("clickStage", ({ event }) => {
+    if (!event.original.type.startsWith("touch")) return;
+    if (state.draggedMoved) {
+      state.draggedMoved = false;
+      return;
+    }
+    const node = touchTargetNode(renderer, graph, event);
+    if (node) navigateToNode(node);
   });
 }
 
@@ -284,13 +333,13 @@ function wireNodeDragging(
     const point = event.touches[0];
     if (point) move(point, event);
   };
-  touch.on("touchmovebody", moveTouch);
+  touch.on("touchmove", moveTouch);
   touch.on("touchup", finish);
 
   renderer.on("kill", () => {
     mouse.off("mousemovebody", moveMouse);
     mouse.off("mouseup", finish);
-    touch.off("touchmovebody", moveTouch);
+    touch.off("touchmove", moveTouch);
     touch.off("touchup", finish);
   });
 }
