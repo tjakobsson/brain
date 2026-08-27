@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [[ "${RUNNER_OS:-}" != "Linux" ]]; then
-  echo "brain-manual supports Linux GitHub Actions runners only." >&2
+  echo "Brain supports Linux GitHub Actions runners only." >&2
   exit 1
 fi
 
@@ -33,7 +33,7 @@ if [[ "$INPUT_STRICT_LINKS" != "true" && "$INPUT_STRICT_LINKS" != "false" ]]; th
 fi
 
 mkdir -p -- "$output_parent"
-work_path="$RUNNER_TEMP/brain-manual-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$RANDOM"
+work_path="$RUNNER_TEMP/brain-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$RANDOM"
 mkdir -p -- "$work_path/work" "$work_path/tmp"
 trap 'rm -rf -- "$work_path"' EXIT
 
@@ -62,6 +62,6 @@ docker run --rm \
   --mount "type=bind,src=$output_parent,dst=/output" \
   --mount "type=bind,src=$work_path/work,dst=/work" \
   --mount "type=bind,src=$work_path/tmp,dst=/tmp" \
-  "$BRAIN_MANUAL_IMAGE" "${args[@]}"
+  "$BRAIN_IMAGE" "${args[@]}"
 
 printf 'output-path=%s\n' "$output_path" >> "$GITHUB_OUTPUT"

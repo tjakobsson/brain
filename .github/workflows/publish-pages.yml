@@ -54,7 +54,7 @@ jobs:
         run: |
           set -euo pipefail
           vault_path="$(realpath -m -- "$GITHUB_WORKSPACE/$INPUT_VAULT")"
-          build_root="$RUNNER_TEMP/brain-manual-pages"
+          build_root="$RUNNER_TEMP/brain-pages"
           mkdir -p "$build_root/output" "$build_root/work" "$build_root/tmp"
 
           args=(
@@ -85,7 +85,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9
         with:
-          path: ${{ runner.temp }}/brain-manual-pages/output/site
+          path: ${{ runner.temp }}/brain-pages/output/site
 
   deploy:
     needs: build

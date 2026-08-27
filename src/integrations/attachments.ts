@@ -5,7 +5,7 @@ import { getVaultSnapshot } from "../lib/vault-state";
 
 export function attachmentIntegration(): AstroIntegration {
   return {
-    name: "brain-manual-attachments",
+    name: "brain-attachments",
     hooks: {
       "astro:build:done": ({ dir }) => {
         copyResolvedAttachments(getVaultSnapshot().attachments, fileURLToPath(dir));

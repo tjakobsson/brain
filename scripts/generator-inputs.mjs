@@ -1,7 +1,7 @@
 import path from "node:path";
 import { parseArgs } from "node:util";
 
-const COMMANDS = new Set(["build", "preview"]);
+const COMMANDS = new Set(["build", "preview", "serve"]);
 const SINGLE_OPTIONS = new Set([
   "vault",
   "output",
@@ -13,8 +13,9 @@ const SINGLE_OPTIONS = new Set([
 ]);
 
 export const GENERATOR_USAGE = `Usage:
-  brain-manual build [options]
-  brain-manual preview [options]
+  brain build [options]
+  brain preview [options]
+  brain serve [options]
 
 Options:
   --vault <path>       Vault directory (default: ./examples/demo-vault)
@@ -23,8 +24,8 @@ Options:
   --base <path>        Deployment base path (default: /)
   --exclude <pattern>  Exclude a vault pattern; repeatable
   --strict-links       Fail on unresolved note links
-  --host <host>        Preview host (default: localhost)
-  --port <port>        Preview port (default: 4321)`;
+  --host <host>        Preview or serve host (default: localhost)
+  --port <port>        Preview or serve port (default: 4321)`;
 
 export class GeneratorUsageError extends Error {
   constructor(message, options) {
@@ -156,8 +157,8 @@ export function parseGeneratorInputs(argv, { cwd = process.cwd() } = {}) {
   if (!COMMANDS.has(command)) {
     throw usageError(
       command === undefined
-        ? "Missing command: expected build or preview."
-        : `Unknown command ${JSON.stringify(command)}: expected build or preview.`,
+        ? "Missing command: expected build, preview, or serve."
+        : `Unknown command ${JSON.stringify(command)}: expected build, preview, or serve.`,
     );
   }
   if (extraPositionals.length > 0) {
@@ -174,7 +175,7 @@ export function parseGeneratorInputs(argv, { cwd = process.cwd() } = {}) {
   }
 
   if (command === "build" && (parsed.values.host !== undefined || parsed.values.port !== undefined)) {
-    throw usageError("Options --host and --port are only valid for the preview command.");
+    throw usageError("Options --host and --port are only valid for preview and serve commands.");
   }
 
   const common = {

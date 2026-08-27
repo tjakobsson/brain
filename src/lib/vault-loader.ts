@@ -15,7 +15,7 @@ interface VaultLoaderOptions {
 
 export function vaultLoader(options: VaultLoaderOptions): Loader {
   return {
-    name: "brain-manual-vault",
+    name: "brain-vault",
     async load(context) {
       const manifest = createVaultManifest({
         vaultDir: options.vaultDir,

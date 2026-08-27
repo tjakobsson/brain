@@ -49,7 +49,7 @@ async function snapshot(directory: string) {
 }
 
 beforeEach(async () => {
-  root = await fs.mkdtemp(path.join(os.tmpdir(), "brain-manual-safety-"));
+  root = await fs.mkdtemp(path.join(os.tmpdir(), "brain-safety-"));
   vault = path.join(root, "vault");
   output = path.join(root, "site");
   await fs.mkdir(vault);

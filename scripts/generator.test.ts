@@ -67,7 +67,7 @@ describe("generator build command", () => {
     fs.mkdirSync(output);
     fs.writeFileSync(path.join(output, "sentinel.txt"), "previous output");
 
-    const result = run({ BRAIN_MANUAL_TEST_FAIL_AFTER_PAGEFIND: "true" });
+    const result = run({ BRAIN_TEST_FAIL_AFTER_PAGEFIND: "true" });
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("Forced late-stage failure");
@@ -75,6 +75,15 @@ describe("generator build command", () => {
     expect(fs.readFileSync(path.join(output, "sentinel.txt"), "utf8")).toBe("previous output");
     expect(fs.readdirSync(root).some((entry) => entry.includes(".staging-"))).toBe(false);
   }, 30_000);
+
+  it("rejects a work directory inside the vault before writing", () => {
+    const vaultBefore = hashes(vault);
+    const result = run({ BRAIN_WORK: path.join(vault, "generated-work") });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("work must be outside the read-only vault");
+    expect(hashes(vault)).toEqual(vaultBefore);
+    expect(fs.existsSync(path.join(vault, "generated-work"))).toBe(false);
+  });
 
   it("produces identical inventories and hashes across clean builds", () => {
     const first = output;

@@ -1,6 +1,6 @@
 import path from "node:path";
 
-export const VAULT_PATH_ENV = "BRAIN_MANUAL_VAULT";
+export const VAULT_PATH_ENV = "BRAIN_VAULT";
 
 export function resolveVaultDir(
   root: string = process.cwd(),

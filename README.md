@@ -46,12 +46,44 @@ node scripts/generator.mjs preview \
 
 Open `http://localhost:4322/notes/`.
 
-## Docker
-
-Build the multi-stage image from this checkout and prepare caller-owned directories:
+For live authoring, `serve` watches the vault and runs the same complete production build and Pagefind indexing after changes. It keeps the last successful site available if a note is temporarily invalid and reloads the browser only after a successful replacement:
 
 ```sh
-docker build --tag brain-manual:source .
+node scripts/generator.mjs serve \
+  --vault examples/demo-vault \
+  --output .generated/source-live \
+  --port 4321
+```
+
+## Docker
+
+Build the multi-stage image from this checkout:
+
+```sh
+docker build --tag brain:source .
+```
+
+Then change to any local Obsidian vault and run one container. The vault is mounted read-only, all generated state stays in container-owned temporary filesystems, and the port is exposed only on this computer:
+
+```sh
+docker run --rm --init \
+  --read-only \
+  --publish 127.0.0.1:4321:4321 \
+  --mount "type=bind,src=$PWD,dst=/vault,readonly" \
+  --tmpfs /work:rw,mode=1777 \
+  --tmpfs /tmp:rw,mode=1777 \
+  brain:source serve \
+  --vault /vault \
+  --output /work/site \
+  --host 0.0.0.0 \
+  --port 4321
+```
+
+Open `http://127.0.0.1:4321/`. Once v1 is published, `ghcr.io/tjakobsson/brain:v1` can replace `brain:source` without requiring the generator checkout or Node.js on the host.
+
+For a one-shot static build, prepare caller-owned output directories:
+
+```sh
 mkdir -p .generated/docker-output .generated/docker-work
 ```
 
@@ -66,7 +98,7 @@ docker run --rm \
   --mount "type=bind,src=$PWD/.generated/docker-output,dst=/output" \
   --mount "type=bind,src=$PWD/.generated/docker-work,dst=/work" \
   --tmpfs /tmp:rw,mode=1777 \
-  brain-manual:source build \
+  brain:source build \
   --vault /vault \
   --output /output/site \
   --site https://example.com \
@@ -87,7 +119,7 @@ docker run --rm \
   --mount "type=bind,src=$PWD/.generated/docker-output,dst=/output" \
   --mount "type=bind,src=$PWD/.generated/docker-work,dst=/work" \
   --tmpfs /tmp:rw,mode=1777 \
-  brain-manual:source preview \
+  brain:source preview \
   --vault /vault \
   --output /output/preview \
   --base /notes \
@@ -102,7 +134,7 @@ Open `http://127.0.0.1:4322/notes/`.
 Build and run the same Dockerfile. On Linux, `--userns=keep-id` maps generated files to the caller:
 
 ```sh
-podman build --tag brain-manual:source .
+podman build --tag brain:source .
 mkdir -p .generated/podman-output .generated/podman-work
 podman run --rm \
   --read-only \
@@ -113,7 +145,7 @@ podman run --rm \
   --mount "type=bind,src=$PWD/.generated/podman-output,dst=/output" \
   --mount "type=bind,src=$PWD/.generated/podman-work,dst=/work" \
   --tmpfs /tmp:rw,mode=1777 \
-  brain-manual:source build \
+  brain:source build \
   --vault /vault \
   --output /output/site \
   --site https://example.com \
@@ -133,8 +165,8 @@ Podman on macOS or Windows first requires a running Podman machine and shared ac
 | `--base <path>` | `/` | Root or project deployment path |
 | `--exclude <glob>` | none | Additional vault exclusion; repeatable |
 | `--strict-links` | off | Fail on unresolved wiki-links |
-| `--host <host>` | `localhost` | Preview bind host |
-| `--port <port>` | `4321` | Preview port |
+| `--host <host>` | `localhost` | Preview or live-server bind host |
+| `--port <port>` | `4321` | Preview or live-server port |
 
 Hidden path segments, `.obsidian`, `.github`, and `Templates` are excluded by default. An excluded referenced attachment is an error. An excluded linked note becomes an unresolved-link warning or, with `--strict-links`, an error.
 

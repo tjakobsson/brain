@@ -1,13 +1,13 @@
 import path from "node:path";
 
 export const INTERNAL_ENV = {
-  vault: "BRAIN_MANUAL_VAULT",
-  output: "BRAIN_MANUAL_OUTPUT",
-  site: "BRAIN_MANUAL_SITE",
-  base: "BRAIN_MANUAL_BASE",
-  exclusions: "BRAIN_MANUAL_EXCLUSIONS",
-  strictLinks: "BRAIN_MANUAL_STRICT_LINKS",
-  work: "BRAIN_MANUAL_WORK",
+  vault: "BRAIN_VAULT",
+  output: "BRAIN_OUTPUT",
+  site: "BRAIN_SITE",
+  base: "BRAIN_BASE",
+  exclusions: "BRAIN_EXCLUSIONS",
+  strictLinks: "BRAIN_STRICT_LINKS",
+  work: "BRAIN_WORK",
 } as const;
 
 export interface InternalSettings {

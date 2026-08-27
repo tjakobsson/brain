@@ -19,6 +19,13 @@ function expectUsageError(args: string[], message: string) {
 }
 
 describe("parseGeneratorInputs", () => {
+  it("documents only the Brain commands", () => {
+    expect(GENERATOR_USAGE).toContain("brain build [options]");
+    expect(GENERATOR_USAGE).toContain("brain preview [options]");
+    expect(GENERATOR_USAGE).toContain("brain serve [options]");
+    expect(GENERATOR_USAGE).not.toContain(["brain", "manual"].join("-"));
+  });
+
   it("normalizes build defaults from the caller working directory", () => {
     expect(parse(["build"])).toEqual({
       command: "build",
@@ -34,6 +41,20 @@ describe("parseGeneratorInputs", () => {
   it("normalizes preview defaults", () => {
     expect(parse(["preview"])).toEqual({
       command: "preview",
+      vault: path.join(cwd, "examples/demo-vault"),
+      output: path.join(cwd, "dist"),
+      site: undefined,
+      base: "",
+      exclusions: [],
+      strictLinks: false,
+      host: "localhost",
+      port: 4321,
+    });
+  });
+
+  it("normalizes serve defaults", () => {
+    expect(parse(["serve"])).toEqual({
+      command: "serve",
       vault: path.join(cwd, "examples/demo-vault"),
       output: path.join(cwd, "dist"),
       site: undefined,
@@ -110,10 +131,10 @@ describe("parseGeneratorInputs", () => {
     ).toEqual(["Archive/**", "Private/**", "draft.md"]);
   });
 
-  it("accepts strict links and preview network options", () => {
+  it.each(["preview", "serve"])("accepts strict links and %s network options", (command) => {
     expect(
       parse([
-        "preview",
+        command,
         "--strict-links",
         "--host",
         "0.0.0.0",
@@ -124,7 +145,7 @@ describe("parseGeneratorInputs", () => {
   });
 
   it.each(["0", "65536", "1.5", "+4321", "1e3"])("rejects invalid port %s", (port) => {
-    expectUsageError(["preview", "--port", port], "Invalid --port value");
+    expectUsageError(["serve", "--port", port], "Invalid --port value");
   });
 
   it("rejects empty exclusions and hosts", () => {
@@ -135,7 +156,7 @@ describe("parseGeneratorInputs", () => {
   it.each(["vault", "output", "site", "base", "strict-links", "host", "port"])(
     "rejects repeated singleton option --%s",
     (option) => {
-      const command = option === "host" || option === "port" ? "preview" : "build";
+      const command = option === "host" || option === "port" ? "serve" : "build";
       const value = option === "strict-links" ? [] : option === "port" ? ["4321"] : ["value"];
       expectUsageError(
         [command, `--${option}`, ...value, `--${option}`, ...value],
@@ -145,8 +166,8 @@ describe("parseGeneratorInputs", () => {
   );
 
   it("rejects preview-only options for builds", () => {
-    expectUsageError(["build", "--host", "localhost"], "only valid for the preview command");
-    expectUsageError(["build", "--port", "4321"], "only valid for the preview command");
+    expectUsageError(["build", "--host", "localhost"], "only valid for preview and serve commands");
+    expectUsageError(["build", "--port", "4321"], "only valid for preview and serve commands");
   });
 
   it("returns actionable errors for malformed invocations", () => {

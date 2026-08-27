@@ -9,7 +9,7 @@ schema: spec-driven
 #     We use conventional commits
 #     Domain: e-commerce platform
 context: |
-  Project: brain-manual — a Zettelkasten second brain. Plain markdown vault
+  Project: Brain - a Zettelkasten second brain. Plain markdown vault
   authored by AI, published as a static Astro site. No in-browser editing.
 
   Dependency policy (standing convention, applies to all changes):

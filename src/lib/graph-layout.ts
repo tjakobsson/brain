@@ -22,7 +22,7 @@ export function computeLayout(
   const graph = new Graph();
 
   for (const id of [...nodeIds].sort()) {
-    const rng = seedrandom(`brain-manual:${id}`);
+    const rng = seedrandom(`brain:${id}`);
     graph.addNode(id, { x: rng() * 2 - 1, y: rng() * 2 - 1 });
   }
   for (const edge of edges) {

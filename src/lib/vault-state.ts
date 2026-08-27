@@ -8,7 +8,7 @@ export interface VaultSnapshot {
   attachments: ResolvedAttachment[];
 }
 
-const SNAPSHOT = Symbol.for("brain-manual.vault-snapshot");
+const SNAPSHOT = Symbol.for("brain.vault-snapshot");
 const processState = process as typeof process & { [SNAPSHOT]?: VaultSnapshot };
 
 export function publishVaultSnapshot(snapshot: VaultSnapshot): void {
@@ -19,7 +19,7 @@ export function getVaultSnapshot(): VaultSnapshot {
   const snapshot = processState[SNAPSHOT];
   if (!snapshot) {
     throw new Error(
-      "Vault snapshot is unavailable. The brain-manual-vault content loader must complete first.",
+      "Vault snapshot is unavailable. The brain-vault content loader must complete first.",
     );
   }
   return snapshot;

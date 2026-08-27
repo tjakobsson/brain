@@ -43,6 +43,11 @@ jobs:
           .github/workflows/action-parity.yml
           .github/workflows/publish-pages.yml
 
+      - name: Verify live container workflow
+        run: |
+          docker build --tag brain:source .
+          BRAIN_IMAGE=brain:source npm run test:container-live
+
       - name: Build through source command
         run: >-
           node scripts/generator.mjs build
