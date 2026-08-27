@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - id: site
-        uses: tjakobsson/brain-manual@c7272d2f803da6c95fc011cba312f6ab77430253
+        uses: tjakobsson/brain@c7272d2f803da6c95fc011cba312f6ab77430253
         with:
           vault: vault
           output: dist

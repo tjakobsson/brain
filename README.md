@@ -180,13 +180,13 @@ The reusable Pages workflow derives both values from GitHub Pages configuration,
 
 The Linux composite Action creates caller-owned directories, runs the immutable release image as the runner UID/GID, and returns `output-path`. `exclusions` is newline-delimited.
 
-Use `tjakobsson/brain-manual@v1` for compatible v1 updates or a full commit SHA for an immutable toolchain. Complete examples are in [`docs/examples/build-action-major.yml`](docs/examples/build-action-major.yml) and [`docs/examples/build-action-sha.yml`](docs/examples/build-action-sha.yml).
+Use `tjakobsson/brain@v1` for compatible v1 updates or a full commit SHA for an immutable toolchain. Complete examples are in [`docs/examples/build-action-major.yml`](docs/examples/build-action-major.yml) and [`docs/examples/build-action-sha.yml`](docs/examples/build-action-sha.yml).
 
 ## GitHub Pages
 
 In the vault repository, select **Settings > Pages > Build and deployment > Source > GitHub Actions**. The caller grants only `contents: read`, `pages: write`, and `id-token: write`; the reusable workflow uploads one official Pages artifact and deploys through the `github-pages` environment.
 
-Use `tjakobsson/brain-manual/.github/workflows/publish-pages.yml@v1` for compatible v1 updates or a full commit SHA for immutable deployment. See [`docs/examples/pages-major.yml`](docs/examples/pages-major.yml) and [`docs/examples/pages-sha.yml`](docs/examples/pages-sha.yml).
+Use `tjakobsson/brain/.github/workflows/publish-pages.yml@v1` for compatible v1 updates or a full commit SHA for immutable deployment. See [`docs/examples/pages-major.yml`](docs/examples/pages-major.yml) and [`docs/examples/pages-sha.yml`](docs/examples/pages-sha.yml).
 
 Removing or renaming an input, changing a default or output, or changing supported behavior requires a new major release. Backward-compatible fixes update the maintained major reference. A full SHA never moves.
 

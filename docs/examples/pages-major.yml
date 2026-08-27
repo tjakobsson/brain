@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   publish:
-    uses: tjakobsson/brain-manual/.github/workflows/publish-pages.yml@v1
+    uses: tjakobsson/brain/.github/workflows/publish-pages.yml@v1
     with:
       vault: vault
       strict-links: true

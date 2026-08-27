@@ -22,7 +22,7 @@ describe("documented consumer workflows", () => {
     (file) => {
       const workflow = parse(fs.readFileSync(path.resolve(file), "utf8"));
       const step = workflow.jobs.build.steps.find((candidate: { uses?: string }) =>
-        candidate.uses?.startsWith("tjakobsson/brain-manual@"),
+        candidate.uses?.startsWith("tjakobsson/brain@"),
       );
       expect(Object.keys(step.with ?? {})).toEqual(
         expect.arrayContaining(Object.keys(step.with ?? {}).filter((input) => input in action.inputs)),
