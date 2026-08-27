@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   publish:
-    uses: tjakobsson/brain/.github/workflows/publish-pages.yml@c7272d2f803da6c95fc011cba312f6ab77430253
+    uses: tjakobsson/brain/.github/workflows/publish-pages.yml@32967ee69c0f9f2b1d1d68361e7214a0ca3b7c82 # v1
     with:
       vault: vault
       exclusions: |-
