@@ -30,6 +30,6 @@
 
 - [x] 5.1 Run the full unit and browser suites serially, root and subpath production builds, one-shot preview tests, and strict OpenSpec validation; verify all checks pass with no staging or live-generation residue.
 - [x] 5.2 Run the generated 2,000-note vault through live serving, measure successful rebuild and idle polling behavior, and verify requests continue succeeding throughout the rebuild without overlapping generation.
-- [ ] 5.3 Build and test linux/amd64 and linux/arm64 images, then run source-command, image, composite-Action, reusable-workflow, and deterministic-output parity checks; verify unchanged static output contracts across every supported surface.
-- [ ] 5.4 Build and attest a new `ghcr.io/tjakobsson/brain` candidate, record its immutable digest in Action, workflow, and release metadata, and verify SBOM, provenance, license, and release dry-run checks without creating stable tags or a GitHub Release.
-- [ ] 5.5 Run the final former-name audit and `openspec validate "complete-brain-rename-and-live-serve" --strict`; verify only allowlisted historical records remain and every acceptance task is complete.
+- [x] 5.3 Build and test linux/amd64 and linux/arm64 images, then run source-command, image, composite-Action, reusable-workflow, and deterministic-output parity checks; verify unchanged static output contracts across every supported surface.
+- [x] 5.4 Build and attest a new `ghcr.io/tjakobsson/brain` candidate, record its immutable digest in Action, workflow, and release metadata, and verify SBOM, provenance, license, and release dry-run checks without creating stable tags or a GitHub Release.
+- [x] 5.5 Run the final former-name audit and `openspec validate "complete-brain-rename-and-live-serve" --strict`; verify only allowlisted historical records remain and every acceptance task is complete.
