@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import { resolveVaultDir } from "./vault-path";
 
 describe("resolveVaultDir", () => {
-  it("defaults to the repository vault", () => {
-    expect(resolveVaultDir("/project", undefined)).toBe(path.resolve("/project/vault"));
+  it("defaults to the public demo vault", () => {
+    expect(resolveVaultDir("/project", undefined)).toBe(
+      path.resolve("/project/examples/demo-vault"),
+    );
   });
 
   it("resolves a relative configured path from the repository", () => {

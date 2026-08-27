@@ -17,7 +17,7 @@ export const GENERATOR_USAGE = `Usage:
   brain-manual preview [options]
 
 Options:
-  --vault <path>       Vault directory (default: ./vault)
+  --vault <path>       Vault directory (default: ./examples/demo-vault)
   --output <path>      Generated site directory (default: ./dist)
   --site <origin>      Canonical HTTP(S) origin
   --base <path>        Deployment base path (default: /)
@@ -179,7 +179,7 @@ export function parseGeneratorInputs(argv, { cwd = process.cwd() } = {}) {
 
   const common = {
     command,
-    vault: path.resolve(cwd, parsed.values.vault ?? "vault"),
+    vault: path.resolve(cwd, parsed.values.vault ?? "examples/demo-vault"),
     output: path.resolve(cwd, parsed.values.output ?? "dist"),
     site: normalizeSite(parsed.values.site),
     base: normalizeBase(parsed.values.base),

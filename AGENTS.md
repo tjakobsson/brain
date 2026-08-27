@@ -8,9 +8,9 @@ astro dev --background
 
 Manage the background server with `astro dev stop`, `astro dev status`, and `astro dev logs`.
 
-## Vault authoring contract
+## Demo vault contract
 
-`vault/` is a plain-markdown Zettelkasten vault. AI authors write notes directly as files; the Astro build renders and validates them. There is no in-browser editing — the file system is the editor. The vault must always remain openable as a native Obsidian vault.
+`examples/demo-vault/` is a public plain-markdown Zettelkasten fixture. Personal vaults live in external consumer repositories and must not be copied into this generator checkout. Changes to fixture notes are made directly as files; the vault must remain openable as a native Obsidian vault.
 
 ### Filenames = titles
 
@@ -48,11 +48,11 @@ Use Obsidian wiki-links by note **title**, never file paths:
 - `[[Note Title|display text]]` — alias
 - `[[Note Title#Heading]]` — heading anchor
 
-Links to notes that don't exist yet are allowed: they render with "unwritten" styling and log a build warning, but don't fail the build. When renaming a note, update every `[[wiki-link]]` that targets it (grep the vault for the old title).
+Links to notes that don't exist yet are allowed: they render with "unwritten" styling and log a build warning, but don't fail the build. When renaming a fixture note, update every `[[wiki-link]]` in `examples/demo-vault/` that targets it.
 
 ### Verification
 
-After editing vault content, run `npx astro build` — it validates frontmatter, rejects duplicate titles, and warns on unresolved links.
+After editing demo content, run `npx astro build` — it validates frontmatter, rejects duplicate titles, and warns on unresolved links.
 
 ## Dependency policy
 

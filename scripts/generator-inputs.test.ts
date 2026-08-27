@@ -22,7 +22,7 @@ describe("parseGeneratorInputs", () => {
   it("normalizes build defaults from the caller working directory", () => {
     expect(parse(["build"])).toEqual({
       command: "build",
-      vault: path.join(cwd, "vault"),
+      vault: path.join(cwd, "examples/demo-vault"),
       output: path.join(cwd, "dist"),
       site: undefined,
       base: "",
@@ -34,7 +34,7 @@ describe("parseGeneratorInputs", () => {
   it("normalizes preview defaults", () => {
     expect(parse(["preview"])).toEqual({
       command: "preview",
-      vault: path.join(cwd, "vault"),
+      vault: path.join(cwd, "examples/demo-vault"),
       output: path.join(cwd, "dist"),
       site: undefined,
       base: "",

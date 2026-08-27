@@ -5,7 +5,7 @@ import { INTERNAL_ENV, loadInternalSettings } from "./internal-settings";
 describe("loadInternalSettings", () => {
   it("loads repository-local defaults", () => {
     expect(loadInternalSettings("/generator", {})).toEqual({
-      vault: path.resolve("/generator/vault"),
+      vault: path.resolve("/generator/examples/demo-vault"),
       output: path.resolve("/generator/dist"),
       site: undefined,
       base: "",

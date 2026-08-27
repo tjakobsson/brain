@@ -50,7 +50,7 @@ export function loadInternalSettings(
   }
 
   return {
-    vault: path.resolve(root, env[INTERNAL_ENV.vault]?.trim() || "vault"),
+    vault: path.resolve(root, env[INTERNAL_ENV.vault]?.trim() || "examples/demo-vault"),
     output: path.resolve(root, env[INTERNAL_ENV.output]?.trim() || "dist"),
     site: env[INTERNAL_ENV.site]?.trim() || undefined,
     base: base === "/" ? "" : base,

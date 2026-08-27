@@ -127,7 +127,7 @@ Podman on macOS or Windows first requires a running Podman machine and shared ac
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `--vault <path>` | `./vault` | Readable Obsidian vault |
+| `--vault <path>` | `./examples/demo-vault` | Readable Obsidian vault |
 | `--output <path>` | `./dist` | Static output directory |
 | `--site <origin>` | unset | Canonical HTTP(S) origin without a path |
 | `--base <path>` | `/` | Root or project deployment path |
