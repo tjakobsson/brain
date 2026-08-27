@@ -1,0 +1,43 @@
+{
+  "name": "brain-manual",
+  "type": "module",
+  "version": "0.0.1",
+  "bin": {
+    "brain-manual": "scripts/generator.mjs"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "node scripts/generator.mjs build",
+    "preview": "node scripts/generator.mjs preview",
+    "vault:generate": "node scripts/generate-stress-vault.mjs",
+    "astro": "astro",
+    "test": "vitest run",
+    "test:browser": "playwright test"
+  },
+  "dependencies": {
+    "@astrojs/markdown-remark": "7.2.4",
+    "@r4ai/remark-callout": "0.6.2",
+    "astro": "7.2.7",
+    "fuse.js": "7.5.0",
+    "graphology": "0.26.0",
+    "graphology-layout-forceatlas2": "0.10.1",
+    "gray-matter": "4.0.3",
+    "mdast-util-from-markdown": "2.0.3",
+    "pagefind": "1.5.2",
+    "seedrandom": "3.0.5",
+    "sigma": "3.0.3",
+    "zod": "4.4.3"
+  },
+  "allowScripts": {
+    "esbuild": true
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "@types/mdast": "4.0.4",
+    "@types/seedrandom": "3.0.8",
+    "vitest": "4.1.11"
+  }
+}

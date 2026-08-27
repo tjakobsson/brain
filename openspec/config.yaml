@@ -1,0 +1,47 @@
+schema: spec-driven
+
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+# Add your tech stack, conventions, style guides, domain knowledge, etc.
+# Example:
+#   context: |
+#     Tech stack: TypeScript, React, Node.js
+#     We use conventional commits
+#     Domain: e-commerce platform
+context: |
+  Project: brain-manual — a Zettelkasten second brain. Plain markdown vault
+  authored by AI, published as a static Astro site. No in-browser editing.
+
+  Dependency policy (standing convention, applies to all changes):
+  - Always look up and pin the latest stable release including security
+    patches for every dependency at install time; never rely on remembered
+    versions.
+  - Permissive licenses only (MIT, ISC, BSD-2/3-Clause, Apache-2.0,
+    CC0-1.0, 0BSD, Python-2.0, BlueOak-1.0.0). Copyleft
+    (GPL/AGPL/LGPL/MPL/SSPL family) is rejected
+    unless explicitly agreed with the user, and that agreement is recorded
+    as an ADR at docs/adr/NNNN-<title>.md before the dependency is added.
+    Accepted exceptions so far: ADR 0001 (libvips LGPL-3.0 via sharp,
+    lightningcss MPL-2.0 — build-time tooling only).
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing

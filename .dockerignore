@@ -1,0 +1,14 @@
+.astro
+.generated
+.git
+.github
+.opencode
+.vscode
+dist
+docs
+node_modules
+openspec
+slip-box
+test-results
+tests
+vault

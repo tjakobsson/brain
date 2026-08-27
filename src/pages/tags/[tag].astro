@@ -1,0 +1,36 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { getLinkIndex, type LinkIndex } from "../../lib/link-index";
+import type { VaultNote } from "../../lib/vault-scan";
+import { joinBase } from "../../lib/routes";
+
+export function getStaticPaths() {
+  const index: LinkIndex = getLinkIndex();
+  const byTag = new Map<string, VaultNote[]>();
+  for (const note of index.notes) {
+    for (const tag of note.meta.tags) {
+      byTag.set(tag, [...(byTag.get(tag) ?? []), note]);
+    }
+  }
+  return [...byTag.entries()].map(([tag, notes]) => ({ params: { tag }, props: { notes } }));
+}
+
+const { tag } = Astro.params;
+const { notes } = Astro.props;
+---
+
+<BaseLayout title={`#${tag}`}>
+  <h1>#{tag}</h1>
+  <ul class="note-list">
+    {notes.map((note: VaultNote) => (
+      <li>
+        <div class="note-line">
+          <a href={joinBase(import.meta.env.BASE_URL, note.route)}>{note.title}</a>
+          <span class={`status status-${note.meta.status}`}>
+            {note.meta.status}
+          </span>
+        </div>
+      </li>
+    ))}
+  </ul>
+</BaseLayout>

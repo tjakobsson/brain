@@ -1,0 +1,41 @@
+---
+import { getCollection, render } from "astro:content";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import NoteMeta from "../../components/NoteMeta.astro";
+import NoteMentions from "../../components/NoteMentions.astro";
+import { getLinkIndex } from "../../lib/link-index";
+
+export async function getStaticPaths() {
+  const notes = await getCollection("notes");
+  return notes.map((entry) => ({ params: { id: entry.id }, props: { entry } }));
+}
+
+const { entry } = Astro.props;
+const { Content } = await render(entry);
+
+const index = getLinkIndex();
+const note = index.notes.find((n) => n.slug === entry.id);
+const title = entry.data.title ?? note?.title ?? entry.id;
+const date = (d?: Date) => d?.toISOString().slice(0, 10);
+---
+
+<BaseLayout title={title}>
+  <article data-pagefind-body>
+    <h1>{title}</h1>
+    <NoteMeta
+      type={entry.data.type}
+      status={entry.data.status}
+      tags={entry.data.tags}
+      created={date(entry.data.created)}
+      updated={date(entry.data.updated)}
+    />
+    <Content />
+  </article>
+  <div class="local-graph" data-slug={entry.id}></div>
+  <NoteMentions slug={entry.id} />
+</BaseLayout>
+
+<script>
+  import { mountLocalGraphs } from "../../lib/graph-view";
+  mountLocalGraphs().catch((err) => console.error("[local-graph] failed to mount", err));
+</script>

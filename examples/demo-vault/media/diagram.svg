@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="240" viewBox="0 0 720 240" role="img" aria-labelledby="title description">
+  <title id="title">Portable second-brain generator flow</title>
+  <desc id="description">Notes flow through a generator into a static site.</desc>
+  <rect width="720" height="240" rx="24" fill="#f3efe5"/>
+  <g fill="#173f35" font-family="ui-monospace, monospace" font-size="24" text-anchor="middle">
+    <text x="120" y="128">NOTES</text>
+    <text x="360" y="128">BUILD</text>
+    <text x="600" y="128">SITE</text>
+  </g>
+  <g stroke="#c85d3a" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M190 120h90"/>
+    <path d="m264 102 18 18-18 18"/>
+    <path d="M430 120h90"/>
+    <path d="m504 102 18 18-18 18"/>
+  </g>
+</svg>

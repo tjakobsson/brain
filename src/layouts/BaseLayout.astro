@@ -1,0 +1,55 @@
+---
+import "../styles/global.css";
+import QuickSwitcher from "../components/QuickSwitcher.astro";
+import { joinBase, routes } from "../lib/routes";
+
+interface Props {
+  title: string;
+  wide?: boolean;
+  /** Full-bleed pages (graph): no max-width, no padding. */
+  fluid?: boolean;
+}
+
+const { title, wide = false, fluid = false } = Astro.props;
+const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.meta.env.BASE_URL, route);
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <link rel="icon" type="image/svg+xml" href={url(routes.faviconSvg)} />
+    <title>{title}</title>
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="site-nav">
+        <a href={url(routes.home)}>Graph</a>
+        <a href={url(routes.tags)}>Tags</a>
+        <a href={url(routes.recent)}>Recent</a>
+        <a href={url(routes.orphans)}>Orphans</a>
+        <a href={url(routes.search)}>Search</a>
+      </nav>
+      <details class="mobile-nav">
+        <summary aria-label="Site navigation">
+          <span class="menu-icon" aria-hidden="true"></span>
+        </summary>
+        <nav class="mobile-nav-panel" aria-label="Site navigation">
+          <a href={url(routes.home)}>Graph</a>
+          <a href={url(routes.tags)}>Tags</a>
+          <a href={url(routes.recent)}>Recent</a>
+          <a href={url(routes.orphans)}>Orphans</a>
+          <a href={url(routes.search)}>Search</a>
+        </nav>
+      </details>
+      <button class="search-trigger" data-open-switcher type="button">
+        Search <kbd>⌘K</kbd>
+      </button>
+    </header>
+    <main class:list={[{ wide, fluid }]}>
+      <slot />
+    </main>
+    <QuickSwitcher />
+  </body>
+</html>

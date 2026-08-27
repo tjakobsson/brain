@@ -1,0 +1,129 @@
+---
+/* Cmd+K quick switcher — included in BaseLayout so it exists on every page. */
+---
+
+<div class="switcher-overlay" hidden>
+  <div class="switcher" role="dialog" aria-label="Quick switcher">
+    <input type="text" placeholder="Jump to a note or tag…" aria-label="Search notes and tags" />
+    <ul class="switcher-results" role="listbox"></ul>
+    <div class="switcher-empty" hidden>No matches.</div>
+  </div>
+</div>
+
+<script>
+  import Fuse from "fuse.js";
+  import { joinBase, routes, type LogicalRoute } from "../lib/routes";
+
+  interface Entry {
+    title: string;
+    route: LogicalRoute;
+    kind: "note" | "tag";
+    tags: string[];
+  }
+
+  const overlay = document.querySelector<HTMLElement>(".switcher-overlay")!;
+  const input = overlay.querySelector<HTMLInputElement>("input")!;
+  const resultsList = overlay.querySelector<HTMLElement>(".switcher-results")!;
+  const empty = overlay.querySelector<HTMLElement>(".switcher-empty")!;
+
+  let entries: Entry[] | null = null;
+  let fuse: Fuse<Entry> | null = null;
+  let results: Entry[] = [];
+  let selected = 0;
+
+  async function ensureIndex(): Promise<void> {
+    if (!entries) {
+      entries = (await (
+        await fetch(joinBase(import.meta.env.BASE_URL, routes.searchIndex))
+      ).json()) as Entry[];
+      fuse = new Fuse(entries, {
+        keys: ["title", "tags"],
+        threshold: 0.35,
+        ignoreLocation: true,
+      });
+    }
+  }
+
+  function open(): void {
+    overlay.hidden = false;
+    input.value = "";
+    input.focus();
+    void search();
+  }
+
+  function close(): void {
+    overlay.hidden = true;
+  }
+
+  function renderResults(items: Entry[]): void {
+    results = items;
+    selected = 0;
+    resultsList.innerHTML = "";
+    empty.hidden = items.length > 0;
+    items.slice(0, 10).forEach((entry, i) => {
+      const li = document.createElement("li");
+      li.setAttribute("role", "option");
+      li.setAttribute("aria-selected", String(i === selected));
+      const label = document.createElement("span");
+      label.textContent = entry.title;
+      const kind = document.createElement("span");
+      kind.className = "kind";
+      kind.textContent = entry.kind;
+      li.append(label, kind);
+      li.addEventListener("click", () => navigate(entry.route));
+      li.addEventListener("mousemove", () => select(i));
+      resultsList.appendChild(li);
+    });
+  }
+
+  function select(i: number): void {
+    selected = i;
+    [...resultsList.children].forEach((li, j) =>
+      li.setAttribute("aria-selected", String(j === selected)),
+    );
+  }
+
+  function navigate(route: LogicalRoute): void {
+    close();
+    window.location.assign(joinBase(import.meta.env.BASE_URL, route));
+  }
+
+  async function search(): Promise<void> {
+    await ensureIndex();
+    const q = input.value.trim();
+    renderResults(q ? fuse!.search(q).map((r) => r.item) : entries!);
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      if (overlay.hidden) open();
+      else close();
+    } else if (!overlay.hidden && e.key === "Escape") {
+      close();
+    }
+  });
+
+  document.querySelectorAll("[data-open-switcher]").forEach((el) =>
+    el.addEventListener("click", open),
+  );
+
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
+
+  input.addEventListener("input", () => void search());
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      select(Math.min(selected + 1, Math.min(results.length, 10) - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      select(Math.max(selected - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const entry = results[selected];
+      if (entry) navigate(entry.route);
+    }
+  });
+</script>

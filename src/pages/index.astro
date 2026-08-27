@@ -1,0 +1,105 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { getLinkIndex } from "../lib/link-index";
+
+const index = getLinkIndex();
+const allTags = [...new Set(index.notes.flatMap((n) => n.meta.tags))].sort();
+const typeCounts = new Map<string, number>();
+for (const note of index.notes) {
+  typeCounts.set(note.meta.type, (typeCounts.get(note.meta.type) ?? 0) + 1);
+}
+---
+
+<BaseLayout title="Graph" fluid>
+  <div class="graph-page">
+    <div class="graph-shell">
+      <button
+        id="graph-filter-toggle"
+        class="graph-filter-toggle"
+        type="button"
+        aria-controls="graph-sidebar"
+        aria-expanded="false"
+      >Filters</button>
+      <aside id="graph-sidebar" class="graph-sidebar">
+        <h2>Search</h2>
+        <input id="graph-search" type="search" placeholder="Find a note…" autocomplete="off" />
+        <ul id="graph-search-results" class="graph-search-results"></ul>
+
+        <h2>Type</h2>
+        {(["fleeting", "literature", "permanent"] as const).map((t) => (
+          <label>
+            <input type="checkbox" data-filter="type" value={t} checked />
+            <span>{t}</span>
+            <span class="facet-count">{typeCounts.get(t) ?? 0}</span>
+          </label>
+        ))}
+
+        <h2>Status</h2>
+        {(["draft", "developing", "established"] as const).map((status) => (
+          <label>
+            <input type="checkbox" data-filter="status" value={status} checked />
+            <span>{status}</span>
+          </label>
+        ))}
+
+        <h2>Tag</h2>
+        <select id="graph-tag-filter">
+          <option value="">All tags</option>
+          {allTags.map((t) => <option value={t}>{t}</option>)}
+        </select>
+
+        <h2>Legend</h2>
+        <p class="legend">
+          Color is note <em>type</em>; brightness is <em>status</em> (dim draft to
+          bright established); size is connections. Hover a node to light up its
+          neighborhood. Drag to rearrange it, or click to open the note.
+        </p>
+
+        <p id="graph-count" class="graph-count"></p>
+      </aside>
+      <div class="graph-container">
+        <div id="global-graph" class="graph-host"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    import { mountGlobalGraph } from "../lib/graph-view";
+
+    const q = <T extends Element>(selector: string): T => {
+      const el = document.querySelector<T>(selector);
+      if (!el) throw new Error(`graph page: missing ${selector}`);
+      return el;
+    };
+
+    mountGlobalGraph({
+      host: q("#global-graph"),
+      searchInput: q<HTMLInputElement>("#graph-search"),
+      searchResults: q("#graph-search-results"),
+      typeFilters: document.querySelectorAll('[data-filter="type"]'),
+      statusFilters: document.querySelectorAll('[data-filter="status"]'),
+      tagFilter: q<HTMLSelectElement>("#graph-tag-filter"),
+      count: q("#graph-count"),
+    }).catch((err) => console.error("[graph] failed to mount", err));
+
+    const filterToggle = q<HTMLButtonElement>("#graph-filter-toggle");
+    const sidebar = q<HTMLElement>("#graph-sidebar");
+    const mobileLayout = window.matchMedia("(max-width: 700px)");
+
+    function setFiltersOpen(open: boolean): void {
+      sidebar.classList.toggle("is-open", open);
+      sidebar.inert = mobileLayout.matches && !open;
+      filterToggle.setAttribute("aria-expanded", String(open));
+      filterToggle.textContent = open ? "Close filters" : "Filters";
+    }
+
+    filterToggle.addEventListener("click", () => {
+      setFiltersOpen(filterToggle.getAttribute("aria-expanded") !== "true");
+    });
+    mobileLayout.addEventListener("change", () => setFiltersOpen(false));
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") setFiltersOpen(false);
+    });
+    setFiltersOpen(false);
+  </script>
+</BaseLayout>

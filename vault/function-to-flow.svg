@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="320" viewBox="0 0 800 320" font-family="system-ui, -apple-system, sans-serif">
+  <style>
+    .title { font-size: 16px; font-weight: 700; fill: #0f172a; }
+    .sub { font-size: 12px; fill: #64748b; }
+    .silo-label { font-size: 13px; fill: #475569; }
+    .node-label { font-size: 12px; fill: #0f172a; }
+    .stream-label { font-size: 12px; fill: #1e3a8a; }
+  </style>
+
+  <!-- Left: function -->
+  <text class="title" x="155" y="30" text-anchor="middle">Function</text>
+  <text class="sub" x="155" y="48" text-anchor="middle">silos, handoffs, queues</text>
+
+  <rect x="35" y="70" width="80" height="200" rx="8" fill="#f1f5f9" stroke="#94a3b8"/>
+  <rect x="125" y="70" width="80" height="200" rx="8" fill="#f1f5f9" stroke="#94a3b8"/>
+  <rect x="215" y="70" width="80" height="200" rx="8" fill="#f1f5f9" stroke="#94a3b8"/>
+  <text class="silo-label" x="75" y="175" text-anchor="middle">Design</text>
+  <text class="silo-label" x="165" y="175" text-anchor="middle">Eng</text>
+  <text class="silo-label" x="255" y="175" text-anchor="middle">Ops</text>
+
+  <!-- work snaking through the silos -->
+  <path d="M12,95 L75,95 L75,135 L165,135 L165,175 L255,175 L255,215 L296,215" fill="none" stroke="#dc2626" stroke-width="2" stroke-dasharray="5 4"/>
+  <polygon points="296,211 306,215 296,219" fill="#dc2626"/>
+  <!-- queues at the handoffs -->
+  <circle cx="120" cy="135" r="5" fill="#fbbf24" stroke="#b45309"/>
+  <circle cx="210" cy="175" r="5" fill="#fbbf24" stroke="#b45309"/>
+  <text class="sub" x="155" y="296" text-anchor="middle">work waits at every handoff</text>
+
+  <!-- Middle: the shift -->
+  <text class="sub" x="372" y="150" text-anchor="middle">replace silos with</text>
+  <text class="sub" x="372" y="165" text-anchor="middle">value streams</text>
+  <line x1="332" y1="182" x2="404" y2="182" stroke="#0f172a" stroke-width="2"/>
+  <polygon points="404,177 414,182 404,187" fill="#0f172a"/>
+
+  <!-- Right: flow -->
+  <text class="title" x="614" y="30" text-anchor="middle">Flow</text>
+  <text class="sub" x="614" y="48" text-anchor="middle">value streams structured from an Outcome Tree</text>
+
+  <!-- outcome tree -->
+  <rect x="539" y="66" width="150" height="30" rx="6" fill="#ffffff" stroke="#475569"/>
+  <text class="node-label" x="614" y="85" text-anchor="middle">Business outcome</text>
+  <line x1="584" y1="96" x2="520" y2="122" stroke="#475569"/>
+  <line x1="644" y1="96" x2="695" y2="122" stroke="#475569"/>
+  <rect x="455" y="122" width="130" height="26" rx="6" fill="#ffffff" stroke="#475569"/>
+  <text class="node-label" x="520" y="139" text-anchor="middle">Sub-outcome A</text>
+  <rect x="630" y="122" width="130" height="26" rx="6" fill="#ffffff" stroke="#475569"/>
+  <text class="node-label" x="695" y="139" text-anchor="middle">Sub-outcome B</text>
+
+  <!-- ownership links from tree branches to streams -->
+  <line x1="520" y1="148" x2="520" y2="182" stroke="#94a3b8" stroke-dasharray="3 3"/>
+  <line x1="695" y1="148" x2="695" y2="216" stroke="#94a3b8" stroke-dasharray="3 3"/>
+
+  <!-- faint function boundaries the streams cut across -->
+  <line x1="475" y1="176" x2="475" y2="248" stroke="#cbd5e1" stroke-dasharray="4 4"/>
+  <line x1="580" y1="176" x2="580" y2="248" stroke="#cbd5e1" stroke-dasharray="4 4"/>
+  <line x1="685" y1="176" x2="685" y2="248" stroke="#cbd5e1" stroke-dasharray="4 4"/>
+
+  <!-- value streams -->
+  <rect x="440" y="182" width="310" height="26" rx="13" fill="#dbeafe" stroke="#3b82f6"/>
+  <text class="stream-label" x="456" y="199">Value stream A</text>
+  <polygon points="750,189 764,195 750,201" fill="#3b82f6"/>
+  <rect x="440" y="216" width="310" height="26" rx="13" fill="#dbeafe" stroke="#3b82f6"/>
+  <text class="stream-label" x="456" y="233">Value stream B</text>
+  <polygon points="750,223 764,229 750,235" fill="#3b82f6"/>
+
+  <text class="sub" x="600" y="296" text-anchor="middle">streams cut across functions to the customer</text>
+</svg>
