@@ -1,6 +1,6 @@
-# Brain Manual
+# Brain
 
-Brain Manual turns a plain Markdown Obsidian vault into a static, searchable second-brain site. The same generator runs from source, as a non-root OCI image, or through a composite GitHub Action that can feed a GitHub Pages workflow.
+Brain turns a plain Markdown Obsidian vault into a static, searchable second-brain site. The same generator runs from source, as a non-root OCI image, or through a composite GitHub Action that can feed a GitHub Pages workflow.
 
 The repository is preparing its first public release. Until `v1.0.0` is published, build the image from source; the documented `@v1` references describe the maintained release contract but are not available yet.
 
