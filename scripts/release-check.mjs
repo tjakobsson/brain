@@ -12,7 +12,7 @@ const automationFiles = [
   ".github/workflows/action-parity.yml",
   ".github/workflows/publish-pages.yml",
 ];
-const imagePattern = /ghcr\.io\/tjakobsson\/brain-manual@(sha256:[a-f0-9]{64})/gu;
+const imagePattern = /ghcr\.io\/tjakobsson\/brain@(sha256:[a-f0-9]{64})/gu;
 
 const flags = new Set(process.argv.slice(2));
 const write = flags.delete("--write");
@@ -62,14 +62,14 @@ for (const file of automationFiles) {
   const references = [...source.matchAll(imagePattern)];
   if (references.length !== 1) throw new Error(`${file} must contain exactly one immutable image reference.`);
   if (write && references[0][1] !== candidate.imageDigest) {
-    fs.writeFileSync(filePath, source.replace(imagePattern, `ghcr.io/tjakobsson/brain-manual@${candidate.imageDigest}`));
+    fs.writeFileSync(filePath, source.replace(imagePattern, `ghcr.io/tjakobsson/brain@${candidate.imageDigest}`));
   } else if (!write && references[0][1] !== candidate.imageDigest) {
     throw new Error(`${file} does not record candidate digest ${candidate.imageDigest}.`);
   }
 }
 
 function inspectAttestation(field) {
-  const reference = `ghcr.io/tjakobsson/brain-manual@${candidate.imageDigest}`;
+  const reference = `ghcr.io/tjakobsson/brain@${candidate.imageDigest}`;
   const result = spawnSync(
     "docker",
     [

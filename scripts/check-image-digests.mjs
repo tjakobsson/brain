@@ -7,7 +7,7 @@ if (files.length < 2) {
   process.exit(2);
 }
 
-const imagePattern = /ghcr\.io\/tjakobsson\/brain-manual@(sha256:[a-f0-9]{64})/gu;
+const imagePattern = /ghcr\.io\/tjakobsson\/brain@(sha256:[a-f0-9]{64})/gu;
 const references = files.map((file) => {
   const matches = [...fs.readFileSync(file, "utf8").matchAll(imagePattern)].map((match) => match[1]);
   if (matches.length !== 1) {
