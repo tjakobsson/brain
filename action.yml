@@ -1,0 +1,54 @@
+name: Build second-brain site
+description: Generate a static second-brain site from an Obsidian vault
+author: Tobias Jakobsson
+
+inputs:
+  vault:
+    description: Vault directory, relative to the caller workspace or absolute
+    required: false
+    default: vault
+  output:
+    description: Generated site directory, relative to the caller workspace or absolute
+    required: false
+    default: dist
+  site:
+    description: Canonical HTTP(S) origin
+    required: false
+    default: ""
+  base-path:
+    description: Deployment base path
+    required: false
+    default: /
+  exclusions:
+    description: Newline-delimited vault exclusion patterns
+    required: false
+    default: ""
+  strict-links:
+    description: Fail when the vault contains unresolved note links
+    required: false
+    default: "false"
+
+outputs:
+  output-path:
+    description: Absolute normalized path to the generated site
+    value: ${{ steps.generate.outputs.output-path }}
+
+runs:
+  using: composite
+  steps:
+    - id: generate
+      name: Generate site
+      shell: bash
+      env:
+        BRAIN_MANUAL_IMAGE: ghcr.io/tjakobsson/brain-manual@sha256:bdfd2bfab408c2a618a876f3e36e70e8818deeee8bf2298f4090624c628032d6
+        INPUT_VAULT: ${{ inputs.vault }}
+        INPUT_OUTPUT: ${{ inputs.output }}
+        INPUT_SITE: ${{ inputs.site }}
+        INPUT_BASE_PATH: ${{ inputs.base-path }}
+        INPUT_EXCLUSIONS: ${{ inputs.exclusions }}
+        INPUT_STRICT_LINKS: ${{ inputs.strict-links }}
+      run: "$GITHUB_ACTION_PATH/scripts/run-generator-action.sh"
+
+branding:
+  icon: book-open
+  color: green

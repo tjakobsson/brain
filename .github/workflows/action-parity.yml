@@ -1,0 +1,121 @@
+name: Generator Action parity
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  GENERATOR_IMAGE: ghcr.io/tjakobsson/brain-manual@sha256:bdfd2bfab408c2a618a876f3e36e70e8818deeee8bf2298f4090624c628032d6
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify pinned image digests agree
+        run: node scripts/check-image-digests.mjs action.yml .github/workflows/action-parity.yml
+
+      - name: Build through source command
+        run: >-
+          node scripts/generator.mjs build
+          --vault examples/demo-vault
+          --output .generated/parity-command
+          --site https://example.com
+          --base /parity
+          --exclude '.obsidian/**'
+          --strict-links
+
+      - name: Build through candidate image
+        run: |
+          mkdir -p .generated/parity-image .generated/parity-image-work .generated/parity-image-tmp
+          docker run --rm \
+            --read-only \
+            --network none \
+            --user "$(id -u):$(id -g)" \
+            --mount "type=bind,src=$PWD/examples/demo-vault,dst=/vault,readonly" \
+            --mount "type=bind,src=$PWD/.generated/parity-image,dst=/output" \
+            --mount "type=bind,src=$PWD/.generated/parity-image-work,dst=/work" \
+            --mount "type=bind,src=$PWD/.generated/parity-image-tmp,dst=/tmp" \
+            "$GENERATOR_IMAGE" build \
+            --vault /vault \
+            --output /output/site \
+            --site https://example.com \
+            --base /parity \
+            --exclude '.obsidian/**' \
+            --strict-links
+
+      - id: action-build
+        name: Build through composite Action
+        uses: ./
+        with:
+          vault: examples/demo-vault
+          output: .generated/parity-action
+          site: https://example.com
+          base-path: /parity
+          exclusions: .obsidian/**
+          strict-links: true
+
+      - name: Verify output parity and normalized result
+        env:
+          ACTION_OUTPUT: ${{ steps.action-build.outputs.output-path }}
+        run: |
+          expected="$(realpath -m .generated/parity-action)"
+          [[ "$ACTION_OUTPUT" == "$expected" ]]
+          node scripts/compare-output-trees.mjs \
+            .generated/parity-command \
+            .generated/parity-image/site \
+            .generated/parity-action
+
+      - id: exclusions
+        name: Exercise custom exclusions
+        uses: ./
+        with:
+          vault: examples/demo-vault
+          output: .generated/excluded-action
+          exclusions: Portable notes.md
+
+      - name: Verify custom exclusions
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const graph = JSON.parse(fs.readFileSync(".generated/excluded-action/graph-data.json", "utf8"));
+          if (graph.nodes.length !== 1 || graph.nodes[0].title !== "Welcome") process.exit(1);
+          if (fs.existsSync(".generated/excluded-action/notes/portable-notes/index.html")) process.exit(1);
+          NODE
+
+      - id: strict-failure
+        name: Exercise strict-link failure diagnostics
+        continue-on-error: true
+        uses: ./
+        with:
+          vault: tests/fixtures/strict-vault
+          output: .generated/strict-failure
+          strict-links: true
+
+      - name: Require strict-link failure
+        if: steps.strict-failure.outcome != 'failure'
+        run: exit 1

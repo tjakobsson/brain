@@ -33,7 +33,7 @@
 
 ## 6. Release and build Action
 
-- [x] 6.1 Add a candidate image workflow that publishes to GHCR with semantic metadata, SBOM, and verifiable GitHub provenance using the latest stable official Actions pinned to full commit SHAs; verify workflow linting and a non-publishing pull-request build complete.
+- [ ] 6.1 Add a candidate image workflow that publishes to GHCR with semantic metadata, SBOM, and verifiable GitHub provenance using the latest stable official Actions pinned to full commit SHAs; verify workflow linting and a non-publishing pull-request build complete.
 - [ ] 6.2 Add a Linux composite `action.yml` that prepares caller-owned directories and invokes a checked-in image digest as the runner's non-root UID/GID; verify all generator inputs, failure diagnostics, and the normalized output-path result match direct image use.
 - [ ] 6.3 Add parity fixtures that build through the command, released image, and composite Action and compare output inventories and hashes; verify CI blocks digest updates when any surface diverges.
 - [ ] 6.4 Automate the two-phase release check that records one candidate digest in both automation surfaces before semantic tagging; verify a dry run reports source commit, image digest, SBOM, provenance, and required major-version changes without publishing a release.
