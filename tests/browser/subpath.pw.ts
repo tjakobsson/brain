@@ -31,7 +31,14 @@ test("all site features stay within the deployment base", async ({ page }, testI
   await expect(page.locator("#graph-sidebar")).toBeHidden();
   await filterToggle.click();
   await expect(page.locator("#graph-sidebar")).toBeVisible();
+  await page.waitForTimeout(1_200);
   await page.getByRole("button", { name: "Fit view" }).click();
+  await page.waitForTimeout(500);
+  const positionsBeforeZoom = await page.evaluate(() => {
+    const key = Object.keys(sessionStorage).find((item) => item.startsWith("graph-motion:"));
+    return key ? JSON.parse(sessionStorage.getItem(key)!).positions : null;
+  });
+  expect(positionsBeforeZoom).not.toBeNull();
 
   const graphCanvas = page.locator("#global-graph canvas.sigma-mouse");
   await graphCanvas.hover();
@@ -45,6 +52,10 @@ test("all site features stay within the deployment base", async ({ page }, testI
   expect(Object.keys(savedGraphSession)).toEqual(
     expect.arrayContaining([expect.stringMatching(/^graph-motion:/), expect.stringMatching(/^graph-view:/)]),
   );
+  expect(
+    JSON.parse(Object.entries(savedGraphSession).find(([key]) => key.startsWith("graph-motion:"))![1])
+      .positions,
+  ).toEqual(positionsBeforeZoom);
   await page.reload();
   await expect(page.locator("#global-graph canvas.sigma-nodes")).toBeVisible();
   await expect(page.getByRole("button", { name: "Close filters" })).toHaveAttribute(
@@ -241,7 +252,32 @@ test("mobile navigation stays within the deployment base", async ({ page }, test
   await page.keyboard.press("Escape");
   await expect(page.getByRole("button", { name: "Filters" })).toBeFocused();
   await page.goto(`${base}/notes/welcome`);
-  await expect(page.locator(".local-graph")).toHaveCSS("pointer-events", "none");
+  const localGraphCanvas = page.locator(".local-graph canvas.sigma-mouse");
+  await expect(localGraphCanvas).toBeVisible();
+  await localGraphCanvas.scrollIntoViewIfNeeded();
+  expect(
+    await localGraphCanvas.evaluate((canvas) => {
+      const bounds = canvas.getBoundingClientRect();
+      return document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2) === canvas;
+    }),
+  ).toBe(true);
+  const localGraph = page.locator(".local-graph");
+  await localGraphCanvas.hover();
+  const beforeZoom = await localGraph.screenshot();
+  const scrollBeforeZoom = await page.evaluate(() => scrollY);
+  await page.mouse.wheel(0, -300);
+  await page.waitForTimeout(400);
+  expect(await page.evaluate(() => scrollY)).toBe(scrollBeforeZoom);
+  expect((await localGraph.screenshot()).equals(beforeZoom)).toBe(false);
+
+  const bounds = (await localGraph.boundingBox())!;
+  const beforePan = await localGraph.screenshot();
+  await page.mouse.move(bounds.x + bounds.width - 24, bounds.y + bounds.height - 24);
+  await page.mouse.down();
+  await page.mouse.move(bounds.x + bounds.width - 64, bounds.y + bounds.height - 24, { steps: 4 });
+  await page.mouse.up();
+  await page.waitForTimeout(100);
+  expect((await localGraph.screenshot()).equals(beforePan)).toBe(false);
   const noteHeader = page.locator(".site-header[data-scroll-compact]");
   await expect(page.locator(".site-header-slot")).toHaveCSS("position", "fixed");
   await expect(page.locator(".site-header-slot")).toHaveCSS("height", "0px");
@@ -271,12 +307,20 @@ test("mobile navigation stays within the deployment base", async ({ page }, test
   );
 });
 
-test("touch layouts leave the local graph to page scrolling", async ({ browser }, testInfo) => {
+test("touch layouts keep the local graph interactive", async ({ browser }, testInfo) => {
   const { origin, base } = deployment(testInfo);
   const context = await browser.newContext({ hasTouch: true, viewport: { width: 900, height: 600 } });
   const page = await context.newPage();
   await page.goto(`${origin}${base}/notes/welcome`);
-  await expect(page.locator(".local-graph")).toHaveCSS("pointer-events", "none");
+  const localGraphCanvas = page.locator(".local-graph canvas.sigma-mouse");
+  await expect(localGraphCanvas).toBeVisible();
+  await localGraphCanvas.scrollIntoViewIfNeeded();
+  expect(
+    await localGraphCanvas.evaluate((canvas) => {
+      const bounds = canvas.getBoundingClientRect();
+      return document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2) === canvas;
+    }),
+  ).toBe(true);
   await expect(page.locator(".site-header-slot")).toHaveCSS("position", "fixed");
   await expect(page.locator(".site-header[data-scroll-compact]")).toHaveCSS(
     "flex-direction",

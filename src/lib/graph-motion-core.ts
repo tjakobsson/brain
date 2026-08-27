@@ -4,7 +4,7 @@ export interface GraphPosition {
 }
 
 export type GraphPositions = Record<string, GraphPosition>;
-export type MotionTrigger = "initial" | "resize" | "filter" | "drag" | "zoom";
+export type MotionTrigger = "initial" | "resize" | "filter" | "drag";
 export type ViewportClass = "portrait" | "square" | "landscape";
 
 export interface MotionPlan {
@@ -51,7 +51,7 @@ export interface GraphViewState {
   bbox: { x: [number, number]; y: [number, number] };
 }
 
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -73,7 +73,7 @@ export function motionPlan(trigger: MotionTrigger, nodeCount: number): MotionPla
 
   const large = nodeCount > 500;
   const medium = nodeCount > 100;
-  if (trigger === "drag" || trigger === "zoom") {
+  if (trigger === "drag") {
     return {
       iterations: large ? 4 : medium ? 10 : 28,
       duration: 420,
@@ -96,11 +96,6 @@ export function motionPlan(trigger: MotionTrigger, nodeCount: number): MotionPla
 
 export function animationDuration(plan: MotionPlan, reducedMotion: boolean): number {
   return reducedMotion ? 0 : Math.min(plan.duration, 2500);
-}
-
-export function zoomLayoutScale(previousRatio: number, currentRatio: number): number {
-  if (previousRatio <= 0 || currentRatio <= 0) return 1;
-  return clamp(Math.sqrt(currentRatio / previousRatio), 0.82, 1.22);
 }
 
 export function adaptPositionsToViewport(

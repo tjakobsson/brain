@@ -139,29 +139,6 @@ describe("GraphMotionController", () => {
     expect(cancelAnimationFrame).toHaveBeenCalledWith(1);
   });
 
-  it("settles zoom from current positions without resetting the camera", () => {
-    const { camera, renderer, graph, data } = fixture();
-    const controller = new GraphMotionController(renderer as never, graph, data);
-    graph.setNodeAttribute("a", "x", 4);
-
-    controller.settle("zoom", graph.nodes(), undefined, undefined, false, 0.5);
-    const worker = FakeWorker.instances[0];
-    const request = worker.request as {
-      generation: number;
-      nodes: { id: string; x: number }[];
-    };
-    expect(request.nodes.find(({ id }) => id === "a")?.x).toBe(3);
-    worker.emit("message", {
-      generation: request.generation,
-      positions: { a: { x: 5, y: 0 }, b: { x: 2, y: 0 }, c: { x: 0, y: 2 } },
-    });
-
-    expect(graph.getNodeAttribute("a", "x")).toBe(5);
-    expect(camera.setState).not.toHaveBeenCalled();
-    expect(camera.animate).not.toHaveBeenCalled();
-    controller.destroy();
-  });
-
   it("settles a dragged neighborhood without fitting the camera", () => {
     const { camera, renderer, graph, data } = fixture();
     const controller = new GraphMotionController(renderer as never, graph, data);

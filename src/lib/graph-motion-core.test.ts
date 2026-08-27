@@ -14,7 +14,6 @@ import {
   saveGraphView,
   savePositions,
   viewportClass,
-  zoomLayoutScale,
   type GraphPositions,
   type PositionStorage,
 } from "./graph-motion-core";
@@ -52,16 +51,8 @@ describe("responsive graph motion helpers", () => {
     expect(large.iterations).toBeLessThanOrEqual(12);
     expect(large.workerTimeout + large.duration).toBeLessThan(2500);
     expect(motionPlan("drag", 2000).duration).toBeLessThan(large.duration);
-    expect(motionPlan("zoom", 2000)).toEqual(motionPlan("drag", 2000));
     expect(animationDuration(large, true)).toBe(0);
     expect(animationDuration(large, false)).toBe(large.duration);
-  });
-
-  it("scales zoom layouts in the gesture direction with bounded extremes", () => {
-    expect(zoomLayoutScale(1, 0.64)).toBe(0.82);
-    expect(zoomLayoutScale(1, 1.21)).toBeCloseTo(1.1);
-    expect(zoomLayoutScale(1, 4)).toBe(1.22);
-    expect(zoomLayoutScale(0, 1)).toBe(1);
   });
 
   it("builds deterministic signatures independent of input order", () => {

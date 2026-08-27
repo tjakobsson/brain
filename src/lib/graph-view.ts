@@ -2,7 +2,7 @@ import Graph from "graphology";
 import Sigma from "sigma";
 import type { MouseCoords, TouchCoords, WheelCoords } from "sigma/types";
 import { GraphMotionController } from "./graph-motion";
-import { ResizeSettler, zoomLayoutScale } from "./graph-motion-core";
+import { ResizeSettler } from "./graph-motion-core";
 import { joinBase, routes, type LogicalRoute } from "./routes";
 
 /**
@@ -476,54 +476,17 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
 
   wireHoverAndClick(renderer, graph, state);
 
-  let zoomSettleTimer: number | null = null;
-  let pinching = false;
-  let previousZoomRatio = renderer.getCamera().getState().ratio;
   const stopCameraAnimation = () => {
     const camera = renderer.getCamera();
     if (camera.isAnimated()) void camera.animate(camera.getState(), { duration: 0 });
   };
-  const scheduleZoomSettle = (delay: number) => {
-    if (state.dragged) return;
-    if (zoomSettleTimer !== null) window.clearTimeout(zoomSettleTimer);
-    zoomSettleTimer = window.setTimeout(() => {
-      zoomSettleTimer = null;
-      const currentRatio = renderer.getCamera().getState().ratio;
-      if (state.dragged) {
-        previousZoomRatio = currentRatio;
-        return;
-      }
-      const scale = zoomLayoutScale(previousZoomRatio, currentRatio);
-      previousZoomRatio = currentRatio;
-      motion.settle("zoom", visibleIds(), undefined, undefined, false, scale);
-    }, delay);
-  };
   const mouse = renderer.getMouseCaptor();
-  const touch = renderer.getTouchCaptor();
   const onWheel = (event: WheelCoords) => {
-    if (state.dragged) {
-      event.preventSigmaDefault();
-      stopCameraAnimation();
-      previousZoomRatio = renderer.getCamera().getState().ratio;
-      return;
-    }
-    scheduleZoomSettle(260);
-  };
-  const onTouchMove = (event: TouchCoords) => {
-    if (!state.dragged && event.touches.length > 1) pinching = true;
-  };
-  const onTouchUp = (event: TouchCoords) => {
-    if (state.dragged) {
-      pinching = false;
-      return;
-    }
-    if (!pinching || event.touches.length > 1) return;
-    pinching = false;
-    scheduleZoomSettle(0);
+    if (!state.dragged) return;
+    event.preventSigmaDefault();
+    stopCameraAnimation();
   };
   mouse.on("wheel", onWheel);
-  touch.on("touchmove", onTouchMove);
-  touch.on("touchup", onTouchUp);
   wireTheme(renderer, state);
 
   const resizeSettler = new ResizeSettler(
@@ -543,22 +506,14 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   });
   resizeObserver.observe(ui.host);
   const cancelForDrag = () => {
-    if (zoomSettleTimer !== null) window.clearTimeout(zoomSettleTimer);
-    zoomSettleTimer = null;
-    pinching = false;
     stopCameraAnimation();
-    previousZoomRatio = renderer.getCamera().getState().ratio;
     resizeSettler.reset(ui.host.clientWidth, ui.host.clientHeight);
     motion.cancel();
   };
   const commitDrag = (_node: string, _neighborhood: string[], moved: boolean) => {
-    if (zoomSettleTimer !== null) window.clearTimeout(zoomSettleTimer);
-    zoomSettleTimer = null;
-    pinching = false;
     stopCameraAnimation();
     motion.cancel();
     resizeSettler.reset(ui.host.clientWidth, ui.host.clientHeight);
-    previousZoomRatio = renderer.getCamera().getState().ratio;
     if (moved) motion.commitSession();
   };
   wireNodeDragging(renderer, graph, state, commitDrag, cancelForDrag);
@@ -569,9 +524,6 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   document.addEventListener("visibilitychange", onVisibilityChange);
   renderer.on("kill", () => {
     mouse.off("wheel", onWheel);
-    touch.off("touchmove", onTouchMove);
-    touch.off("touchup", onTouchUp);
-    if (zoomSettleTimer !== null) window.clearTimeout(zoomSettleTimer);
     if (sessionTimer !== null) window.clearTimeout(sessionTimer);
     resizeObserver.disconnect();
     resizeSettler.cancel();

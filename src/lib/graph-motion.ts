@@ -97,8 +97,7 @@ export class GraphMotionController {
     activeIds: Iterable<string>,
     pinnedId?: string,
     cameraIds?: Iterable<string>,
-    fitCamera = trigger !== "drag" && trigger !== "zoom",
-    sourceScale = 1,
+    fitCamera = trigger !== "drag",
   ): void {
     this.cancel();
     if (document.hidden) return;
@@ -115,21 +114,7 @@ export class GraphMotionController {
     const generation = this.generations.next();
     const dimensions = this.renderer.getDimensions();
     const plan = motionPlan(trigger, ids.length);
-    let source = trigger === "drag" || trigger === "zoom" ? this.capturePositions(ids) : this.baseline;
-    if (trigger === "zoom" && sourceScale !== 1) {
-      const points = Object.values(source);
-      const centerX = (Math.min(...points.map(({ x }) => x)) + Math.max(...points.map(({ x }) => x))) / 2;
-      const centerY = (Math.min(...points.map(({ y }) => y)) + Math.max(...points.map(({ y }) => y))) / 2;
-      source = Object.fromEntries(
-        Object.entries(source).map(([id, point]) => [
-          id,
-          {
-            x: centerX + (point.x - centerX) * sourceScale,
-            y: centerY + (point.y - centerY) * sourceScale,
-          },
-        ]),
-      );
-    }
+    const source = trigger === "drag" ? this.capturePositions(ids) : this.baseline;
     const idSet = new Set(ids);
     const request: LayoutRequest = {
       generation,
