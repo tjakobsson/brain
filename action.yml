@@ -40,7 +40,7 @@ runs:
       name: Generate site
       shell: bash
       env:
-        BRAIN_IMAGE: ghcr.io/tjakobsson/brain@sha256:bfcb6f65fc52cbffcce8c4e2bc52f177a090c3480ead670df717dce56778d403
+        BRAIN_IMAGE: ghcr.io/tjakobsson/brain@sha256:5563d59af3d850c9c5eb1acb35c07b4feea87ed02ef9b9f141ee93852a937d7a
         INPUT_VAULT: ${{ inputs.vault }}
         INPUT_OUTPUT: ${{ inputs.output }}
         INPUT_SITE: ${{ inputs.site }}
