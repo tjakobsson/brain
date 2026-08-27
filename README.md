@@ -1,6 +1,6 @@
 # Brain Manual
 
-Brain Manual turns a plain Markdown Obsidian vault into a static, searchable second-brain site. The same generator runs from source, as a non-root OCI image, through a composite GitHub Action, or through a reusable GitHub Pages workflow.
+Brain Manual turns a plain Markdown Obsidian vault into a static, searchable second-brain site. The same generator runs from source, as a non-root OCI image, or through a composite GitHub Action that can feed a GitHub Pages workflow.
 
 The repository is preparing its first public release. Until `v1.0.0` is published, build the image from source; the documented `@v1` references describe the maintained release contract but are not available yet.
 
@@ -174,7 +174,7 @@ node scripts/generator.mjs build \
   --base /
 ```
 
-The reusable Pages workflow derives both values from GitHub Pages configuration, including custom domains.
+The Pages examples derive both values from GitHub Pages configuration, including custom domains.
 
 ## GitHub Action
 
@@ -184,15 +184,15 @@ Use `tjakobsson/brain@v1` for compatible v1 updates or a full commit SHA for an 
 
 ## GitHub Pages
 
-In the vault repository, select **Settings > Pages > Build and deployment > Source > GitHub Actions**. The caller grants only `contents: read`, `pages: write`, and `id-token: write`; the reusable workflow uploads one official Pages artifact and deploys through the `github-pages` environment.
+In the vault repository, select **Settings > Pages > Build and deployment > Source > GitHub Actions**. The workflow grants only `contents: read`, `pages: write`, and `id-token: write`. It checks out the vault, builds with `tjakobsson/brain`, uploads one official Pages artifact, and deploys through the `github-pages` environment.
 
-Use `tjakobsson/brain/.github/workflows/publish-pages.yml@v1` for compatible v1 updates or a full commit SHA for immutable deployment. See [`docs/examples/pages-major.yml`](docs/examples/pages-major.yml) and [`docs/examples/pages-sha.yml`](docs/examples/pages-sha.yml).
+Use `tjakobsson/brain@v1` in the build step for compatible v1 updates or a full commit SHA for immutable deployment. See [`docs/examples/pages-major.yml`](docs/examples/pages-major.yml) and [`docs/examples/pages-sha.yml`](docs/examples/pages-sha.yml).
 
 Removing or renaming an input, changing a default or output, or changing supported behavior requires a new major release. Backward-compatible fixes update the maintained major reference. A full SHA never moves.
 
 ## Rollback
 
-For a failed local generation, fix the input and rerun; atomic promotion leaves the prior output untouched. For automation regressions, pin the prior Action or reusable-workflow commit SHA and its associated image digest. Release notes identify the source commit, OCI digest, SBOM, provenance, and compatibility level. Repository migration rollback restores the vault from its verified consumer repository before changing publication workflows.
+For a failed local generation, fix the input and rerun; atomic promotion leaves the prior output untouched. For automation regressions, pin the prior Action commit SHA and its associated image digest. Release notes identify the source commit, OCI digest, SBOM, provenance, and compatibility level. Repository migration rollback restores the vault from its verified consumer repository before changing publication workflows.
 
 ## Verification
 

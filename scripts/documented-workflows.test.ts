@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 
 const action = parse(fs.readFileSync(path.resolve("action.yml"), "utf8"));
-const pages = parse(fs.readFileSync(path.resolve(".github/workflows/publish-pages.yml"), "utf8"));
 const examples = [
   "docs/examples/build-action-major.yml",
   "docs/examples/build-action-sha.yml",
@@ -17,7 +16,7 @@ describe("documented consumer workflows", () => {
     expect(() => parse(fs.readFileSync(path.resolve(file), "utf8"))).not.toThrow();
   });
 
-  it.each(["docs/examples/build-action-major.yml", "docs/examples/build-action-sha.yml"])(
+  it.each(examples)(
     "uses only published Action inputs in %s",
     (file) => {
       const workflow = parse(fs.readFileSync(path.resolve(file), "utf8"));
@@ -32,13 +31,31 @@ describe("documented consumer workflows", () => {
   );
 
   it.each(["docs/examples/pages-major.yml", "docs/examples/pages-sha.yml"])(
-    "matches reusable workflow inputs and permissions in %s",
+    "uses the direct Action and official Pages flow in %s",
     (file) => {
       const workflow = parse(fs.readFileSync(path.resolve(file), "utf8"));
-      const job = workflow.jobs.publish;
-      expect(Object.keys(job.with ?? {}).every((input) => input in pages.on.workflow_call.inputs)).toBe(
-        true,
+      const buildUses = workflow.jobs.build.steps.map((step: { uses?: string }) => step.uses);
+      const deployUses = workflow.jobs.deploy.steps.map((step: { uses?: string }) => step.uses);
+      expect(
+        buildUses.some((uses: string | undefined) => uses?.startsWith("tjakobsson/brain@")),
+      ).toBe(true);
+      expect(buildUses).toEqual(
+        expect.arrayContaining([
+          expect.stringMatching(/^actions\/checkout@[a-f0-9]{40}$/u),
+          expect.stringMatching(/^actions\/configure-pages@[a-f0-9]{40}$/u),
+          expect.stringMatching(/^actions\/upload-pages-artifact@[a-f0-9]{40}$/u),
+        ]),
       );
+      expect(deployUses).toContainEqual(
+        expect.stringMatching(/^actions\/deploy-pages@[a-f0-9]{40}$/u),
+      );
+      expect(workflow.jobs.deploy.needs).toBe("build");
+      expect(workflow.jobs.deploy.environment.name).toBe("github-pages");
+      expect(
+        Object.values(workflow.jobs).some(
+          (job: unknown) => typeof job === "object" && job !== null && "uses" in job,
+        ),
+      ).toBe(false);
       expect(workflow.permissions).toEqual({
         contents: "read",
         pages: "write",
