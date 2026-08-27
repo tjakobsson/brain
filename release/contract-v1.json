@@ -1,0 +1,22 @@
+{
+  "major": 1,
+  "action": {
+    "inputs": {
+      "vault": { "required": false, "default": "vault" },
+      "output": { "required": false, "default": "dist" },
+      "site": { "required": false, "default": "" },
+      "base-path": { "required": false, "default": "/" },
+      "exclusions": { "required": false, "default": "" },
+      "strict-links": { "required": false, "default": "false" }
+    },
+    "outputs": ["output-path"]
+  },
+  "pagesWorkflow": {
+    "inputs": {
+      "vault": { "required": false, "default": "vault", "type": "string" },
+      "exclusions": { "required": false, "default": "", "type": "string" },
+      "strict-links": { "required": false, "default": false, "type": "boolean" }
+    },
+    "outputs": ["page-url"]
+  }
+}

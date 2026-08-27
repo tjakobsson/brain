@@ -37,7 +37,11 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify pinned image digests agree
-        run: node scripts/check-image-digests.mjs action.yml .github/workflows/action-parity.yml
+        run: >-
+          node scripts/check-image-digests.mjs
+          action.yml
+          .github/workflows/action-parity.yml
+          .github/workflows/publish-pages.yml
 
       - name: Build through source command
         run: >-

@@ -1,0 +1,101 @@
+name: Publish second brain to Pages
+
+on:
+  workflow_call:
+    inputs:
+      vault:
+        description: Vault directory in the caller repository
+        required: false
+        default: vault
+        type: string
+      exclusions:
+        description: Newline-delimited vault exclusion patterns
+        required: false
+        default: ""
+        type: string
+      strict-links:
+        description: Fail when the vault contains unresolved note links
+        required: false
+        default: false
+        type: boolean
+    outputs:
+      page-url:
+        description: URL of the deployed Pages site
+        value: ${{ jobs.deploy.outputs.page-url }}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out caller repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - id: pages
+        name: Read Pages configuration
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d
+
+      - name: Generate site
+        env:
+          GENERATOR_IMAGE: ghcr.io/tjakobsson/brain-manual@sha256:bdfd2bfab408c2a618a876f3e36e70e8818deeee8bf2298f4090624c628032d6
+          INPUT_VAULT: ${{ inputs.vault }}
+          INPUT_EXCLUSIONS: ${{ inputs.exclusions }}
+          INPUT_STRICT_LINKS: ${{ inputs.strict-links }}
+          PAGES_ORIGIN: ${{ steps.pages.outputs.origin }}
+          PAGES_BASE_PATH: ${{ steps.pages.outputs.base_path }}
+        run: |
+          set -euo pipefail
+          vault_path="$(realpath -m -- "$GITHUB_WORKSPACE/$INPUT_VAULT")"
+          build_root="$RUNNER_TEMP/brain-manual-pages"
+          mkdir -p "$build_root/output" "$build_root/work" "$build_root/tmp"
+
+          args=(
+            build
+            --vault /vault
+            --output /output/site
+            --site "$PAGES_ORIGIN"
+            --base "${PAGES_BASE_PATH:-/}"
+          )
+          while IFS= read -r pattern || [[ -n "$pattern" ]]; do
+            [[ -z "$pattern" ]] && continue
+            args+=(--exclude "$pattern")
+          done <<< "$INPUT_EXCLUSIONS"
+          if [[ "$INPUT_STRICT_LINKS" == "true" ]]; then
+            args+=(--strict-links)
+          fi
+
+          docker run --rm \
+            --read-only \
+            --network none \
+            --user "$(id -u):$(id -g)" \
+            --mount "type=bind,src=$vault_path,dst=/vault,readonly" \
+            --mount "type=bind,src=$build_root/output,dst=/output" \
+            --mount "type=bind,src=$build_root/work,dst=/work" \
+            --mount "type=bind,src=$build_root/tmp,dst=/tmp" \
+            "$GENERATOR_IMAGE" "${args[@]}"
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9
+        with:
+          path: ${{ runner.temp }}/brain-manual-pages/output/site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      page-url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        name: Deploy Pages artifact
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128

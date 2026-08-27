@@ -34,15 +34,15 @@
 ## 6. Release and build Action
 
 - [ ] 6.1 Add a candidate image workflow that publishes to GHCR with semantic metadata, SBOM, and verifiable GitHub provenance using the latest stable official Actions pinned to full commit SHAs; verify workflow linting and a non-publishing pull-request build complete.
-- [ ] 6.2 Add a Linux composite `action.yml` that prepares caller-owned directories and invokes a checked-in image digest as the runner's non-root UID/GID; verify all generator inputs, failure diagnostics, and the normalized output-path result match direct image use.
-- [ ] 6.3 Add parity fixtures that build through the command, released image, and composite Action and compare output inventories and hashes; verify CI blocks digest updates when any surface diverges.
+- [x] 6.2 Add a Linux composite `action.yml` that prepares caller-owned directories and invokes a checked-in image digest as the runner's non-root UID/GID; verify all generator inputs, failure diagnostics, and the normalized output-path result match direct image use.
+- [x] 6.3 Add parity fixtures that build through the command, released image, and composite Action and compare output inventories and hashes; verify CI blocks digest updates when any surface diverges.
 - [ ] 6.4 Automate the two-phase release check that records one candidate digest in both automation surfaces before semantic tagging; verify a dry run reports source commit, image digest, SBOM, provenance, and required major-version changes without publishing a release.
 
 ## 7. Reusable GitHub Pages publication
 
-- [ ] 7.1 Add a `workflow_call` Pages workflow that checks out the caller, obtains `origin` and `base_path` from Pages configuration, runs the pinned image, uploads one official Pages artifact, and deploys through the `github-pages` environment; verify workflow syntax and permission declarations with pinned official Action SHAs.
+- [x] 7.1 Add a `workflow_call` Pages workflow that checks out the caller, obtains `origin` and `base_path` from Pages configuration, runs the pinned image, uploads one official Pages artifact, and deploys through the `github-pages` environment; verify workflow syntax and permission declarations with pinned official Action SHAs.
 - [ ] 7.2 Add workflow inputs for vault path, exclusions, and strict links while keeping output and mount details internal; verify fixture invocations cover defaults, custom exclusions, strict-link failure, and prevention of deployment after build failure.
-- [ ] 7.3 Exercise generated artifacts with project Pages, root Pages, and custom-domain addressing; verify browser tests load notes, attachments, graph data, search, Pagefind, and navigation without base-path escapes.
+- [x] 7.3 Exercise generated artifacts with project Pages, root Pages, and custom-domain addressing; verify browser tests load notes, attachments, graph data, search, Pagefind, and navigation without base-path escapes.
 - [ ] 7.4 Document minimal consumer workflows pinned by maintained major version and immutable commit SHA, required permissions, Pages source setup, and compatibility rules; verify the documented YAML parses and matches reusable-workflow inputs.
 
 ## 8. Repository separation and documentation

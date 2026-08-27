@@ -24,5 +24,9 @@ export default defineConfig({
       name: "chromium-subpath",
       use: { ...devices["Desktop Chrome"], baseURL: "http://127.0.0.1:4329/vault-repo/" },
     },
+    {
+      name: "chromium-custom-domain",
+      use: { ...devices["Desktop Chrome"], baseURL: "http://notes.localhost:4330/" },
+    },
   ],
 });

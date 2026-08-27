@@ -8,6 +8,12 @@ const vault = path.join(root, "examples", "demo-vault");
 const deployments = [
   { base: "", output: path.join(root, ".generated", "browser-root-site"), port: 4328 },
   { base: "/vault-repo", output: path.join(root, ".generated", "browser-subpath-site"), port: 4329 },
+  {
+    base: "",
+    output: path.join(root, ".generated", "browser-custom-domain-site"),
+    port: 4330,
+    site: "http://notes.localhost:4330",
+  },
 ];
 
 function runNode(script, args) {
@@ -27,7 +33,7 @@ for (const deployment of deployments) {
     "--output",
     deployment.output,
     "--site",
-    `http://127.0.0.1:${deployment.port}`,
+    deployment.site ?? `http://127.0.0.1:${deployment.port}`,
     "--base",
     deployment.base || "/",
     "--strict-links",
@@ -44,4 +50,6 @@ await Promise.all(
     }),
   ),
 );
-console.log("Browser fixtures: http://127.0.0.1:4328/ and http://127.0.0.1:4329/vault-repo/");
+console.log(
+  "Browser fixtures: http://127.0.0.1:4328/, http://127.0.0.1:4329/vault-repo/, and http://notes.localhost:4330/",
+);
