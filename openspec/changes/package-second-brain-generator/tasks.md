@@ -47,7 +47,7 @@
 
 ## 8. Repository separation and documentation
 
-- [ ] 8.1 Replace the starter README with generator documentation for local Docker and Podman builds, preview, mounts and UID handling, supported attachment forms, exclusions, validation, custom domains, Action use, Pages use, and rollback; verify every documented local command against the demo fixture.
+- [x] 8.1 Replace the starter README with generator documentation for local Docker and Podman builds, preview, mounts and UID handling, supported attachment forms, exclusions, validation, custom domains, Action use, Pages use, and rollback; verify every documented local command against the demo fixture.
 - [x] 8.2 Create a small public `examples/demo-vault` and focused attachment fixtures without moving the personal vault yet; verify the complete unit, build, root/subpath browser, stress-vault, and reproducibility suites pass against public fixtures.
 - [x] 8.3 After explicit approval to create or select the external consumer repository, copy the personal vault unchanged with attachments and Obsidian metadata, add only its caller workflow, and verify a committed consumer build matches the current site's note count, links, graph, search, and attachment inventory.
 - [ ] 8.4 After the consumer commit and Pages deployment are explicitly confirmed, remove the personal vault from the generator repository and switch defaults and tests to the demo fixture; verify `npx astro build`, the container smoke suite, and repository secret scanning find no dependency on or copy of personal content.
