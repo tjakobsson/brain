@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.0 - 2026-08-28
+
+- Add build-time syntax highlighting for fenced code blocks with light and dark themes.
+- Preserve Obsidian highlights across soft line breaks.
+- Keep graph nodes stable while they are hovered so clicks select the intended note.
+- Display note timestamps consistently in UTC.
+
 ## 1.0.0 - 2026-08-28
 
 - Generate a static, searchable site from a plain Markdown Obsidian vault.
