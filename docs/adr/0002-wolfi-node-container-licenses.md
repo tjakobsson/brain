@@ -106,3 +106,23 @@ The authoritative image metadata and SBOM are published at:
 - <https://images.chainguard.dev/directory/image/node/versions>
 - <https://images.chainguard.dev/directory/image/node/sbom>
 - <https://images.chainguard.dev/directory/image/node/provenance>
+
+### First-release refresh
+
+On 2026-08-28, `latest` resolved to the following newer signed image:
+
+| Object | Digest |
+| --- | --- |
+| OCI index | `sha256:d6ca8dfc9d0a8f369cd86c0bb6a8f9e4b304b3bb12aaf8fd26bd1352e6b6efc1` |
+| `linux/amd64` manifest | `sha256:e1a6d4a685d9258f293102b5fcecdbde1b8c09080185d42c167644e423ee7fd2` |
+| `linux/arm64` manifest | `sha256:ca660acef58e27d7a13c90313e685c08115b755eb14ee55ce3cd70eba4755365` |
+
+The image was created on 2026-08-27 and contains Node `26.8.1-r0` and npm
+`12.0.2-r2`. Signatures for the index and both platform manifests verified
+against the identity and issuer recorded above. Each platform provides SPDX,
+image-configuration, and SLSA provenance attestations.
+
+Both SPDX documents contain the same 27 APK package names. Package versions
+advanced, but the package-name and license-expression inventory introduced no
+new exception beyond this ADR. This digest therefore satisfies the required
+first-release refresh and replaces the earlier Dockerfile pin.

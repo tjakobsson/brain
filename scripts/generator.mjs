@@ -14,6 +14,7 @@ import { serveLiveSite } from "./live-server.mjs";
 import { serveStaticSite } from "./static-server.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const version = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).version;
 
 export function runNode(script, args, env, { signal, stdio = "inherit" } = {}) {
   return new Promise((resolve, reject) => {
@@ -193,6 +194,10 @@ export async function buildLiveGeneration(inputs, { signal } = {}) {
 
 async function main() {
   const argv = process.argv.slice(2);
+  if (argv.length === 1 && (argv[0] === "--version" || argv[0] === "-V")) {
+    console.log(version);
+    return;
+  }
   if (argv.includes("--help") || argv.includes("-h")) {
     console.log(GENERATOR_USAGE);
     return;

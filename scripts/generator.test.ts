@@ -10,6 +10,15 @@ let vault: string;
 let output: string;
 const generator = path.resolve("scripts/generator.mjs");
 
+describe("generator command metadata", () => {
+  it("prints the package version", () => {
+    const result = spawnSync(process.execPath, [generator, "--version"], { encoding: "utf8" });
+    const packageMetadata = JSON.parse(fs.readFileSync(path.resolve("package.json"), "utf8"));
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout.trim()).toBe(packageMetadata.version);
+  });
+});
+
 function run(extraEnv: NodeJS.ProcessEnv = {}) {
   return spawnSync(
     process.execPath,

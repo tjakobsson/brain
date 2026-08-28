@@ -1,7 +1,18 @@
 {
   "name": "brain",
+  "description": "Generate a static second-brain site from an Obsidian vault",
   "type": "module",
-  "version": "0.0.1",
+  "version": "1.0.0",
+  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tjakobsson/brain.git"
+  },
+  "homepage": "https://github.com/tjakobsson/brain#readme",
+  "bugs": {
+    "url": "https://github.com/tjakobsson/brain/issues"
+  },
   "bin": {
     "brain": "scripts/generator.mjs"
   },
@@ -21,7 +32,7 @@
   "dependencies": {
     "@astrojs/markdown-remark": "7.2.4",
     "@r4ai/remark-callout": "0.6.2",
-    "astro": "7.2.7",
+    "astro": "7.2.9",
     "chokidar": "5.0.0",
     "fuse.js": "7.5.0",
     "graphology": "0.26.0",

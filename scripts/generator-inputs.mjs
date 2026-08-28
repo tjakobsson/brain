@@ -25,7 +25,9 @@ Options:
   --exclude <pattern>  Exclude a vault pattern; repeatable
   --strict-links       Fail on unresolved note links
   --host <host>        Preview or serve host (default: localhost)
-  --port <port>        Preview or serve port (default: 4321)`;
+  --port <port>        Preview or serve port (default: 4321)
+  --version, -V        Print the Brain version
+  --help, -h           Show this help`;
 
 export class GeneratorUsageError extends Error {
   constructor(message, options) {

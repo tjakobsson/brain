@@ -20,14 +20,14 @@ You only need [Docker Desktop](https://www.docker.com/products/docker-desktop/),
 3. Run this command:
 
    ```sh
-   docker run --rm --init --read-only --publish 127.0.0.1:4321:4321 --mount "type=bind,src=$PWD,dst=/vault,readonly" --tmpfs /work:rw,mode=1777 --tmpfs /tmp:rw,mode=1777 ghcr.io/tjakobsson/brain:main serve --vault /vault --output /work/site --host 0.0.0.0 --port 4321
+   docker run --rm --init --read-only --publish 127.0.0.1:4321:4321 --mount "type=bind,src=$PWD,dst=/vault,readonly" --tmpfs /work:rw,mode=1777 --tmpfs /tmp:rw,mode=1777 ghcr.io/tjakobsson/brain:v1 serve --vault /vault --output /work/site --host 0.0.0.0 --port 4321
    ```
 
 4. Open [http://127.0.0.1:4321/](http://127.0.0.1:4321/) in a browser.
 
 Keep the terminal open while using Brain. Changes to the vault rebuild the site and reload the browser after a successful build. Press `Ctrl+C` to stop it.
 
-The repository is preparing its first public release. The `main` image and Action used in these guides are rolling pre-releases and may change. Once `v1.0.0` is published, use `ghcr.io/tjakobsson/brain:v1` and `tjakobsson/brain@v1` for compatible updates.
+The `v1` image tracks backward-compatible v1 releases. Pin an exact version or digest when the deployment must not move.
 
 ## Publish with GitHub Pages
 
@@ -35,10 +35,10 @@ GitHub Actions can rebuild and publish the site whenever you push changes to you
 
 1. Create a GitHub repository for your vault and push the vault files to its `main` branch.
 2. Open the repository's **Settings > Pages** and set **Source** to **GitHub Actions**.
-3. Add [`pages-main.yml`](docs/examples/pages-main.yml) to the vault repository as `.github/workflows/pages.yml`.
+3. Add [`pages-major.yml`](docs/examples/pages-major.yml) to the vault repository as `.github/workflows/pages.yml`.
 4. Commit and push the workflow. Follow the **Publish second brain** run in the repository's **Actions** tab; its deploy job links to the published site.
 
-The workflow grants only the permissions needed to read the vault and publish GitHub Pages. For an immutable deployment, replace `tjakobsson/brain@main` with a full Brain commit SHA.
+The workflow grants only the permissions needed to read the vault and publish GitHub Pages. For an immutable deployment, replace `tjakobsson/brain@v1` with a full Brain commit SHA.
 
 ## Vault Format
 
@@ -93,13 +93,13 @@ node scripts/generator.mjs serve \
 
 ## Build the Docker image locally
 
-To run the exact code in this checkout instead of the rolling `main` image, build the multi-stage image:
+To run the exact code in this checkout instead of the published `v1` image, build the multi-stage image:
 
 ```sh
 docker build --tag brain:source .
 ```
 
-Use `brain:source` in place of `ghcr.io/tjakobsson/brain:main` in the quick-start command above.
+Use `brain:source` in place of `ghcr.io/tjakobsson/brain:v1` in the quick-start command above.
 
 For a one-shot static build, prepare caller-owned output directories:
 
@@ -232,13 +232,13 @@ The Pages examples derive both values from GitHub Pages configuration, including
 
 The Linux composite Action creates caller-owned directories, runs the immutable release image as the runner UID/GID, and returns `output-path`. `exclusions` is newline-delimited.
 
-Use `tjakobsson/brain@v1` for compatible v1 updates or a full commit SHA for an immutable toolchain. Complete examples are in [`docs/examples/build-action-major.yml`](docs/examples/build-action-major.yml) and [`docs/examples/build-action-sha.yml`](docs/examples/build-action-sha.yml).
+Use `tjakobsson/brain@v1` for compatible v1 updates or replace `v1` with a reviewed full commit SHA for an immutable toolchain. See [`docs/examples/build-action-major.yml`](docs/examples/build-action-major.yml) for a complete example.
 
 ## GitHub Pages
 
 In the vault repository, select **Settings > Pages > Build and deployment > Source > GitHub Actions**. The workflow grants only `contents: read`, `pages: write`, and `id-token: write`. It checks out the vault, builds with `tjakobsson/brain`, uploads one official Pages artifact, and deploys through the `github-pages` environment.
 
-Use `tjakobsson/brain@v1` in the build step for compatible v1 updates or a full commit SHA for immutable deployment. See [`docs/examples/pages-major.yml`](docs/examples/pages-major.yml) and [`docs/examples/pages-sha.yml`](docs/examples/pages-sha.yml).
+Use `tjakobsson/brain@v1` in the build step for compatible v1 updates or replace `v1` with a reviewed full commit SHA for immutable deployment. See [`docs/examples/pages-major.yml`](docs/examples/pages-major.yml).
 
 Removing or renaming an input, changing a default or output, or changing supported behavior requires a new major release. Backward-compatible fixes update the maintained major reference. A full SHA never moves.
 
@@ -256,3 +256,7 @@ actionlint .github/workflows/*.yml
 ```
 
 Generate the deterministic 2,000-note stress vault with `npm run vault:generate`.
+
+## License
+
+Brain is available under the [MIT License](LICENSE). Third-party notices are listed in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

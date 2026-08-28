@@ -6,9 +6,7 @@ import { parse } from "yaml";
 const action = parse(fs.readFileSync(path.resolve("action.yml"), "utf8"));
 const examples = [
   "docs/examples/build-action-major.yml",
-  "docs/examples/build-action-sha.yml",
   "docs/examples/pages-major.yml",
-  "docs/examples/pages-sha.yml",
 ];
 
 describe("documented consumer workflows", () => {
@@ -30,7 +28,7 @@ describe("documented consumer workflows", () => {
     },
   );
 
-  it.each(["docs/examples/pages-major.yml", "docs/examples/pages-sha.yml"])(
+  it.each(["docs/examples/pages-major.yml"])(
     "uses the direct Action and official Pages flow in %s",
     (file) => {
       const workflow = parse(fs.readFileSync(path.resolve(file), "utf8"));

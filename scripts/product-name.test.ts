@@ -29,6 +29,7 @@ describe("Brain product naming", () => {
     for (const file of files) {
       if (historicalFiles.has(file)) continue;
       const absolute = path.resolve(file);
+      if (!fs.existsSync(absolute)) continue;
       if (!fs.statSync(absolute).isFile()) continue;
       const body = fs.readFileSync(absolute);
       if (body.includes(0)) continue;
