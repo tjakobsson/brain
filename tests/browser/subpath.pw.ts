@@ -1,8 +1,98 @@
-import { expect, test, type TestInfo } from "@playwright/test";
+import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
 
 function deployment(testInfo: TestInfo) {
   const url = new URL(String(testInfo.project.use.baseURL));
   return { origin: url.origin, base: url.pathname.replace(/\/$/u, "") };
+}
+
+async function preserveGraphPixels(page: Page) {
+  await page.addInitScript(() => {
+    const original = HTMLCanvasElement.prototype.getContext as unknown as (
+      this: HTMLCanvasElement,
+      contextId: string,
+      options?: Record<string, unknown>,
+    ) => RenderingContext | null;
+    Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
+      configurable: true,
+      value(this: HTMLCanvasElement, contextId: string, options?: Record<string, unknown>) {
+        const nextOptions =
+          contextId === "webgl" || contextId === "webgl2"
+            ? { ...options, preserveDrawingBuffer: true }
+            : options;
+        return original.call(this, contextId, nextOptions);
+      },
+    });
+  });
+}
+
+async function graphInkBounds(host: Locator) {
+  return host.evaluate((element) => {
+    const hostBounds = element.getBoundingClientRect();
+    let left = Number.POSITIVE_INFINITY;
+    let top = Number.POSITIVE_INFINITY;
+    let right = Number.NEGATIVE_INFINITY;
+    let bottom = Number.NEGATIVE_INFINITY;
+    let nodePixels = 0;
+    let labelPixels = 0;
+
+    const include = (canvas: HTMLCanvasElement, x: number, y: number) => {
+      const bounds = canvas.getBoundingClientRect();
+      const pageX = bounds.left - hostBounds.left + (x / canvas.width) * bounds.width;
+      const pageY = bounds.top - hostBounds.top + (y / canvas.height) * bounds.height;
+      left = Math.min(left, pageX);
+      top = Math.min(top, pageY);
+      right = Math.max(right, pageX);
+      bottom = Math.max(bottom, pageY);
+    };
+
+    const nodeCanvas = element.querySelector<HTMLCanvasElement>("canvas.sigma-nodes");
+    const gl =
+      (nodeCanvas?.getContext("webgl2") as WebGL2RenderingContext | null) ??
+      (nodeCanvas?.getContext("webgl") as WebGLRenderingContext | null);
+    if (nodeCanvas && gl) {
+      const pixels = new Uint8Array(nodeCanvas.width * nodeCanvas.height * 4);
+      gl.finish();
+      gl.readPixels(0, 0, nodeCanvas.width, nodeCanvas.height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      for (let y = 0; y < nodeCanvas.height; y += 1) {
+        for (let x = 0; x < nodeCanvas.width; x += 1) {
+          if (pixels[(y * nodeCanvas.width + x) * 4 + 3] === 0) continue;
+          nodePixels += 1;
+          include(nodeCanvas, x, nodeCanvas.height - 1 - y);
+        }
+      }
+    }
+
+    const labelCanvas = element.querySelector<HTMLCanvasElement>("canvas.sigma-labels");
+    const context = labelCanvas?.getContext("2d");
+    if (labelCanvas && context) {
+      const pixels = context.getImageData(0, 0, labelCanvas.width, labelCanvas.height).data;
+      for (let y = 0; y < labelCanvas.height; y += 1) {
+        for (let x = 0; x < labelCanvas.width; x += 1) {
+          if (pixels[(y * labelCanvas.width + x) * 4 + 3] === 0) continue;
+          labelPixels += 1;
+          include(labelCanvas, x, y);
+        }
+      }
+    }
+
+    if (!Number.isFinite(left)) throw new Error("Graph rendered no node or label pixels");
+    return { left, top, right, bottom, nodePixels, labelPixels, width: hostBounds.width, height: hostBounds.height };
+  });
+}
+
+async function initialListContentClearsNavigation(page: Page) {
+  return page.locator(".note-list li").first().evaluate((row) => {
+    const navigation = document.querySelector<HTMLElement>(".site-header")!.getBoundingClientRect();
+    return [...row.children].every((child) => {
+      const bounds = child.getBoundingClientRect();
+      return (
+        bounds.right <= navigation.left ||
+        bounds.left >= navigation.right ||
+        bounds.bottom <= navigation.top ||
+        bounds.top >= navigation.bottom
+      );
+    });
+  });
 }
 
 test("all site features stay within the deployment base", async ({ page }, testInfo) => {
@@ -24,7 +114,22 @@ test("all site features stay within the deployment base", async ({ page }, testI
   await page.goto(`${base}/`);
   await expect(page).toHaveTitle("Graph");
   await expect(page.locator("#global-graph canvas.sigma-nodes")).toBeVisible();
-  await expect(page.locator("#graph-count")).toContainText("2 of 2 notes");
+  await expect(page.locator("#graph-count")).toContainText("22 of 22 notes");
+  expect(
+    await page.locator(".graph-shell").evaluate((shell) => {
+      const controls = shell.querySelector(".graph-controls")!.getBoundingClientRect();
+      const pill = document.querySelector(".site-header")!.getBoundingClientRect();
+      return {
+        viewportHeight: Math.round(shell.getBoundingClientRect().height) === innerHeight,
+        overlapsPill: !(
+          controls.right <= pill.left ||
+          controls.left >= pill.right ||
+          controls.bottom <= pill.top ||
+          controls.top >= pill.bottom
+        ),
+      };
+    }),
+  ).toEqual({ viewportHeight: true, overlapsPill: false });
 
   const filterToggle = page.getByRole("button", { name: "Filters" });
   await expect(filterToggle).toHaveAttribute("aria-expanded", "false");
@@ -71,13 +176,13 @@ test("all site features stay within the deployment base", async ({ page }, testI
     ),
   ).toEqual(savedGraphSession);
   await page.locator("#graph-tag-filter").selectOption("pkm");
-  await expect(page.locator("#graph-count")).toContainText("1 of 2 notes");
+  await expect(page.locator("#graph-count")).toContainText("12 of 22 notes");
   await page.waitForTimeout(800);
   await page.reload();
   await expect(page.locator("#graph-tag-filter")).toHaveValue("pkm");
-  await expect(page.locator("#graph-count")).toContainText("1 of 2 notes");
+  await expect(page.locator("#graph-count")).toContainText("12 of 22 notes");
   await page.locator("#graph-tag-filter").selectOption("");
-  await expect(page.locator("#graph-count")).toContainText("2 of 2 notes");
+  await expect(page.locator("#graph-count")).toContainText("22 of 22 notes");
 
   await page.locator("#graph-search").fill("Portable notes");
   await expect(page.locator("#graph-search-results button")).toHaveText("Portable notes");
@@ -156,36 +261,29 @@ test("all site features stay within the deployment base", async ({ page }, testI
   ).toBe("#5b4bc46b");
   await page.emulateMedia({ colorScheme: "dark" });
 
-  const noteHeader = page.locator(".site-header[data-scroll-compact]");
+  const noteHeader = page.locator(".site-header");
   await page.evaluate(() => window.scrollTo(0, 0));
-  await expect(noteHeader).not.toHaveClass(/is-compact/);
-  await page.evaluate(() => window.scrollTo(0, 400));
-  await expect(noteHeader).toHaveClass(/is-compact/);
-  await expect(noteHeader.locator(".site-nav")).toBeHidden();
-  await expect(noteHeader.locator(".mobile-nav summary")).toBeVisible();
-  await expect(noteHeader).toHaveCSS("flex-direction", "column");
+  const pillBeforeScroll = await noteHeader.boundingBox();
   await expect(noteHeader).toHaveCSS("width", "48px");
-  await expect(noteHeader.locator(".search-label")).toBeHidden();
-  await expect(noteHeader.locator(".search-icon")).toBeVisible();
-  const compactMenu = noteHeader.locator(".mobile-nav summary");
-  await compactMenu.click();
+  await expect(noteHeader.getByRole("link", { name: "Graph" })).toBeVisible();
+  await expect(noteHeader.getByRole("button", { name: "Search" })).toBeVisible();
+  const compactMenu = noteHeader.locator(".nav-menu > summary");
+  await expect(compactMenu).toBeVisible();
+  await expect(compactMenu).toHaveAttribute("aria-label", "More navigation");
+  await expect(noteHeader.locator(".menu-icon")).toHaveCount(0);
+  await page.evaluate(() => window.scrollTo(0, 400));
+  expect(await noteHeader.boundingBox()).toEqual(pillBeforeScroll);
+  await compactMenu.focus();
+  await page.keyboard.press("Enter");
+  await expect(noteHeader.locator(".nav-menu")).toHaveJSProperty("open", true);
   await page.setViewportSize({ width: 900, height: 200 });
-  const compactMenuPanel = noteHeader.locator(".mobile-nav-panel");
+  const compactMenuPanel = noteHeader.locator(".nav-menu-panel");
   await expect(compactMenuPanel).toHaveCSS("overflow-y", "auto");
   expect(
     await compactMenuPanel.evaluate((panel) => panel.getBoundingClientRect().bottom <= innerHeight),
   ).toBe(true);
-  await page.evaluate(() => window.scrollTo(0, 0));
-  await expect(noteHeader).toHaveClass(/is-compact/);
   await compactMenu.click();
   await page.setViewportSize({ width: 1280, height: 720 });
-  await expect(noteHeader).not.toHaveClass(/is-compact/);
-  await expect(noteHeader.locator(".search-trigger")).toBeFocused();
-  await page.evaluate(() => {
-    (document.activeElement as HTMLElement | null)?.blur();
-    window.scrollTo(0, 400);
-  });
-  await expect(noteHeader).toHaveClass(/is-compact/);
   const compactSearch = noteHeader.locator(".search-trigger");
   await compactSearch.click();
   await expect(page.locator("#quick-switcher")).toBeVisible();
@@ -200,11 +298,6 @@ test("all site features stay within the deployment base", async ({ page }, testI
   await expect(page.locator(".site-header-slot")).toHaveJSProperty("inert", false);
   await expect(page.locator("main")).toHaveJSProperty("inert", false);
   await expect(page.locator("body")).not.toHaveCSS("overflow", "hidden");
-  await page.evaluate(() => {
-    (document.activeElement as HTMLElement | null)?.blur();
-    window.scrollTo(0, 180);
-  });
-  await expect(noteHeader).not.toHaveClass(/is-compact/);
 
   await attachmentResponse;
   await expect(page.locator("article img")).toHaveAttribute(
@@ -216,7 +309,8 @@ test("all site features stay within the deployment base", async ({ page }, testI
     if (!response.ok) throw new Error(`attachment: HTTP ${response.status}`);
   });
 
-  await page.locator(".site-nav").getByRole("link", { name: "Search" }).click();
+  await noteHeader.locator(".nav-menu > summary").click();
+  await noteHeader.locator(".nav-menu-panel").getByRole("link", { name: "Search" }).click();
   const searchInput = page.locator(".pagefind-ui__search-input");
   await expect(searchInput).toBeVisible();
   await searchInput.fill("public vault demonstrates");
@@ -226,7 +320,11 @@ test("all site features stay within the deployment base", async ({ page }, testI
   await resultLink.click();
   await expect(page).toHaveURL(new RegExp(`${base}/notes/welcome/?$`));
 
-  await page.locator(".site-nav").getByRole("link", { name: "Tags" }).click();
+  await page.getByRole("link", { name: "Graph", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`${base}/?$`));
+  await page.goto(`${base}/notes/welcome`);
+  await page.locator(".nav-menu > summary").click();
+  await page.locator(".nav-menu-panel").getByRole("link", { name: "Tags" }).click();
   await expect(page).toHaveURL(new RegExp(`${base}/tags/?$`));
   await page.getByRole("link", { name: "#demo" }).click();
   await expect(page).toHaveURL(new RegExp(`${base}/tags/demo/?$`));
@@ -253,15 +351,114 @@ test("all site features stay within the deployment base", async ({ page }, testI
   expect(pageErrors).toEqual([]);
 });
 
+test("Fit view includes rendered graph bounds and excludes filtered nodes", async ({ page }, testInfo) => {
+  const { base } = deployment(testInfo);
+  await preserveGraphPixels(page);
+  await page.setViewportSize({ width: 900, height: 600 });
+  await page.route("**/graph-data.json", async (route) => {
+    await route.fulfill({
+      json: {
+        nodes: [
+          {
+            id: "hub",
+            title: "Connected hub",
+            route: "/notes/hub",
+            type: "permanent",
+            status: "established",
+            tags: ["fit"],
+            degree: 12,
+            x: 0,
+            y: 0,
+          },
+          {
+            id: "long",
+            title: "A deliberately long rendered title near the graph boundary",
+            route: "/notes/long",
+            type: "literature",
+            status: "developing",
+            tags: ["fit"],
+            degree: 1,
+            x: 1,
+            y: 0,
+          },
+          {
+            id: "peer",
+            title: "Nearby peer",
+            route: "/notes/peer",
+            type: "permanent",
+            status: "draft",
+            tags: ["fit"],
+            degree: 1,
+            x: 0,
+            y: 1,
+          },
+          {
+            id: "filtered-far-away",
+            title: "Filtered far away",
+            route: "/notes/filtered",
+            type: "fleeting",
+            status: "draft",
+            tags: ["hidden"],
+            degree: 0,
+            x: 80,
+            y: 80,
+          },
+        ],
+        edges: [
+          { source: "hub", target: "long" },
+          { source: "hub", target: "peer" },
+        ],
+      },
+    });
+  });
+  await page.goto(`${base}/`);
+  await expect(page.locator("#global-graph canvas.sigma-nodes")).toBeVisible();
+  await page.getByRole("button", { name: "Filters" }).click();
+  await page.locator('[data-filter="type"][value="fleeting"]').uncheck();
+  await expect(page.locator("#graph-count")).toContainText("3 of 4 notes");
+  await page.waitForTimeout(1_000);
+
+  const graph = page.locator("#global-graph");
+  await graph.hover();
+  await page.mouse.wheel(0, -500);
+  await page.waitForTimeout(150);
+  await page.getByRole("button", { name: "Fit view" }).click();
+  await page.waitForTimeout(400);
+
+  const bounds = await graphInkBounds(graph);
+  expect(bounds.nodePixels).toBeGreaterThan(100);
+  expect(bounds.labelPixels).toBeGreaterThan(0);
+  expect(bounds.left).toBeGreaterThanOrEqual(18);
+  expect(bounds.top).toBeGreaterThanOrEqual(55);
+  expect(bounds.right).toBeLessThanOrEqual(bounds.width - 60);
+  expect(bounds.bottom).toBeLessThanOrEqual(bounds.height - 18);
+});
+
 test("mobile navigation stays within the deployment base", async ({ page }, testInfo) => {
   const { base } = deployment(testInfo);
+  await preserveGraphPixels(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${base}/`);
   const graphHeader = page.locator(".site-header");
   await expect(page.locator(".site-header-slot")).toHaveCSS("position", "fixed");
-  await expect(graphHeader).toHaveCSS("flex-direction", "column");
   await expect(graphHeader).toHaveCSS("width", "48px");
+  await expect(graphHeader.getByRole("link", { name: "Graph" })).toBeVisible();
   await expect(graphHeader.locator(".search-icon")).toBeVisible();
+  expect(
+    await page.locator(".graph-shell").evaluate((shell) => {
+      const controls = shell.querySelector(".graph-controls")!.getBoundingClientRect();
+      const pill = document.querySelector(".site-header")!.getBoundingClientRect();
+      return {
+        viewportHeight: Math.round(shell.getBoundingClientRect().height) === innerHeight,
+        overlapsPill: !(
+          controls.right <= pill.left ||
+          controls.left >= pill.right ||
+          controls.bottom <= pill.top ||
+          controls.top >= pill.bottom
+        ),
+      };
+    }),
+  ).toEqual({ viewportHeight: true, overlapsPill: false });
   const filterToggle = page.getByRole("button", { name: "Filters" });
   await expect(filterToggle).toHaveAttribute("aria-expanded", "false");
   await expect(page.locator("#graph-sidebar")).toHaveJSProperty("inert", true);
@@ -305,33 +502,38 @@ test("mobile navigation stays within the deployment base", async ({ page }, test
   await page.mouse.up();
   await page.waitForTimeout(100);
   expect((await localGraph.screenshot()).equals(beforePan)).toBe(false);
-  const noteHeader = page.locator(".site-header[data-scroll-compact]");
+  await page.getByRole("button", { name: "Fit view" }).click();
+  await page.waitForTimeout(400);
+  const fittedLocalBounds = await graphInkBounds(localGraph);
+  expect(fittedLocalBounds.nodePixels).toBeGreaterThan(0);
+  expect(fittedLocalBounds.labelPixels).toBeGreaterThan(0);
+  expect(fittedLocalBounds.left).toBeGreaterThanOrEqual(18);
+  expect(fittedLocalBounds.top).toBeGreaterThanOrEqual(18);
+  expect(fittedLocalBounds.right).toBeLessThanOrEqual(fittedLocalBounds.width - 18);
+  expect(fittedLocalBounds.bottom).toBeLessThanOrEqual(fittedLocalBounds.height - 18);
+  const noteHeader = page.locator(".site-header");
   await expect(page.locator(".site-header-slot")).toHaveCSS("position", "fixed");
   await expect(page.locator(".site-header-slot")).toHaveCSS("height", "0px");
-  await expect(noteHeader).toHaveCSS("flex-direction", "column");
   await expect(noteHeader).toHaveCSS("width", "48px");
-  await expect(noteHeader.locator(".search-label")).toBeHidden();
   await expect(noteHeader.locator(".search-icon")).toBeVisible();
   const controlPositions = await noteHeader.evaluate((header) => {
-    const menu = header.querySelector("summary")!.getBoundingClientRect();
+    const graph = header.querySelector(".graph-trigger")!.getBoundingClientRect();
     const search = header.querySelector(".search-trigger")!.getBoundingClientRect();
+    const menu = header.querySelector("summary")!.getBoundingClientRect();
     const rail = header.getBoundingClientRect();
     return {
-      vertical: search.top >= menu.bottom,
+      vertical: search.top >= graph.bottom && menu.top >= search.bottom,
       rightMargin: window.innerWidth - rail.right,
     };
   });
   expect(controlPositions.vertical).toBe(true);
   expect(controlPositions.rightMargin).toBeGreaterThanOrEqual(7);
   expect(controlPositions.rightMargin).toBeLessThanOrEqual(9);
-  await noteHeader.locator(".mobile-nav summary").click();
-  await page.locator(".mobile-nav-panel").getByRole("link", { name: "Recent" }).click();
+  await noteHeader.locator(".nav-menu > summary").click();
+  await page.locator(".nav-menu-panel").getByRole("link", { name: "Recent" }).click();
   await expect(page).toHaveURL(new RegExp(`${base}/recent/?$`));
-  await expect(page.locator(".site-header")).toHaveCSS("flex-direction", "column");
-  await expect(page.getByRole("heading", { name: "Recently changed" })).toHaveCSS(
-    "padding-right",
-    "48px",
-  );
+  await expect(page.locator(".site-header")).toHaveCSS("width", "48px");
+  expect(await initialListContentClearsNavigation(page)).toBe(true);
 });
 
 test("touch layouts keep the local graph interactive", async ({ browser }, testInfo) => {
@@ -349,13 +551,10 @@ test("touch layouts keep the local graph interactive", async ({ browser }, testI
     }),
   ).toBe(true);
   await expect(page.locator(".site-header-slot")).toHaveCSS("position", "fixed");
-  await expect(page.locator(".site-header[data-scroll-compact]")).toHaveCSS(
-    "flex-direction",
-    "column",
-  );
+  await expect(page.locator(".site-header")).toHaveCSS("width", "48px");
   await page.goto(`${origin}${base}/tags`);
-  await expect(page.locator(".site-header")).toHaveCSS("flex-direction", "column");
-  await expect(page.getByRole("heading", { name: "Tags" })).toHaveCSS("padding-right", "48px");
+  await expect(page.locator(".site-header")).toHaveCSS("width", "48px");
+  expect(await initialListContentClearsNavigation(page)).toBe(true);
 
   await page.goto(`${origin}${base}/notes/welcome`);
   await expect(page.locator(".local-graph canvas.sigma-nodes")).toBeVisible();
@@ -395,6 +594,7 @@ test("touch layouts keep the local graph interactive", async ({ browser }, testI
     };
   });
   await page.touchscreen.tap(labelPoint.x, labelPoint.y);
-  await expect(page).toHaveURL(new RegExp(`${base}/notes/portable-notes/?$`));
+  await expect(page).toHaveURL(new RegExp(`${base}/notes/[^/]+/?$`));
+  await expect(page).not.toHaveURL(new RegExp(`${base}/notes/welcome/?$`));
   await context.close();
 });

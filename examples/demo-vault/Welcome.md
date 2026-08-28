@@ -6,6 +6,8 @@ created: 2026-08-27
 ---
 
 This public vault demonstrates [[Portable notes]] and attachment publishing.
+Start with [[Maps of content]] to browse the main ideas, or follow the practical
+path from [[Capture workflow]] to [[Publish a public knowledge garden]].
 
 ![[media/diagram.svg|A diagram linking notes, builds, and a static site]]
 

@@ -2,13 +2,13 @@ name: Release dry run
 
 on:
   pull_request:
-    paths-ignore:
-      - "openspec/**"
+    paths:
+      - "release/candidate.json"
   push:
     branches:
       - main
-    paths-ignore:
-      - "openspec/**"
+    paths:
+      - "release/candidate.json"
   workflow_dispatch:
 
 permissions:
