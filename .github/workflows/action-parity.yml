@@ -11,7 +11,7 @@ permissions:
   packages: read
 
 env:
-  GENERATOR_IMAGE: ghcr.io/tjakobsson/brain@sha256:16bc084750587c6aed7ca5c7608e9d2e002cdee10289c51c6f83cec0628244fb
+  GENERATOR_IMAGE: ghcr.io/tjakobsson/brain@sha256:163814b485b0901f1e5a1f3afd5747e2e8db95bb0783f443bbfc8ec72fbca2f2
 
 jobs:
   image-platform:
