@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { EventEmitter } from "node:events";
 import path from "node:path";
 import { watch } from "chokidar";
 import { serveStaticSite } from "./static-server.mjs";
@@ -88,9 +89,17 @@ export function createBuildCoordinator({ build, onSuccess, onFailure, signal, se
   };
 }
 
-function watchVault({ vault, exclusions, onChange }) {
-  const watcher = watch(vault, {
-    ignored: (candidate) => excluded(vault, exclusions, candidate),
+function contains(root, candidate) {
+  const relative = path.relative(root, candidate);
+  return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
+}
+
+function watchEntries(entries, onChange) {
+  const watcher = watch(entries.map((entry) => entry.path), {
+    ignored: (candidate) => {
+      const entry = entries.find((current) => contains(current.path, candidate));
+      return entry?.exclusions ? excluded(entry.path, entry.exclusions, candidate) : false;
+    },
     ignoreInitial: true,
     usePolling: true,
     interval: 250,
@@ -102,6 +111,109 @@ function watchVault({ vault, exclusions, onChange }) {
   });
   watcher.on("all", onChange);
   return watcher;
+}
+
+function rootEntries(validated) {
+  return validated.mode === "workspace"
+    ? validated.workspaceDefinition.brains.map((brain) => ({
+        path: brain.path,
+        exclusions: [...brain.effectiveExclusions, ...(validated.exclusions ?? [])],
+      }))
+    : [{ path: validated.vault, exclusions: validated.exclusions }];
+}
+
+function entryKey(entries) {
+  return JSON.stringify(entries.map((entry) => [entry.path, entry.exclusions]));
+}
+
+export function createInputWatcher({ inputs, onChange }) {
+  const events = new EventEmitter();
+  const initialEntries =
+    inputs.mode === "workspace"
+      ? [{ path: inputs.workspace }]
+      : [{ path: inputs.vault, exclusions: inputs.exclusions }];
+  const persistentWatcher = watchEntries(initialEntries, onChange);
+  let activeRootWatcher = inputs.mode === "workspace" ? undefined : persistentWatcher;
+  let activeKey = inputs.mode === "workspace" ? undefined : entryKey(initialEntries);
+  let closed = false;
+
+  const activeWatcherFailed = (error) => events.emit("error", error);
+  persistentWatcher.on("error", activeWatcherFailed);
+  persistentWatcher.once("ready", () => events.emit("ready"));
+
+  events.prepare = async (validated, signal) => {
+    if (inputs.mode !== "workspace") {
+      return { commit() {}, async discard() {} };
+    }
+
+    const entries = rootEntries(validated);
+    const nextKey = entryKey(entries);
+    if (nextKey === activeKey) {
+      return { commit() {}, async discard() {} };
+    }
+
+    const nextWatcher = watchEntries(entries, () => {
+      if (committed) onChange();
+      else changedBeforeCommit = true;
+    });
+    let changedBeforeCommit = false;
+    let committed = false;
+    let stagedError;
+    const failed = new Promise((_, reject) => {
+      stagedError = (error) => reject(error);
+      nextWatcher.once("error", stagedError);
+    });
+    let ready;
+    try {
+      ready = await Promise.race([waitUntilReady(nextWatcher, signal), failed]);
+    } catch (error) {
+      nextWatcher.removeListener("error", stagedError);
+      await nextWatcher.close();
+      throw error;
+    }
+    if (!ready || closed) {
+      nextWatcher.removeListener("error", stagedError);
+      await nextWatcher.close();
+      throw new Error("Live watcher activation aborted.");
+    }
+
+    let finished = false;
+    return {
+      async commit() {
+        if (finished) return;
+        finished = true;
+        const previous = activeRootWatcher;
+        activeRootWatcher = nextWatcher;
+        activeKey = nextKey;
+        committed = true;
+        nextWatcher.removeListener("error", stagedError);
+        nextWatcher.on("error", activeWatcherFailed);
+        if (changedBeforeCommit) onChange();
+        if (previous && previous !== persistentWatcher) {
+          previous.removeListener("error", activeWatcherFailed);
+          try {
+            await previous.close();
+          } catch (error) {
+            activeWatcherFailed(error);
+          }
+        }
+      },
+      async discard() {
+        if (finished) return;
+        finished = true;
+        nextWatcher.removeListener("error", stagedError);
+        await nextWatcher.close();
+      },
+    };
+  };
+
+  events.close = async () => {
+    closed = true;
+    const watchers = new Set([persistentWatcher, activeRootWatcher].filter(Boolean));
+    for (const watcher of watchers) watcher.removeListener("error", activeWatcherFailed);
+    await Promise.all([...watchers].map((watcher) => watcher.close()));
+  };
+  return events;
 }
 
 export function waitUntilReady(watcher, signal) {
@@ -124,7 +236,7 @@ function waitForAbort(signal) {
   return new Promise((resolve) => signal.addEventListener("abort", resolve, { once: true }));
 }
 
-export async function serveLiveSite({ inputs, signal, buildGeneration, createWatcher = watchVault }) {
+export async function serveLiveSite({ inputs, signal, buildGeneration, createWatcher = createInputWatcher }) {
   let controller;
   const generations = new Set();
   const watcherAbort = new AbortController();
@@ -135,8 +247,7 @@ export async function serveLiveSite({ inputs, signal, buildGeneration, createWat
     rejectWatcherFailure = reject;
   });
   const watcher = createWatcher({
-    vault: inputs.vault,
-    exclusions: inputs.exclusions,
+    inputs,
     onChange: () => coordinator.request(),
   });
   const watcherFailed = (error) => {
@@ -150,28 +261,39 @@ export async function serveLiveSite({ inputs, signal, buildGeneration, createWat
     build: buildGeneration,
     async onSuccess(generation, initial) {
       generations.add(generation.output);
-      if (initial) {
-        controller = await serveStaticSite({
-          output: generation.output,
-          base: generation.validated.base,
-          host: generation.validated.host,
-          port: generation.validated.port,
-          liveReload: true,
-          onRetire(retired) {
-            generations.delete(retired);
-            fs.rmSync(retired, { recursive: true, force: true });
-          },
-        });
-        const displayHost = generation.validated.host.includes(":")
-          ? `[${generation.validated.host}]`
-          : generation.validated.host;
-        console.log(
-          `Live server: http://${displayHost}:${generation.validated.port}${generation.validated.base}/`,
-        );
-      } else {
-        await controller.activate(generation.output);
-        controller.reload();
-        console.log("Live site updated.");
+      let prepared;
+      try {
+        prepared = await watcher.prepare?.(generation.validated, operationSignal);
+        if (initial) {
+          controller = await serveStaticSite({
+            output: generation.output,
+            base: generation.validated.base,
+            host: generation.validated.host,
+            port: generation.validated.port,
+            liveReload: true,
+            onRetire(retired) {
+              generations.delete(retired);
+              fs.rmSync(retired, { recursive: true, force: true });
+            },
+          });
+          await prepared?.commit();
+          const displayHost = generation.validated.host.includes(":")
+            ? `[${generation.validated.host}]`
+            : generation.validated.host;
+          console.log(
+            `Live server: http://${displayHost}:${generation.validated.port}${generation.validated.base}/`,
+          );
+        } else {
+          await controller.activate(generation.output);
+          await prepared?.commit();
+          controller.reload();
+          console.log("Live site updated.");
+        }
+      } catch (error) {
+        await prepared?.discard();
+        generations.delete(generation.output);
+        fs.rmSync(generation.output, { recursive: true, force: true });
+        throw error;
       }
     },
     onFailure(error) {

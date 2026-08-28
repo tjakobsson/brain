@@ -1,16 +1,32 @@
 ---
 import "../styles/global.css";
 import QuickSwitcher from "../components/QuickSwitcher.astro";
-import { joinBase, routes } from "../lib/routes";
+import { joinBase, routes, routesFor } from "../lib/routes";
+import { getWorkspaceSnapshot } from "../lib/vault-state";
 
 interface Props {
   title: string;
   wide?: boolean;
   /** Full-bleed pages (graph): no max-width, no padding. */
   fluid?: boolean;
+  activeBrainId?: string;
+  combined?: boolean;
 }
 
-const { title, wide = false, fluid = false } = Astro.props;
+const { title, wide = false, fluid = false, activeBrainId, combined = false } = Astro.props;
+const snapshot = getWorkspaceSnapshot();
+const isWorkspace = snapshot.mode === "workspace";
+const activeBrain = activeBrainId
+  ? snapshot.registry.brains.find((brain) => brain.id === activeBrainId)
+  : undefined;
+if (isWorkspace && activeBrainId && !activeBrain) {
+  throw new Error(`Unknown active brain ${JSON.stringify(activeBrainId)}.`);
+}
+const contextualRoutes = activeBrain
+  ? routesFor({ mode: "workspace", brainId: activeBrain.id })
+  : routesFor({ mode: "vault" });
+const contextLabel = activeBrain ? `@${activeBrain.id}` : combined ? "Combined" : "Workspace";
+const graphRoute = activeBrain ? contextualRoutes.graph : combined ? routes.graphAlias : routes.home;
 const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.meta.env.BASE_URL, route);
 ---
 
@@ -19,6 +35,7 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width" />
+    <slot name="head" />
     <link rel="icon" type="image/svg+xml" href={url(routes.faviconSvg)} />
     <title>{title}</title>
   </head>
@@ -26,7 +43,28 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
     <div class="site-header-slot">
       <header class="site-header">
         <nav class="site-nav-pill" aria-label="Primary navigation">
-          <a class="nav-action graph-trigger" href={url(routes.home)} aria-label="Graph">
+          {isWorkspace && (
+            <details class="context-switcher">
+              <summary style={activeBrain ? `--brain-accent: ${activeBrain.accent}` : undefined}>
+                <span class="brain-marker" aria-hidden="true"></span>
+                <span>{contextLabel}</span>
+              </summary>
+              <div class="context-switcher__panel">
+                <a href={url(routes.home)}>Brain chooser</a>
+                {snapshot.registry.brains.map((brain) => (
+                  <a
+                    href={url(routesFor({ mode: "workspace", brainId: brain.id }).graph)}
+                    aria-current={brain.id === activeBrainId ? "page" : undefined}
+                    style={`--brain-accent: ${brain.accent}`}
+                  >
+                    <span class="brain-marker" aria-hidden="true"></span>
+                    <span>@{brain.id}</span>
+                  </a>
+                ))}
+              </div>
+            </details>
+          )}
+          <a class="nav-action graph-trigger" href={url(graphRoute)} aria-label="Graph">
             <svg class="nav-icon graph-icon" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M7.5 7.5 12 5l4.5 2.5v5L12 15l-4.5-2.5z"></path>
               <path d="M7.5 12.5 5 17m11.5-4.5L19 17M12 15v4"></path>
@@ -55,10 +93,13 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
               </svg>
             </summary>
             <div class="nav-menu-panel">
-              <a href={url(routes.tags)}>Tags</a>
-              <a href={url(routes.recent)}>Recent</a>
-              <a href={url(routes.orphans)}>Orphans</a>
-              <a href={url(routes.search)}>Search</a>
+              {(!isWorkspace || activeBrain) && <a href={url(contextualRoutes.tags)}>Tags</a>}
+              {(!isWorkspace || activeBrain) && <a href={url(contextualRoutes.recent)}>Recent</a>}
+              {(!isWorkspace || activeBrain) && <a href={url(contextualRoutes.orphans)}>Orphans</a>}
+              <a
+                href={url(activeBrain ? contextualRoutes.search : routes.search)}
+                data-combined-search={combined ? "" : undefined}
+              >Search</a>
             </div>
           </details>
         </nav>
@@ -67,6 +108,17 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
     <main class:list={[{ wide, fluid }]}>
       <slot />
     </main>
-    <QuickSwitcher />
+    <QuickSwitcher activeBrainId={activeBrainId} combined={combined} workspace={isWorkspace} />
+    {combined && (
+      <script>
+        const search = document.querySelector<HTMLAnchorElement>("[data-combined-search]");
+        const brains = new URLSearchParams(window.location.search).get("brains");
+        if (search && brains) {
+          const target = new URL(search.href);
+          target.searchParams.set("brains", brains);
+          search.href = target.href;
+        }
+      </script>
+    )}
   </body>
 </html>

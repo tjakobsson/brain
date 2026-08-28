@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 120" role="img" aria-labelledby="title">
+  <title id="title">Design dependency map</title>
+  <rect width="240" height="120" rx="60" fill="#b56cff"/>
+  <circle cx="80" cy="60" r="24" fill="#fff"/>
+  <circle cx="160" cy="60" r="24" fill="#fff"/>
+</svg>

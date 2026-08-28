@@ -2,7 +2,8 @@
   "major": 1,
   "action": {
     "inputs": {
-      "vault": { "required": false, "default": "vault" },
+      "vault": { "required": false, "default": "" },
+      "workspace": { "required": false, "default": "" },
       "output": { "required": false, "default": "dist" },
       "site": { "required": false, "default": "" },
       "base-path": { "required": false, "default": "/" },
@@ -13,7 +14,8 @@
   },
   "pagesWorkflow": {
     "inputs": {
-      "vault": { "required": false, "default": "vault", "type": "string" },
+      "vault": { "required": false, "default": "", "type": "string" },
+      "workspace": { "required": false, "default": "", "type": "string" },
       "exclusions": { "required": false, "default": "", "type": "string" },
       "strict-links": { "required": false, "default": false, "type": "boolean" }
     },

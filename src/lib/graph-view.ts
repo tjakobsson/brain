@@ -10,43 +10,21 @@ import {
 import { fitRenderedGraph } from "./graph-fit";
 import { GraphMotionController } from "./graph-motion";
 import { ResizeSettler } from "./graph-motion-core";
-import { joinBase, routes, type LogicalRoute } from "./routes";
+import {
+  deriveGraphData,
+  deriveNoteNeighborhood,
+  normalizeGraphData,
+  type GraphContext,
+  type GraphData,
+} from "./graph-data";
+import { graphEdgeAttributes, graphNodeAttributes } from "./graph-style";
+import { combinedRoutes, joinBase, routes, routesFor, type LogicalRoute } from "./routes";
 
 /**
  * Browser-side graph rendering shared by the global graph page and the
  * per-note local graph island. One graphology data model, one sigma renderer,
  * one visual language.
  */
-
-export interface GraphNodeDatum {
-  id: string;
-  title: string;
-  route: LogicalRoute;
-  type: "fleeting" | "literature" | "permanent";
-  status: "draft" | "developing" | "established";
-  tags: string[];
-  degree: number;
-  x: number;
-  y: number;
-}
-
-export interface GraphData {
-  nodes: GraphNodeDatum[];
-  edges: { source: string; target: string }[];
-}
-
-/* Visual encoding: type sets hue, status sets intensity, degree sets size. */
-const TYPE_HUE: Record<string, number> = {
-  fleeting: 4,
-  literature: 212,
-  permanent: 268,
-};
-
-const STATUS_SL: Record<string, [number, number]> = {
-  draft: [48, 50],
-  developing: [66, 57],
-  established: [82, 64],
-};
 
 interface GraphTheme {
   edge: string;
@@ -71,28 +49,7 @@ function graphTheme(): GraphTheme {
       };
 }
 
-/** sigma does not parse hsl() strings — emit hex. */
-function hslToHex(h: number, s: number, l: number): string {
-  const sn = s / 100;
-  const ln = l / 100;
-  const a = sn * Math.min(ln, 1 - ln);
-  const f = (n: number) => {
-    const k = (n + h / 30) % 12;
-    return ln - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
-  };
-  const to = (v: number) => Math.round(255 * v).toString(16).padStart(2, "0");
-  return `#${to(f(0))}${to(f(8))}${to(f(4))}`;
-}
-
-export function nodeColor(type: string, status: string): string {
-  const hue = TYPE_HUE[type] ?? 268;
-  const [s, l] = STATUS_SL[status] ?? STATUS_SL.draft;
-  return hslToHex(hue, s, l);
-}
-
-export function nodeSize(degree: number): number {
-  return 3.5 + Math.sqrt(degree) * 2.5;
-}
+export { nodeColor, nodeSize } from "./graph-style";
 
 let cache: Promise<GraphData> | null = null;
 
@@ -100,32 +57,27 @@ export function fetchGraphData(): Promise<GraphData> {
   if (!cache) {
     cache = fetch(joinBase(import.meta.env.BASE_URL, routes.graphData)).then((r) => {
       if (!r.ok) throw new Error(`graph-data.json: HTTP ${r.status}`);
-      return r.json() as Promise<GraphData>;
-    });
+      return r.json() as Promise<Parameters<typeof normalizeGraphData>[0]>;
+    }).then(normalizeGraphData);
   }
   return cache;
 }
 
-export function buildGraph(data: GraphData): Graph {
+export function buildGraph(data: GraphData, context: GraphContext = { mode: "all" }): Graph {
   const graph = new Graph();
   for (const node of data.nodes) {
-    graph.addNode(node.id, {
-      label: node.title,
-      x: node.x,
-      y: node.y,
-      size: nodeSize(node.degree),
-      color: nodeColor(node.type, node.status),
-      route: node.route,
-      noteType: node.type,
-      status: node.status,
-      tags: node.tags,
-    });
+    graph.addNode(node.id, graphNodeAttributes(node, context));
   }
-  for (const edge of data.edges) {
+  data.edges.forEach((edge, index) => {
     if (graph.hasNode(edge.source) && graph.hasNode(edge.target)) {
-      graph.addEdge(edge.source, edge.target);
+      graph.addDirectedEdgeWithKey(
+        `edge-${index}`,
+        edge.source,
+        edge.target,
+        graphEdgeAttributes(edge),
+      );
     }
-  }
+  });
   return graph;
 }
 
@@ -347,6 +299,7 @@ export interface GlobalGraphUI {
   searchResults: HTMLElement;
   typeFilters: NodeListOf<HTMLInputElement>;
   statusFilters: NodeListOf<HTMLInputElement>;
+  brainFilters: NodeListOf<HTMLInputElement>;
   tagFilter: HTMLSelectElement;
   count: HTMLElement;
   fitViewButton: HTMLButtonElement;
@@ -354,7 +307,17 @@ export interface GlobalGraphUI {
 
 export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   const data = await fetchGraphData();
-  const graph = buildGraph(data);
+  const activeBrainId = ui.host.dataset.activeBrainId;
+  const combined = ui.host.dataset.graphMode === "combined";
+  let selectedBrainIds = combined
+    ? (new URLSearchParams(window.location.search).get("brains") ?? "").split(",").filter(Boolean)
+    : [];
+  const visualContext: GraphContext = activeBrainId
+    ? { mode: "brain", brainId: activeBrainId }
+    : combined
+      ? { mode: "combined", brainIds: selectedBrainIds }
+      : { mode: "all" };
+  const graph = buildGraph(data, visualContext);
   const theme = graphTheme();
   const renderer = new Sigma(graph, ui.host, baseSettings(theme, graph.order));
   const motion = new GraphMotionController(renderer, graph, data);
@@ -378,6 +341,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   window.addEventListener("pagehide", flushSession);
 
   const hidden = new Set<string>();
+  let contextEdges = new Set<string>();
   const state: InteractionState = {
     hovered: null,
     neighbors: new Set(),
@@ -395,18 +359,48 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       [...ui.statusFilters].filter((control) => control.checked).map((control) => control.value),
     );
 
+  function currentContext(): GraphContext {
+    if (activeBrainId) return { mode: "brain", brainId: activeBrainId };
+    if (combined) return { mode: "combined", brainIds: selectedBrainIds };
+    return { mode: "all" };
+  }
+
+  function edgeKey(source: string, target: string): string {
+    return `${source}\u001f${target}`;
+  }
+
   function recomputeHidden(): void {
     hidden.clear();
+    const contextData = deriveGraphData(data, currentContext());
+    const contextNodes = new Set(contextData.nodes.map((node) => node.id));
+    contextEdges = new Set(contextData.edges.map((edge) => edgeKey(edge.source, edge.target)));
     const types = activeTypes();
     const statuses = activeStatuses();
     const tag = ui.tagFilter.value;
     graph.forEachNode((id, attrs) => {
-      if (!types.has(attrs.noteType as string)) hidden.add(id);
+      if (!contextNodes.has(id)) hidden.add(id);
+      else if (!types.has(attrs.noteType as string)) hidden.add(id);
       else if (!statuses.has(attrs.status as string)) hidden.add(id);
       else if (tag && !(attrs.tags as string[]).includes(tag)) hidden.add(id);
     });
     const total = graph.order - hidden.size;
-    ui.count.textContent = `${total} of ${graph.order} notes`;
+    ui.count.textContent = `${total} of ${contextData.nodes.length} notes`;
+    const visibleNodes = data.nodes.filter((node) => !hidden.has(node.id));
+    const visibleBrainIds = data.brains
+      .map((brain) => brain.id)
+      .filter((brainId) => visibleNodes.some((node) => node.brainId === brainId));
+    const visibleCrossEdges = data.edges.filter((edge) =>
+      edge.crossBrain &&
+      contextEdges.has(edgeKey(edge.source, edge.target)) &&
+      !hidden.has(edge.source) &&
+      !hidden.has(edge.target)
+    );
+    ui.host.dataset.visibleNodes = String(total);
+    ui.host.dataset.visibleBrainIds = visibleBrainIds.join(",");
+    ui.host.dataset.foreignNodes = String(
+      activeBrainId ? visibleNodes.filter((node) => node.brainId !== activeBrainId).length : 0,
+    );
+    ui.host.dataset.crossEdges = String(visibleCrossEdges.length);
   }
 
   function applyReducers(): void {
@@ -429,7 +423,9 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       const res = { ...attrs } as Record<string, unknown>;
       const source = graph.source(edge);
       const target = graph.target(edge);
-      if (hidden.has(source) || hidden.has(target)) res.hidden = true;
+      if (!contextEdges.has(edgeKey(source, target)) || hidden.has(source) || hidden.has(target)) {
+        res.hidden = true;
+      }
       else if (state.hovered) return hoverReducers.edgeReducer(edge, attrs);
       return res as typeof attrs;
     });
@@ -453,6 +449,39 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   }
   ui.tagFilter.addEventListener("change", () => refresh());
 
+  if (combined) {
+    for (const control of ui.brainFilters) {
+      control.checked = selectedBrainIds.includes(control.value);
+      control.addEventListener("change", () => {
+        selectedBrainIds = data.brains
+          .map((brain) => brain.id)
+          .filter((brainId) => [...ui.brainFilters].some((item) =>
+            item.value === brainId && item.checked
+          ));
+        if (selectedBrainIds.length === 0) {
+          window.location.assign(joinBase(import.meta.env.BASE_URL, routes.home));
+          return;
+        }
+        if (selectedBrainIds.length === 1) {
+          window.location.assign(joinBase(
+            import.meta.env.BASE_URL,
+            routesFor({ mode: "workspace", brainId: selectedBrainIds[0] }).graph,
+          ));
+          return;
+        }
+        const target = combinedRoutes(data.brains, selectedBrainIds);
+        if (target.valid) {
+          window.history.replaceState(null, "", joinBase(import.meta.env.BASE_URL, target.graph));
+          document.dispatchEvent(new CustomEvent("brain-selection-change", {
+            detail: { brainIds: selectedBrainIds },
+          }));
+        }
+        refresh();
+        renderSearchResults();
+      });
+    }
+  }
+
   /* Search: dim non-matches, list matches, camera-focus on selection. */
   function renderSearchResults(): void {
     ui.searchResults.innerHTML = "";
@@ -465,7 +494,16 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       const li = document.createElement("li");
       const button = document.createElement("button");
       button.type = "button";
-      button.textContent = match.title;
+      const title = document.createElement("span");
+      title.textContent = match.title;
+      button.append(title);
+      if (data.mode === "workspace") {
+        const owner = document.createElement("span");
+        owner.className = "graph-search-owner";
+        owner.textContent = `@${match.brainId}`;
+        button.append(owner);
+        button.setAttribute("aria-label", `${match.title}, ${match.brainTitle} brain @${match.brainId}`);
+      }
       button.addEventListener("click", () => focusNode(match.id));
       li.appendChild(button);
       ui.searchResults.appendChild(li);
@@ -555,39 +593,6 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
 /* Local graph                                                               */
 /* ------------------------------------------------------------------------ */
 
-function neighborhood(data: GraphData, slug: string, depth: number): GraphData {
-  const adjacency = new Map<string, Set<string>>();
-  const link = (a: string, b: string) => {
-    const set = adjacency.get(a) ?? new Set<string>();
-    set.add(b);
-    adjacency.set(a, set);
-  };
-  for (const { source, target } of data.edges) {
-    link(source, target);
-    link(target, source);
-  }
-
-  const included = new Set([slug]);
-  let frontier = [slug];
-  for (let d = 0; d < depth; d++) {
-    const next: string[] = [];
-    for (const id of frontier) {
-      for (const neighbor of adjacency.get(id) ?? []) {
-        if (!included.has(neighbor)) {
-          included.add(neighbor);
-          next.push(neighbor);
-        }
-      }
-    }
-    frontier = next;
-  }
-
-  return {
-    nodes: data.nodes.filter((n) => included.has(n.id)),
-    edges: data.edges.filter((e) => included.has(e.source) && included.has(e.target)),
-  };
-}
-
 export async function mountLocalGraphs(): Promise<void> {
   const hosts = document.querySelectorAll<HTMLElement>(".local-graph[data-slug]");
   if (hosts.length === 0) return;
@@ -595,12 +600,16 @@ export async function mountLocalGraphs(): Promise<void> {
 
   for (const host of hosts) {
     const slug = host.dataset.slug!;
-    const local = neighborhood(data, slug, 2);
+    const local = deriveNoteNeighborhood(data, slug, 2);
     if (local.nodes.length <= 1) {
       host.style.display = "none"; // isolated note: nothing to show
       continue;
     }
-    const graph = buildGraph(local);
+    const root = local.nodes.find((node) => node.id === slug);
+    const graph = buildGraph(
+      local,
+      root ? { mode: "brain", brainId: root.brainId } : { mode: "all" },
+    );
     const theme = graphTheme();
     const renderer = new Sigma(graph, host, {
       ...baseSettings(theme, graph.order),

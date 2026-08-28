@@ -114,12 +114,10 @@ jobs:
       - name: Build through source command
         run: >-
           node scripts/generator.mjs build
-          --vault examples/demo-vault
+          --workspace examples/demo-workspace/workspace.json
           --output .generated/parity-command
           --site https://example.com
           --base /notes
-          --exclude '.obsidian/**'
-          --strict-links
 
       - name: Build through candidate image
         run: |
@@ -128,28 +126,24 @@ jobs:
             --read-only \
             --network none \
             --user "$(id -u):$(id -g)" \
-            --mount "type=bind,src=$PWD/examples/demo-vault,dst=/vault,readonly" \
+            --mount "type=bind,src=$PWD/examples/demo-workspace,dst=/workspace,readonly" \
             --mount "type=bind,src=$PWD/.generated/parity-image,dst=/output" \
             --mount "type=bind,src=$PWD/.generated/parity-image-work,dst=/work" \
             --mount "type=bind,src=$PWD/.generated/parity-image-tmp,dst=/tmp" \
             "$GENERATOR_IMAGE" build \
-            --vault /vault \
+            --workspace /workspace/workspace.json \
             --output /output/site \
             --site https://example.com \
-            --base /notes \
-            --exclude '.obsidian/**' \
-            --strict-links
+            --base /notes
 
       - id: action-build
         name: Build through composite Action
         uses: ./
         with:
-          vault: examples/demo-vault
+          workspace: examples/demo-workspace/workspace.json
           output: .generated/parity-action
           site: https://example.com
           base-path: /notes
-          exclusions: .obsidian/**
-          strict-links: true
 
       - name: Verify output parity and normalized result
         env:
@@ -158,6 +152,7 @@ jobs:
           expected="$(realpath -m .generated/parity-action)"
           [[ "$ACTION_OUTPUT" == "$expected" ]]
           node scripts/compare-output-trees.mjs \
+            --normalize-pagefind \
             .generated/parity-command \
             .generated/parity-image/site \
             .generated/parity-action
@@ -178,6 +173,48 @@ jobs:
           if (graph.nodes.length !== 1 || graph.nodes[0].title !== "Welcome") process.exit(1);
           if (fs.existsSync(".generated/excluded-action/notes/portable-notes/index.html")) process.exit(1);
           NODE
+
+      - id: conflicting-inputs
+        name: Reject conflicting Action inputs
+        continue-on-error: true
+        uses: ./
+        with:
+          vault: examples/demo-vault
+          workspace: examples/demo-workspace/workspace.json
+          output: .generated/conflicting-action
+
+      - name: Require conflicting-input failure
+        if: steps.conflicting-inputs.outcome != 'failure'
+        run: exit 1
+
+      - name: Require unavailable brain mount diagnostics
+        env:
+          BRAIN_IMAGE: ${{ env.GENERATOR_IMAGE }}
+          GITHUB_ACTION_PATH: ${{ github.workspace }}
+          RUNNER_OS: Linux
+          INPUT_VAULT: ""
+          INPUT_WORKSPACE: .generated/unavailable-workspace.json
+          INPUT_OUTPUT: .generated/unavailable-action
+          INPUT_SITE: ""
+          INPUT_BASE_PATH: /
+          INPUT_EXCLUSIONS: ""
+          INPUT_STRICT_LINKS: "false"
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          fs.writeFileSync(".generated/unavailable-workspace.json", JSON.stringify({
+            version: 1,
+            title: "Unavailable mount",
+            brains: [{ id: "missing-brain", title: "Missing brain", path: "./not-mounted" }],
+          }));
+          NODE
+          export GITHUB_OUTPUT="$RUNNER_TEMP/brain-action-unavailable-output"
+          if logs="$(scripts/run-generator-action.sh 2>&1)"; then
+            echo "Unavailable workspace unexpectedly succeeded." >&2
+            exit 1
+          fi
+          [[ "$logs" == *'Brain "missing-brain"'* ]]
+          [[ "$logs" == *'not-mounted'* ]]
 
       - id: strict-failure
         name: Exercise strict-link failure diagnostics

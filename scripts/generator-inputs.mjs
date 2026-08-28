@@ -1,9 +1,11 @@
 import path from "node:path";
 import { parseArgs } from "node:util";
+import { loadWorkspaceManifest } from "../src/lib/workspace.mjs";
 
 const COMMANDS = new Set(["build", "preview", "serve"]);
 const SINGLE_OPTIONS = new Set([
   "vault",
+  "workspace",
   "output",
   "site",
   "base",
@@ -19,6 +21,7 @@ export const GENERATOR_USAGE = `Usage:
 
 Options:
   --vault <path>       Vault directory (default: ./examples/demo-vault)
+  --workspace <path>   Versioned JSON workspace manifest (exclusive with --vault)
   --output <path>      Generated site directory (default: ./dist)
   --site <origin>      Canonical HTTP(S) origin
   --base <path>        Deployment base path (default: /)
@@ -129,7 +132,8 @@ function normalizePort(value = "4321") {
 }
 
 /**
- * Parse public generator arguments without inspecting or modifying the file system.
+ * Parse public generator arguments without modifying the file system. Workspace
+ * manifests are read here so malformed input fails before safety validation.
  * Paths are resolved from the caller's working directory, not the generator checkout.
  */
 export function parseGeneratorInputs(argv, { cwd = process.cwd() } = {}) {
@@ -142,6 +146,7 @@ export function parseGeneratorInputs(argv, { cwd = process.cwd() } = {}) {
       tokens: true,
       options: {
         vault: { type: "string" },
+        workspace: { type: "string" },
         output: { type: "string" },
         site: { type: "string" },
         base: { type: "string" },
@@ -180,9 +185,30 @@ export function parseGeneratorInputs(argv, { cwd = process.cwd() } = {}) {
     throw usageError("Options --host and --port are only valid for preview and serve commands.");
   }
 
+  if (parsed.values.vault !== undefined && parsed.values.workspace !== undefined) {
+    throw usageError("Options --vault and --workspace are mutually exclusive; choose one input mode.");
+  }
+
+  const workspace = parsed.values.workspace === undefined
+    ? undefined
+    : path.resolve(cwd, parsed.values.workspace);
+  let workspaceDefinition;
+  if (workspace !== undefined) {
+    try {
+      workspaceDefinition = loadWorkspaceManifest(workspace);
+    } catch (cause) {
+      throw usageError(cause.message, cause);
+    }
+  }
+
   const common = {
     command,
-    vault: path.resolve(cwd, parsed.values.vault ?? "examples/demo-vault"),
+    ...(workspace === undefined
+      ? {
+          mode: "vault",
+          vault: path.resolve(cwd, parsed.values.vault ?? "examples/demo-vault"),
+        }
+      : { mode: "workspace", workspace, workspaceDefinition }),
     output: path.resolve(cwd, parsed.values.output ?? "dist"),
     site: normalizeSite(parsed.values.site),
     base: normalizeBase(parsed.values.base),

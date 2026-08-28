@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.0 - Unreleased
+
+- Add versioned workspace inputs to the source command, container, composite Action, and reusable Pages workflow.
+- Extend the maintained v1 Action and reusable-workflow interfaces with mutually exclusive workspace inputs.
+
 ## 1.1.0 - 2026-08-28
 
 - Add build-time syntax highlighting for fenced code blocks with light and dark themes.

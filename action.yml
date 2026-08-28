@@ -1,12 +1,16 @@
 name: Build second-brain site
-description: Generate a static second-brain site from an Obsidian vault
+description: Generate a static second-brain site from Brain Markdown
 author: Tobias Jakobsson
 
 inputs:
   vault:
-    description: Vault directory, relative to the caller workspace or absolute
+    description: Brain directory beneath the caller workspace; leave empty when using workspace
     required: false
-    default: vault
+    default: ""
+  workspace:
+    description: Workspace manifest beneath the caller workspace; leave empty when using vault
+    required: false
+    default: ""
   output:
     description: Generated site directory, relative to the caller workspace or absolute
     required: false
@@ -20,11 +24,11 @@ inputs:
     required: false
     default: /
   exclusions:
-    description: Newline-delimited vault exclusion patterns
+    description: Newline-delimited Brain directory exclusion patterns
     required: false
     default: ""
   strict-links:
-    description: Fail when the vault contains unresolved note links
+    description: Fail when the Brain directory contains unresolved note links
     required: false
     default: "false"
 
@@ -42,6 +46,7 @@ runs:
       env:
         BRAIN_IMAGE: ghcr.io/tjakobsson/brain@sha256:b4dfbeb662a335e646b7d685e6b404cc1e80236b0c09be44792bb02556b1eb2a
         INPUT_VAULT: ${{ inputs.vault }}
+        INPUT_WORKSPACE: ${{ inputs.workspace }}
         INPUT_OUTPUT: ${{ inputs.output }}
         INPUT_SITE: ${{ inputs.site }}
         INPUT_BASE_PATH: ${{ inputs.base-path }}

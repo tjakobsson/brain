@@ -5,9 +5,15 @@ import { remarkWikiLinks } from "./remark-wiki-links";
 import { slugify } from "./slugify";
 import { routes } from "./routes";
 import type { LinkIndex, VaultNote } from "./vault-scan";
+import { compositeNoteId, SINGLE_BRAIN_ID } from "./note-identity";
+import path from "node:path";
+import { createWorkspaceSnapshot } from "./vault-loader";
 
 function fakeNote(title: string): VaultNote {
   return {
+    id: slugify(title),
+    brainId: SINGLE_BRAIN_ID,
+    compositeId: compositeNoteId(SINGLE_BRAIN_ID, slugify(title)),
     slug: slugify(title),
     title,
     route: routes.note(slugify(title)),
@@ -23,9 +29,13 @@ function fakeNote(title: string): VaultNote {
 }
 
 function fakeIndex(titles: string[]): LinkIndex {
+  const source = fakeNote("Source Note");
   const byTitleKey = new Map(titles.map((t) => [t.toLowerCase(), fakeNote(t)]));
+  byTitleKey.set(source.title.toLowerCase(), source);
   return {
     notes: [...byTitleKey.values()],
+    byId: new Map([...byTitleKey.values()].map((note) => [note.id, note])),
+    byBrainAndTitleKey: new Map([[SINGLE_BRAIN_ID, byTitleKey]]),
     byTitleKey,
     edges: [],
     backlinks: new Map(),
@@ -40,7 +50,30 @@ function run(text: string, titles: string[], base = ""): Paragraph {
     type: "root",
     children: [{ type: "paragraph", children: [{ type: "text", value: text }] }],
   };
-  remarkWikiLinks({ index: fakeIndex(titles), base })(tree, new VFile({ path: "Source Note.md" }));
+  remarkWikiLinks({ index: fakeIndex(titles), base, brainAccents: new Map() })(
+    tree,
+    new VFile({ path: "/vault/Source Note.md" }),
+  );
+  return tree.children[0] as Paragraph;
+}
+
+function runWorkspace(text: string, source: string): Paragraph {
+  const snapshot = createWorkspaceSnapshot({
+    mode: "workspace",
+    vaultDir: path.resolve("examples/demo-vault"),
+    workspacePath: path.resolve("examples/demo-workspace/workspace.json"),
+    outputDir: path.resolve("dist"),
+    exclusions: [],
+    strictLinks: false,
+  });
+  const tree: Root = {
+    type: "root",
+    children: [{ type: "paragraph", children: [{ type: "text", value: text }] }],
+  };
+  remarkWikiLinks({
+    index: snapshot.index,
+    brainAccents: new Map(snapshot.registry.brains.map((brain) => [brain.id, brain.accent])),
+  })(tree, new VFile({ path: source }));
   return tree.children[0] as Paragraph;
 }
 
@@ -97,6 +130,57 @@ describe("remarkWikiLinks", () => {
     expect(html.value).toContain("Not yet written");
   });
 
+  it("resolves local and foreign targets from the exact source owner", () => {
+    const workspace = path.resolve("examples/demo-workspace/brains");
+    const engineering = runWorkspace(
+      "[[Principles]] and [[@design/Principles#Rationale|design rules]]",
+      path.join(workspace, "engineering", "Principles.md"),
+    );
+    const design = runWorkspace(
+      "[[Principles]]",
+      path.join(workspace, "design", "Principles.md"),
+    );
+
+    expect((engineering.children[0] as Link).url).toBe(
+      "/brains/engineering/notes/principles",
+    );
+    expect((engineering.children[2] as Link).url).toBe(
+      "/brains/design/notes/principles#rationale",
+    );
+    expect((engineering.children[2] as Link).data?.hProperties).toMatchObject({
+      className: ["wiki-link", "wiki-link--foreign"],
+      "data-brain-id": "design",
+      style: "--brain-accent: #b56cff",
+    });
+    expect((engineering.children[2] as Link).children).toEqual([
+      { type: "text", value: "design rules" },
+      {
+        type: "html",
+        value: '<span class="brain-badge"><span aria-hidden="true">↗</span> @design</span>',
+      },
+    ]);
+    expect((design.children[0] as Link).url).toBe("/brains/design/notes/principles");
+  });
+
+  it("distinguishes missing foreign notes from unknown brains", () => {
+    const source = path.resolve(
+      "examples/demo-workspace/brains/engineering/Principles.md",
+    );
+    const paragraph = runWorkspace(
+      "[[@design/Future interaction]] and [[@missing-brain/Unknown principle]]",
+      source,
+    );
+    expect((paragraph.children[0] as Html).value).toContain(
+      'data-brain-id="design"',
+    );
+    expect((paragraph.children[0] as Html).value).toContain("@design");
+    expect((paragraph.children[0] as Html).value).toContain("--brain-accent: #b56cff");
+    expect((paragraph.children[0] as Html).value).toContain("Not yet written in @design");
+    expect((paragraph.children[2] as Html).value).toContain("wiki-link--unknown-brain");
+    expect((paragraph.children[2] as Html).value).toContain("Unknown brain: missing-brain");
+    expect((paragraph.children[2] as Html).value).toContain(">?</span> @missing-brain");
+  });
+
   it("leaves link-free text untouched", () => {
     const para = run("nothing here", ["Note B"]);
     expect(para.children).toHaveLength(1);
@@ -119,7 +203,10 @@ describe("remarkWikiLinks", () => {
         },
       ],
     };
-    remarkWikiLinks({ index: fakeIndex(["Note B"]) })(tree, new VFile({ path: "x.md" }));
+    remarkWikiLinks({ index: fakeIndex(["Note B"]), brainAccents: new Map() })(
+      tree,
+      new VFile({ path: "/vault/Source Note.md" }),
+    );
     const link = (tree.children[0] as Paragraph).children[0] as Link;
     expect(link.type).toBe("link");
     expect(link.url).toBe("https://example.com");

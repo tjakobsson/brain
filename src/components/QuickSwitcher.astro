@@ -1,9 +1,19 @@
 ---
 /* Cmd+K quick switcher — included in BaseLayout so it exists on every page. */
+interface Props { activeBrainId?: string; combined?: boolean; workspace?: boolean }
+const { activeBrainId, combined = false, workspace = false } = Astro.props;
 ---
 
 <div id="quick-switcher" class="switcher-overlay" hidden>
   <div class="switcher" role="dialog" aria-modal="true" aria-label="Quick switcher">
+    <label class="switcher-scope" hidden={!workspace}>
+      <span>Scope</span>
+      <select data-switcher-scope aria-label="Quick switcher scope">
+        {activeBrainId && <option value="active">Active brain @{activeBrainId}</option>}
+        {combined && <option value="selected">Selected brains</option>}
+        <option value="all">All brains</option>
+      </select>
+    </label>
     <input
       type="text"
       placeholder="Jump to a note or tag…"
@@ -12,6 +22,9 @@
       aria-controls="switcher-results"
       aria-expanded="true"
       aria-autocomplete="list"
+      data-active-brain-id={activeBrainId}
+      data-combined={combined ? "true" : "false"}
+      data-workspace={workspace ? "true" : "false"}
     />
     <ul id="switcher-results" class="switcher-results" role="listbox"></ul>
     <div class="switcher-empty" role="status" aria-live="polite" hidden>No matches.</div>
@@ -27,12 +40,19 @@
     route: LogicalRoute;
     kind: "note" | "tag";
     tags: string[];
+    brainId: string;
+    brainTitle: string;
+    brainAccent: string;
   }
 
   const overlay = document.querySelector<HTMLElement>(".switcher-overlay")!;
   const input = overlay.querySelector<HTMLInputElement>("input")!;
   const resultsList = overlay.querySelector<HTMLElement>(".switcher-results")!;
   const empty = overlay.querySelector<HTMLElement>(".switcher-empty")!;
+  const scope = overlay.querySelector<HTMLSelectElement>("[data-switcher-scope]")!;
+  const activeBrainId = input.dataset.activeBrainId;
+  const combined = input.dataset.combined === "true";
+  const workspace = input.dataset.workspace === "true";
 
   let entries: Entry[] | null = null;
   let fuse: Fuse<Entry> | null = null;
@@ -40,6 +60,7 @@
   let selected = 0;
   let opener: HTMLElement | null = null;
   let previousOverflow = "";
+  let selectedBrainIds: string[] = [];
   const pageRegions = [
     document.querySelector<HTMLElement>(".site-header-slot"),
     document.querySelector<HTMLElement>("main"),
@@ -67,6 +88,9 @@
     document.body.style.overflow = "hidden";
     for (const region of pageRegions) region.inert = true;
     input.value = "";
+    selectedBrainIds = combined
+      ? (new URLSearchParams(window.location.search).get("brains") ?? "").split(",").filter(Boolean)
+      : [];
     input.focus();
     void search();
   }
@@ -94,8 +118,9 @@
       const label = document.createElement("span");
       label.textContent = entry.title;
       const kind = document.createElement("span");
-      kind.className = "kind";
-      kind.textContent = entry.kind;
+      kind.className = workspace ? "kind kind--brain" : "kind";
+      kind.textContent = workspace ? `${entry.kind} · @${entry.brainId}` : entry.kind;
+      kind.style.setProperty("--brain-accent", entry.brainAccent);
       li.append(label, kind);
       li.addEventListener("click", () => navigate(entry.route));
       li.addEventListener("mousemove", () => select(i));
@@ -130,7 +155,17 @@
   async function search(): Promise<void> {
     await ensureIndex();
     const q = input.value.trim();
-    renderResults(q ? fuse!.search(q).map((r) => r.item) : entries!);
+    const scoped = entries!.filter((entry) => {
+      if (scope.value === "active") return entry.brainId === activeBrainId;
+      if (scope.value === "selected") return selectedBrainIds.includes(entry.brainId);
+      return true;
+    });
+    if (!q) {
+      renderResults(scoped);
+      return;
+    }
+    const allowed = new Set(scoped);
+    renderResults(fuse!.search(q).map((result) => result.item).filter((entry) => allowed.has(entry)));
   }
 
   document.addEventListener("keydown", (e) => {
@@ -157,6 +192,7 @@
   });
 
   input.addEventListener("input", () => void search());
+  scope.addEventListener("change", () => void search());
   input.addEventListener("keydown", (e) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();

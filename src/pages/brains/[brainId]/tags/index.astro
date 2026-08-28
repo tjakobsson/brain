@@ -1,0 +1,12 @@
+---
+import TagsIndex from "../../../../components/TagsIndex.astro";
+import { workspaceBrainPagePaths } from "../../../../lib/page-paths";
+import { getWorkspaceSnapshot } from "../../../../lib/vault-state";
+
+export function getStaticPaths() {
+  return workspaceBrainPagePaths(getWorkspaceSnapshot());
+}
+const { brainId } = Astro.params;
+---
+
+<TagsIndex brainId={brainId} />

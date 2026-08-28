@@ -2,8 +2,8 @@ import path from "node:path";
 import type { Image, Link, Parent, PhrasingContent, Root, Text } from "mdast";
 import type { VFile } from "vfile";
 import type { ResolvedAttachment } from "./attachment-resolution";
-import { joinBase, routes } from "./routes";
-import { getVaultSnapshot } from "./vault-state";
+import { joinBase } from "./routes";
+import { getWorkspaceSnapshot } from "./vault-state";
 
 interface RemarkAttachmentsOptions {
   base?: string;
@@ -13,7 +13,7 @@ interface RemarkAttachmentsOptions {
 const IMAGE_EXTENSIONS = new Set([".avif", ".bmp", ".gif", ".jpeg", ".jpg", ".png", ".svg", ".webp"]);
 
 function attachmentUrl(base: string, attachment: ResolvedAttachment): string {
-  const url = joinBase(base, routes.vaultAsset(attachment.entry.path));
+  const url = joinBase(base, attachment.route);
   return attachment.reference.anchor
     ? `${url}#${encodeURIComponent(attachment.reference.anchor)}`
     : url;
@@ -49,7 +49,7 @@ function transformChildren(parent: Parent, attachments: ResolvedAttachment[], ba
     if (child.type === "text") {
       const text = child as Text;
       const embedded = attachments
-        .filter((item) => item.reference.kind === "obsidian-embed")
+        .filter((item) => item.reference.kind === "brain-embed")
         .map((item) => ({ item, index: text.value.indexOf(item.reference.raw) }))
         .filter((match) => match.index !== -1)
         .sort((left, right) => left.index - right.index);
@@ -74,12 +74,11 @@ function transformChildren(parent: Parent, attachments: ResolvedAttachment[], ba
 export function remarkAttachments(options: RemarkAttachmentsOptions = {}) {
   const base = options.base ?? "";
   return (tree: Root, file: VFile) => {
-    const all = options.attachments ?? getVaultSnapshot().attachments;
+    const all = options.attachments ?? getWorkspaceSnapshot().attachments;
     const source = file.path ? path.resolve(file.path) : "";
     const attachments = all.filter(
       (item) =>
-        path.resolve(item.source.filePath) === source ||
-        (file.basename !== undefined && file.basename === path.basename(item.source.filePath)),
+        path.resolve(item.source.filePath) === source,
     );
     if (attachments.length > 0) transformChildren(tree, attachments, base);
   };

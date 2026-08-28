@@ -14,9 +14,9 @@ Stable releases promote a tested candidate image. They do not rebuild it.
 
 ## Publish
 
-1. Create the immutable annotated tag `v1.0.0` at the verified release commit and push it.
-2. Wait for the Release workflow. It validates the candidate, attaches `v1.0.0`, `v1.0`, `v1`, and `latest` OCI aliases to the recorded digest, creates the GitHub Release, and moves the maintained Git `v1` tag.
-3. Verify every OCI alias resolves to `release/candidate.json`'s digest and both `tjakobsson/brain@v1.0.0` and `tjakobsson/brain@v1` build the demo vault.
+1. Create the immutable annotated tag `vX.Y.Z` at the verified release commit and push it.
+2. Wait for the Release workflow. It validates the candidate, attaches exact, minor, maintained-major, and `latest` OCI aliases to the recorded digest, creates the GitHub Release, and moves the maintained Git major tag.
+3. Verify every OCI alias resolves to `release/candidate.json`'s digest and both the exact and maintained-major Action references build the public fixtures.
 4. Confirm the release notes identify the release commit, image source commit, OCI digest, SBOM, provenance, and compatibility major.
 
-Exact `vX.Y.Z` Git and OCI tags are immutable. Only the maintained major `v1` reference moves for compatible releases.
+Exact `vX.Y.Z` Git and OCI tags are immutable. Only the matching maintained major reference moves for compatible releases.

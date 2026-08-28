@@ -10,11 +10,13 @@ on:
       - "THIRD_PARTY_NOTICES.md"
       - "astro.config.ts"
       - "examples/demo-vault/**"
+      - "examples/demo-workspace/**"
       - "package-lock.json"
       - "package.json"
       - "public/**"
       - "scripts/compare-output-trees.mjs"
       - "scripts/container-live-smoke.mjs"
+      - "scripts/container-workspace-smoke.mjs"
       - "scripts/generator-inputs.mjs"
       - "scripts/generator-safety.mjs"
       - "scripts/generator.mjs"
@@ -33,11 +35,13 @@ on:
       - "THIRD_PARTY_NOTICES.md"
       - "astro.config.ts"
       - "examples/demo-vault/**"
+      - "examples/demo-workspace/**"
       - "package-lock.json"
       - "package.json"
       - "public/**"
       - "scripts/compare-output-trees.mjs"
       - "scripts/container-live-smoke.mjs"
+      - "scripts/container-workspace-smoke.mjs"
       - "scripts/generator-inputs.mjs"
       - "scripts/generator-safety.mjs"
       - "scripts/generator.mjs"
@@ -71,6 +75,9 @@ jobs:
 
       - name: Verify live container workflow
         run: BRAIN_IMAGE=brain:source npm run test:container-live
+
+      - name: Verify read-only workspace build and preview
+        run: BRAIN_IMAGE=brain:source npm run test:container-workspace
 
       - name: Build through source command
         run: >-
@@ -106,3 +113,86 @@ jobs:
           node scripts/compare-output-trees.mjs
           .generated/source-command
           .generated/source-image/site
+
+      - name: Build workspace through source command
+        run: >-
+          node scripts/generator.mjs build
+          --workspace examples/demo-workspace/workspace.json
+          --output .generated/workspace-source-command
+          --site https://example.com
+          --base /notes
+
+      - name: Build workspace through source image
+        run: |
+          mkdir -p .generated/workspace-source-image .generated/workspace-source-work .generated/workspace-source-tmp
+          docker run --rm \
+            --read-only \
+            --network none \
+            --user "$(id -u):$(id -g)" \
+            --mount "type=bind,src=$PWD/examples/demo-workspace,dst=/workspace,readonly" \
+            --mount "type=bind,src=$PWD/.generated/workspace-source-image,dst=/output" \
+            --mount "type=bind,src=$PWD/.generated/workspace-source-work,dst=/work" \
+            --mount "type=bind,src=$PWD/.generated/workspace-source-tmp,dst=/tmp" \
+            brain:source build \
+            --workspace /workspace/workspace.json \
+            --output /output/site \
+            --site https://example.com \
+            --base /notes
+
+      - name: Build workspace through composite Action runner
+        env:
+          BRAIN_IMAGE: brain:source
+          GITHUB_ACTION_PATH: ${{ github.workspace }}
+          RUNNER_OS: Linux
+          INPUT_VAULT: ""
+          INPUT_WORKSPACE: examples/demo-workspace/workspace.json
+          INPUT_OUTPUT: .generated/workspace-source-action
+          INPUT_SITE: https://example.com
+          INPUT_BASE_PATH: /notes
+          INPUT_EXCLUSIONS: ""
+          INPUT_STRICT_LINKS: "false"
+        run: |
+          export GITHUB_OUTPUT="$RUNNER_TEMP/brain-action-output"
+          export GITHUB_RUN_ID="${GITHUB_RUN_ID:-source-parity}"
+          export GITHUB_RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-1}"
+          scripts/run-generator-action.sh
+
+      - name: Verify workspace source, image, and Action parity
+        run: >-
+          node scripts/compare-output-trees.mjs
+          --normalize-pagefind
+          .generated/workspace-source-command
+          .generated/workspace-source-image/site
+          .generated/workspace-source-action
+
+      - name: Require brain-specific unavailable mount diagnostics
+        env:
+          BRAIN_IMAGE: brain:source
+          GITHUB_ACTION_PATH: ${{ github.workspace }}
+          RUNNER_OS: Linux
+          INPUT_VAULT: ""
+          INPUT_WORKSPACE: .generated/unavailable-workspace.json
+          INPUT_OUTPUT: .generated/unavailable-action
+          INPUT_SITE: ""
+          INPUT_BASE_PATH: /
+          INPUT_EXCLUSIONS: ""
+          INPUT_STRICT_LINKS: "false"
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          fs.mkdirSync(".generated", { recursive: true });
+          fs.writeFileSync(".generated/unavailable-workspace.json", JSON.stringify({
+            version: 1,
+            title: "Unavailable mount",
+            brains: [{ id: "missing-brain", title: "Missing brain", path: "./not-mounted" }],
+          }));
+          NODE
+          export GITHUB_OUTPUT="$RUNNER_TEMP/brain-action-unavailable-output"
+          export GITHUB_RUN_ID="${GITHUB_RUN_ID:-source-parity}"
+          export GITHUB_RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-1}"
+          if logs="$(scripts/run-generator-action.sh 2>&1)"; then
+            echo "Unavailable workspace unexpectedly succeeded." >&2
+            exit 1
+          fi
+          [[ "$logs" == *'Brain "missing-brain"'* ]]
+          [[ "$logs" == *'not-mounted'* ]]

@@ -60,13 +60,13 @@ describe("scanVault", () => {
     writeNote("Note A.md", "Links to [[Note B]] and [[Future idea]].");
     writeNote("Note B.md", "Nothing.");
     const index = scanVault(dir);
-    expect(index.edges).toEqual([{ source: "note-a", target: "note-b" }]);
+    expect(index.edges).toMatchObject([{ source: "note-a", target: "note-b" }]);
   });
 
   it("deduplicates repeated links and ignores self-links", () => {
     writeNote("Note A.md", "[[Note B]] then [[Note B]] again and [[Note A]].");
     writeNote("Note B.md", "Nothing.");
-    expect(scanVault(dir).edges).toEqual([{ source: "note-a", target: "note-b" }]);
+    expect(scanVault(dir).edges).toMatchObject([{ source: "note-a", target: "note-b" }]);
   });
 
   it("captures backlinks with the context line as readable prose", () => {

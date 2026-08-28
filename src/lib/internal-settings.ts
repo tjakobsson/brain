@@ -1,7 +1,9 @@
 import path from "node:path";
 
 export const INTERNAL_ENV = {
+  mode: "BRAIN_INPUT_MODE",
   vault: "BRAIN_VAULT",
+  workspace: "BRAIN_WORKSPACE",
   output: "BRAIN_OUTPUT",
   site: "BRAIN_SITE",
   base: "BRAIN_BASE",
@@ -11,7 +13,9 @@ export const INTERNAL_ENV = {
 } as const;
 
 export interface InternalSettings {
+  mode: "vault" | "workspace";
   vault: string;
+  workspace?: string;
   output: string;
   site?: string;
   base: string;
@@ -49,8 +53,27 @@ export function loadInternalSettings(
     throw new Error(`${INTERNAL_ENV.base} must be a normalized root-relative base path.`);
   }
 
+  const configuredMode = env[INTERNAL_ENV.mode]?.trim();
+  if (configuredMode !== undefined && configuredMode !== "vault" && configuredMode !== "workspace") {
+    throw new Error(`${INTERNAL_ENV.mode} must be vault or workspace.`);
+  }
+  const mode = configuredMode ?? (env[INTERNAL_ENV.workspace]?.trim() ? "workspace" : "vault");
+  const workspace = env[INTERNAL_ENV.workspace]?.trim();
+  const vault = env[INTERNAL_ENV.vault]?.trim();
+  if (mode === "workspace" && !workspace) {
+    throw new Error(`${INTERNAL_ENV.workspace} is required in workspace mode.`);
+  }
+  if (mode === "workspace" && vault) {
+    throw new Error(`${INTERNAL_ENV.vault} and ${INTERNAL_ENV.workspace} are mutually exclusive.`);
+  }
+  if (mode === "vault" && workspace) {
+    throw new Error(`${INTERNAL_ENV.workspace} requires workspace mode.`);
+  }
+
   return {
-    vault: path.resolve(root, env[INTERNAL_ENV.vault]?.trim() || "examples/demo-vault"),
+    mode,
+    vault: path.resolve(root, vault || "examples/demo-vault"),
+    workspace: workspace ? path.resolve(root, workspace) : undefined,
     output: path.resolve(root, env[INTERNAL_ENV.output]?.trim() || "dist"),
     site: env[INTERNAL_ENV.site]?.trim() || undefined,
     base: base === "/" ? "" : base,

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 120" role="img" aria-labelledby="title">
+  <title id="title">Engineering dependency map</title>
+  <rect width="240" height="120" rx="16" fill="#1769aa"/>
+  <path d="M42 60h156M174 36l24 24-24 24" fill="none" stroke="#fff" stroke-width="8"/>
+</svg>

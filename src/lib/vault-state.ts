@@ -1,26 +1,42 @@
 import type { LinkIndex } from "./vault-scan";
 import type { VaultManifest } from "./vault-manifest";
 import type { ResolvedAttachment } from "./attachment-resolution";
+import type { InputMode } from "./note-identity";
+import type { WorkspaceDefinition } from "./workspace.mjs";
 
-export interface VaultSnapshot {
-  manifest: VaultManifest;
+export interface WorkspaceSnapshot {
+  mode: InputMode;
+  registry: WorkspaceDefinition;
+  manifests: ReadonlyMap<string, VaultManifest>;
   index: LinkIndex;
   attachments: ResolvedAttachment[];
+  /** Single-vault compatibility alias for the only manifest. */
+  manifest: VaultManifest;
 }
 
-const SNAPSHOT = Symbol.for("brain.vault-snapshot");
-const processState = process as typeof process & { [SNAPSHOT]?: VaultSnapshot };
+export type VaultSnapshot = WorkspaceSnapshot;
 
-export function publishVaultSnapshot(snapshot: VaultSnapshot): void {
+const SNAPSHOT = Symbol.for("brain.workspace-snapshot");
+const processState = process as typeof process & { [SNAPSHOT]?: WorkspaceSnapshot };
+
+export function publishWorkspaceSnapshot(snapshot: WorkspaceSnapshot): void {
   processState[SNAPSHOT] = snapshot;
 }
 
-export function getVaultSnapshot(): VaultSnapshot {
+export function getWorkspaceSnapshot(): WorkspaceSnapshot {
   const snapshot = processState[SNAPSHOT];
   if (!snapshot) {
     throw new Error(
-      "Vault snapshot is unavailable. The brain-vault content loader must complete first.",
+      "Workspace snapshot is unavailable. The brain content loader must complete first.",
     );
   }
   return snapshot;
+}
+
+export function publishVaultSnapshot(snapshot: WorkspaceSnapshot): void {
+  publishWorkspaceSnapshot(snapshot);
+}
+
+export function getVaultSnapshot(): WorkspaceSnapshot {
+  return getWorkspaceSnapshot();
 }

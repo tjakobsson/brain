@@ -1,0 +1,12 @@
+---
+import TaggedNotes from "../../../../components/TaggedNotes.astro";
+import { workspaceTagPagePaths } from "../../../../lib/page-paths";
+import { getWorkspaceSnapshot } from "../../../../lib/vault-state";
+
+export function getStaticPaths() {
+  return workspaceTagPagePaths(getWorkspaceSnapshot());
+}
+const { brainId, tag } = Astro.params;
+---
+
+<TaggedNotes brainId={brainId} tag={tag!} />

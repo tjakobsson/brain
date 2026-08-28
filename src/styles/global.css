@@ -95,6 +95,89 @@ a:hover {
   flex-direction: column;
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.brain-marker {
+  display: inline-block;
+  width: 0.72rem;
+  height: 0.72rem;
+  flex: none;
+  border: 2px solid var(--brain-accent, var(--accent));
+  border-radius: 3px;
+  transform: rotate(45deg);
+}
+
+.context-switcher {
+  position: absolute;
+  top: 0;
+  right: calc(100% + 0.55rem);
+}
+
+.context-switcher summary {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 3rem;
+  max-width: min(13rem, calc(100vw - 4.6rem));
+  padding: 0.35rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  background: var(--bg-elevated);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+  cursor: pointer;
+  list-style: none;
+  white-space: nowrap;
+}
+
+.context-switcher summary::-webkit-details-marker {
+  display: none;
+}
+
+.context-switcher summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.context-switcher__panel {
+  position: absolute;
+  top: calc(100% + 0.45rem);
+  right: 0;
+  display: grid;
+  min-width: 13rem;
+  padding: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-elevated);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+}
+
+.context-switcher__panel a {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 6px;
+  color: var(--text);
+}
+
+.context-switcher__panel a:hover,
+.context-switcher__panel a:focus-visible,
+.context-switcher__panel a[aria-current="page"] {
+  background: var(--accent-soft);
+  text-decoration: none;
+}
+
 .nav-action {
   display: grid;
   place-items: center;
@@ -197,6 +280,209 @@ main.wide {
 main.fluid {
   max-width: none;
   padding: 0;
+}
+
+/* --- Workspace chooser ------------------------------------------------ */
+
+.brain-chooser {
+  max-width: 68rem;
+  margin: 0 auto;
+  padding-bottom: 6rem;
+}
+
+.brain-chooser__intro {
+  max-width: 44rem;
+  margin: 2.5rem 0 3.2rem;
+}
+
+.eyebrow {
+  margin: 0 0 0.35rem;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.brain-chooser__intro h1 {
+  margin: 0;
+  font-size: clamp(2.35rem, 7vw, 4.7rem);
+  letter-spacing: -0.055em;
+  line-height: 0.98;
+}
+
+.brain-chooser__intro h1 + p {
+  max-width: 38rem;
+  margin-top: 1.15rem;
+  color: var(--text-muted);
+  font-size: 1.05rem;
+}
+
+.brain-hierarchy {
+  display: grid;
+  gap: 2rem;
+}
+
+.brain-group {
+  margin-inline-start: calc(var(--group-depth) * 1.35rem);
+  padding-inline-start: 1rem;
+  border-left: 1px solid var(--border);
+}
+
+.brain-group h2 {
+  margin: 0 0 0.8rem;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.brain-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: 0.85rem;
+}
+
+.brain-card {
+  position: relative;
+  display: flex;
+  min-height: 14rem;
+  flex-direction: column;
+  padding: 1.15rem;
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--brain-accent);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+}
+
+.brain-card__select {
+  position: absolute;
+  top: 0.85rem;
+  right: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+.brain-card__select input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: var(--brain-accent);
+}
+
+.brain-card__identity {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-right: 5rem;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.brain-card h3 {
+  margin: 1.25rem 0 0.35rem;
+  font-size: 1.45rem;
+  line-height: 1.1;
+}
+
+.brain-card p {
+  margin: 0 0 1.25rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.brain-card > a {
+  align-self: flex-start;
+  margin-top: auto;
+  font-weight: 650;
+}
+
+.brain-selection__action {
+  position: fixed;
+  z-index: 5;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  left: max(1rem, env(safe-area-inset-left));
+  display: flex;
+  max-width: 68rem;
+  min-height: 4.4rem;
+  margin: 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 0.8rem 0.7rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(12px);
+}
+
+.brain-selection__action span {
+  color: var(--text-muted);
+  font-size: 0.86rem;
+}
+
+.brain-selection__action button {
+  min-height: 2.8rem;
+  padding: 0.45rem 0.9rem;
+  border: 0;
+  border-radius: 8px;
+  color: white;
+  background: var(--accent);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.brain-selection__action button:disabled {
+  color: var(--text-muted);
+  background: var(--bg-soft);
+  cursor: not-allowed;
+}
+
+.selection-error {
+  display: grid;
+  min-height: 100dvh;
+  padding: 2rem;
+  place-items: center;
+}
+
+.selection-error[hidden],
+[data-combined-graph][hidden] {
+  display: none;
+}
+
+.selection-error > div {
+  max-width: 34rem;
+  padding: 2rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+}
+
+.selection-error h1 {
+  margin: 0.2rem 0 0.5rem;
+}
+
+.combined-context {
+  position: fixed;
+  z-index: 4;
+  top: 0.75rem;
+  left: 50%;
+  max-width: calc(100vw - 24rem);
+  margin: 0;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  transform: translateX(-50%);
 }
 
 .site-header-slot + main:not(.fluid)::before {
@@ -355,10 +641,43 @@ a.wiki-link:hover {
   text-decoration-style: solid;
 }
 
+a.wiki-link:focus-visible {
+  border-radius: 3px;
+  outline: 2px solid var(--brain-accent, var(--accent));
+  outline-offset: 3px;
+}
+
+.wiki-link--foreign {
+  text-decoration-color: var(--brain-accent, var(--accent));
+}
+
+.brain-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.18em;
+  margin-inline-start: 0.38em;
+  padding: 0.02em 0.42em;
+  border: 1px solid var(--brain-accent, currentColor);
+  border-radius: 999px;
+  color: var(--brain-accent, currentColor);
+  font-size: 0.72em;
+  font-weight: 650;
+  line-height: 1.45;
+  text-decoration: none;
+  vertical-align: 0.08em;
+  white-space: nowrap;
+}
+
 .wiki-link--unwritten {
+  display: inline-flex;
+  align-items: baseline;
   color: var(--unwritten);
   border-bottom: 1px dashed var(--unwritten);
   cursor: help;
+}
+
+.wiki-link--unknown-brain .brain-badge {
+  border-style: dashed;
 }
 
 /* --- Callouts (remark-callout output) --------------------------------- */
@@ -404,6 +723,13 @@ div[data-callout] > .callout-title {
 
 .mentions li {
   margin: 0.55rem 0;
+}
+
+.mentions .mention--foreign > a {
+  text-decoration: underline;
+  text-decoration-color: var(--brain-accent, var(--accent));
+  text-decoration-style: dashed;
+  text-underline-offset: 0.18em;
 }
 
 .mentions .context {
@@ -517,6 +843,46 @@ div[data-callout] > .callout-title {
 .graph-sidebar label input {
   flex: none;
   margin: 0;
+}
+
+.graph-brain-filters {
+  margin: 1rem 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.graph-brain-filters legend {
+  margin-bottom: 0.4rem;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.brain-shape {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  flex: none;
+  border: 2px solid currentColor;
+  background: var(--brain-accent, var(--accent));
+}
+
+.brain-shape--0 {
+  border-radius: 50%;
+}
+
+.brain-shape--1 {
+  border-radius: 1px;
+}
+
+.brain-shape--2 {
+  transform: rotate(45deg) scale(0.78);
+}
+
+.brain-shape--3 {
+  border-radius: 50% 50% 2px 2px;
 }
 
 .graph-container {
@@ -698,6 +1064,37 @@ div[data-callout] > .callout-title {
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
 }
 
+.switcher-scope,
+.search-scope {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+
+.switcher-scope {
+  justify-content: flex-end;
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.switcher-scope[hidden] {
+  display: none;
+}
+
+.switcher-scope select,
+.search-scope select {
+  max-width: 100%;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--bg-elevated);
+  font: inherit;
+}
+
 .switcher input {
   width: 100%;
   font: inherit;
@@ -741,6 +1138,17 @@ div[data-callout] > .callout-title {
   font-size: 0.78rem;
 }
 
+.switcher-results .kind--brain::before {
+  content: "";
+  display: inline-block;
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-inline-end: 0.35rem;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  background: var(--brain-accent, transparent);
+}
+
 .switcher-empty {
   padding: 0.8rem 1rem;
   color: var(--text-muted);
@@ -753,6 +1161,11 @@ div[data-callout] > .callout-title {
   font: inherit;
 }
 
+.search-scope {
+  justify-content: flex-start;
+  margin: 0 0 1rem;
+}
+
 .graph-search-results {
   list-style: none;
   margin: 0.3rem 0 0;
@@ -760,7 +1173,9 @@ div[data-callout] > .callout-title {
 }
 
 .graph-search-results button {
-  display: block;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
   width: 100%;
   text-align: left;
   font: inherit;
@@ -771,6 +1186,11 @@ div[data-callout] > .callout-title {
   border-radius: 6px;
   padding: 0.3rem 0.5rem;
   cursor: pointer;
+}
+
+.graph-search-owner {
+  color: var(--text-muted);
+  font-size: 0.75rem;
 }
 
 .graph-search-results button:hover {
@@ -799,10 +1219,45 @@ div[data-callout] > .callout-title {
   text-align: right;
 }
 
-.legend {
+.legend,
+.graph-legend {
   color: var(--text-muted);
   font-size: 0.8rem;
   line-height: 1.5;
+}
+
+.graph-legend p {
+  margin: 0.45rem 0;
+}
+
+.graph-brain-key {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.55rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.graph-brain-key li {
+  display: grid;
+  grid-template-columns: 1rem 1fr;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.graph-brain-key .foreign-key {
+  grid-column: 2;
+  font-size: 0.72rem;
+  font-weight: 650;
+  text-transform: uppercase;
+}
+
+.cross-edge-key {
+  display: inline-block;
+  width: 1.8rem;
+  margin-inline-end: 0.35rem;
+  border-top: 3px solid #d97706;
+  vertical-align: middle;
 }
 
 .graph-count {
@@ -814,6 +1269,30 @@ div[data-callout] > .callout-title {
 @media (max-width: 700px) {
   main {
     padding: 1.5rem 1rem 3rem;
+  }
+
+  .brain-chooser__intro {
+    margin-top: 3.5rem;
+  }
+
+  .brain-group {
+    margin-inline-start: calc(var(--group-depth) * 0.55rem);
+  }
+
+  .brain-selection__action {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .brain-selection__action button {
+    width: 100%;
+  }
+
+  .combined-context {
+    top: 3.9rem;
+    left: 0.75rem;
+    max-width: calc(100vw - 1.5rem);
+    transform: none;
   }
 
   .recent-list .note-line {
@@ -867,7 +1346,4 @@ div[data-callout] > .callout-title {
     gap: 0.25rem;
   }
 
-  .graph-sidebar .legend {
-    display: none;
-  }
 }

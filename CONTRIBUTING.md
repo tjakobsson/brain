@@ -13,4 +13,4 @@ Changes to `action.yml`, `.github/workflows/publish-pages.yml`, generator inputs
 
 See [`RELEASING.md`](RELEASING.md) for candidate and stable-release procedures.
 
-The fixture under `examples/demo-vault/` must remain a plain Markdown vault that opens in Obsidian. Do not add personal vault content.
+The fixture under `examples/demo-vault/` must remain valid Brain Markdown that is readable in general Markdown tools. `.obsidian` is migration metadata excluded by default, not part of the authoring contract. Do not add personal Brain content.

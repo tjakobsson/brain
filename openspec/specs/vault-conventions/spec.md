@@ -2,16 +2,16 @@
 
 ## Purpose
 
-Defines the authoring contract for markdown notes in the vault so the AI author (and any human) produces consistent, machine-validatable content that stays fully compatible with Obsidian.
+Defines the Brain Markdown authoring contract so AI and human authors produce consistent, machine-validatable plain-text notes.
 
 ## Requirements
 
-### Requirement: Plain markdown vault
-The vault SHALL be a directory of plain `.md` files at `vault/` in the repository root, readable by any markdown tool. The vault MUST remain openable as a native Obsidian vault with working links, using no proprietary formats or build-time-only syntax that breaks plain-text readability.
+### Requirement: Plain Markdown Brain directory
+The Brain source SHALL be a directory of plain `.md` files readable by general Markdown tools. Brain-specific frontmatter and link syntax MUST remain legible as plain text and MUST NOT require proprietary binary data.
 
-#### Scenario: Open vault in Obsidian
-- **WHEN** the `vault/` directory is opened as an Obsidian vault
-- **THEN** all notes are readable and all `[[wiki-links]]` resolve natively within Obsidian
+#### Scenario: Read source without Brain
+- **WHEN** a Brain directory is opened in a text editor or general Markdown reader
+- **THEN** its note prose and link targets remain readable without generated files
 
 #### Scenario: Folder organization is free-form
 - **WHEN** a note is placed in any subfolder of `vault/` (or at the root)
@@ -40,7 +40,7 @@ Each note SHALL carry YAML frontmatter validated against a schema at build time.
 - **THEN** it builds successfully with defaults `permanent`, `draft`, and `[]`
 
 ### Requirement: Wiki-link authoring syntax
-Notes SHALL link to each other with Obsidian-style wiki-links: `[[Note Title]]`, `[[Note Title|display text]]` for aliases, and `[[Note Title#Heading]]` for heading anchors. Link targets MUST match note titles (not file paths), so links survive a note moving between subfolders.
+Notes SHALL link to each other with Brain wiki-links: `[[Note Title]]`, `[[Note Title|display text]]` for aliases, and `[[Note Title#Heading]]` for heading anchors. Link targets MUST match note titles, not file paths, so links survive a note moving between subfolders.
 
 #### Scenario: Alias link authored
 - **WHEN** a note contains `[[Zettelkasten method|the ZK method]]`

@@ -1,0 +1,15 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import GlobalGraph from "../../../components/GlobalGraph.astro";
+import { workspaceBrainPagePaths } from "../../../lib/page-paths";
+import { getWorkspaceSnapshot } from "../../../lib/vault-state";
+
+export function getStaticPaths() {
+  return workspaceBrainPagePaths(getWorkspaceSnapshot());
+}
+const { brain } = Astro.props;
+---
+
+<BaseLayout title={`${brain.title} graph`} activeBrainId={brain.id} fluid>
+  <GlobalGraph activeBrainId={brain.id} />
+</BaseLayout>

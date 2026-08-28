@@ -29,7 +29,7 @@ function splitHighlights(node: Text): PhrasingContent[] {
   return out;
 }
 
-/** Renders Obsidian-style `==highlighted text==` as `<mark>`. */
+/** Renders Brain `==highlighted text==` syntax as `<mark>`. */
 export function remarkHighlights() {
   return (tree: Root, _file: VFile) => {
     transformTextNodes(tree, splitHighlights);

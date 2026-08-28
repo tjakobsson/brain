@@ -52,6 +52,7 @@ const imageSourcePaths = [
   "THIRD_PARTY_NOTICES.md",
   "astro.config.ts",
   "examples/demo-vault",
+  "examples/demo-workspace",
   "package-lock.json",
   "package.json",
   "public",

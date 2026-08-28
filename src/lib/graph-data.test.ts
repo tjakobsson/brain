@@ -1,0 +1,142 @@
+import { describe, expect, it } from "vitest";
+import type { WorkspaceDefinition } from "./workspace.mjs";
+import { buildGraphData, deriveGraphData, deriveNoteNeighborhood, normalizeGraphData } from "./graph-data";
+import type { LinkIndex, VaultNote } from "./vault-scan";
+
+const registry = {
+  version: 1,
+  title: "Workspace",
+  exclusions: [],
+  groups: [],
+  brains: [
+    { id: "engineering", title: "Engineering", accent: "#3366cc" },
+    { id: "design", title: "Design", accent: "#b56cff" },
+    { id: "research", title: "Research", accent: "#228866" },
+  ],
+} as WorkspaceDefinition;
+
+function note(id: string, brainId: string, title: string): VaultNote {
+  return {
+    id,
+    compositeId: id,
+    brainId,
+    title,
+    slug: title.toLowerCase(),
+    route: `/brains/${brainId}/notes/${title.toLowerCase()}`,
+    filePath: `${brainId}/${title}.md`,
+    vaultPath: `${title}.md`,
+    source: "",
+    body: "",
+    links: [],
+    attachments: [],
+    frontmatter: {},
+    meta: { type: "permanent", status: "established", tags: ["shared"] },
+  };
+}
+
+const notes = [
+  note("engineering:principles", "engineering", "Principles"),
+  note("engineering:delivery", "engineering", "Delivery"),
+  note("design:principles", "design", "Principles"),
+  note("design:interaction", "design", "Interaction"),
+  note("research:evidence", "research", "Evidence"),
+];
+const edges = [
+  { source: notes[0].id, target: notes[1].id, sourceBrainId: "engineering", targetBrainId: "engineering", crossBrain: false },
+  { source: notes[0].id, target: notes[2].id, sourceBrainId: "engineering", targetBrainId: "design", crossBrain: true },
+  { source: notes[2].id, target: notes[3].id, sourceBrainId: "design", targetBrainId: "design", crossBrain: false },
+  { source: notes[3].id, target: notes[4].id, sourceBrainId: "design", targetBrainId: "research", crossBrain: true },
+];
+const index = { notes, edges } as LinkIndex;
+
+describe("workspace graph data", () => {
+  it("keeps duplicate titles distinct and emits ownership, routes, and cross-brain edges", () => {
+    const data = buildGraphData(index, registry, "workspace");
+    const principles = data.nodes.filter((node) => node.title === "Principles");
+
+    expect(principles.map(({ id }) => id)).toEqual(["design:principles", "engineering:principles"]);
+    expect(principles.map(({ route }) => route)).toEqual([
+      "/brains/design/notes/principles",
+      "/brains/engineering/notes/principles",
+    ]);
+    expect(principles[0]).toMatchObject({ brainId: "design", brainTitle: "Design", brainAccent: "#b56cff" });
+    expect(data.edges.filter((edge) => edge.crossBrain)).toHaveLength(2);
+    expect(data.nodes.some((node) => node.id === "missing")).toBe(false);
+  });
+
+  it("produces repeatable workspace positions regardless of input order", () => {
+    const first = buildGraphData(index, registry, "workspace");
+    const second = buildGraphData(
+      { notes: [...notes].reverse(), edges: [...edges].reverse() } as LinkIndex,
+      registry,
+      "workspace",
+    );
+    expect(second).toEqual(first);
+  });
+
+  it("keeps direct foreign boundaries in a brain graph without foreign-to-foreign expansion", () => {
+    const view = deriveGraphData(buildGraphData(index, registry, "workspace"), {
+      mode: "brain",
+      brainId: "engineering",
+    });
+    expect(view.nodes.map(({ id }) => id)).toEqual([
+      "design:principles",
+      "engineering:delivery",
+      "engineering:principles",
+    ]);
+    expect(view.edges).toHaveLength(2);
+  });
+
+  it("includes exactly selected brains and drops every incident edge for hidden brains", () => {
+    const view = deriveGraphData(buildGraphData(index, registry, "workspace"), {
+      mode: "combined",
+      brainIds: ["engineering", "research"],
+    });
+    expect(new Set(view.nodes.map(({ brainId }) => brainId))).toEqual(new Set(["engineering", "research"]));
+    expect(view.edges).toHaveLength(1);
+    expect(view.edges[0].crossBrain).toBe(false);
+  });
+
+  it("keeps local depth and direct foreign relationships in a note neighborhood", () => {
+    const local = deriveNoteNeighborhood(buildGraphData(index, registry, "workspace"), notes[0].id);
+    expect(local.nodes.map(({ id }) => id)).toEqual([
+      "design:principles",
+      "engineering:delivery",
+      "engineering:principles",
+    ]);
+    expect(local.edges).toHaveLength(2);
+  });
+
+  it("preserves single-vault IDs and routes", () => {
+    const vaultRegistry = {
+      ...registry,
+      brains: [{ id: "default", title: "Brain", accent: "#5b4bc4" }],
+    } as WorkspaceDefinition;
+    const vaultNote = note("principles", "default", "Principles");
+    vaultNote.route = "/notes/principles";
+    const data = buildGraphData({ notes: [vaultNote], edges: [] } as LinkIndex, vaultRegistry, "vault");
+    expect(data.nodes[0]).toMatchObject({ id: "principles", route: "/notes/principles" });
+  });
+
+  it("normalizes the original single-vault payload contract", () => {
+    const data = normalizeGraphData({
+      nodes: [{
+        id: "principles",
+        title: "Principles",
+        route: "/notes/principles",
+        type: "permanent",
+        status: "draft",
+        tags: [],
+        degree: 0,
+        x: 0,
+        y: 0,
+      }],
+      edges: [],
+    });
+    expect(data).toMatchObject({
+      mode: "vault",
+      brains: [{ id: "default", title: "Brain" }],
+      nodes: [{ id: "principles", brainId: "default", route: "/notes/principles" }],
+    });
+  });
+});

@@ -2,7 +2,7 @@ import type { Image, Link, Nodes, Parent, Text } from "mdast";
 import { fromMarkdown } from "mdast-util-from-markdown";
 
 export interface AttachmentReference {
-  kind: "markdown-image" | "markdown-link" | "obsidian-embed";
+  kind: "markdown-image" | "markdown-link" | "brain-embed";
   raw: string;
   target: string;
   anchor: string | null;
@@ -77,7 +77,7 @@ export function parseAttachmentReferences(
         const noteKey = target.replace(/\.md$/iu, "").toLowerCase();
         if (isMarkdown(target) || noteTitles.has(noteKey)) continue;
         references.push({
-          kind: "obsidian-embed",
+          kind: "brain-embed",
           raw: match[0],
           target,
           anchor: match[2]?.trim() ?? null,

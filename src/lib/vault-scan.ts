@@ -10,12 +10,13 @@ import {
   type WikiLink,
 } from "./wiki-links";
 import { slugify } from "./slugify";
-import { routes, type LogicalRoute } from "./routes";
+import { routesFor, type LogicalRoute } from "./routes";
 import { createVaultManifest, type VaultManifest } from "./vault-manifest";
 import {
   parseAttachmentReferences,
   type AttachmentReference,
 } from "./attachment-references";
+import { compositeNoteId, noteId, SINGLE_BRAIN_ID, type InputMode } from "./note-identity";
 
 export { VAULT_DIR } from "./vault-path";
 
@@ -31,6 +32,12 @@ export interface NoteMeta {
 }
 
 export interface VaultNote {
+  /** Public collection and graph identity. Kept as the slug in single-vault mode. */
+  id: string;
+  /** Stable ownership boundary for titles, links, mentions, and attachments. */
+  brainId: string;
+  /** Globally unique tuple identity, including in single-vault mode. */
+  compositeId: string;
   slug: string;
   /** Filename stem — the canonical identity and link target. */
   title: string;
@@ -48,30 +55,68 @@ export interface VaultNote {
 
 export interface Backlink {
   source: VaultNote;
+  sourceBrainId: string;
+  targetBrainId: string;
   /** The line of prose the link appears in, wiki syntax reduced to display text. */
   context: string;
 }
 
 export interface UnresolvedLink {
+  kind: "missing-note" | "unknown-brain";
+  sourceBrainId: string;
+  targetBrainId: string;
   /** File containing the link. */
   source: string;
   raw: string;
   target: string;
 }
 
+export interface LinkEdge {
+  source: string;
+  target: string;
+  sourceBrainId: string;
+  targetBrainId: string;
+  crossBrain: boolean;
+}
+
 export interface LinkIndex {
   notes: VaultNote[];
+  byId: Map<string, VaultNote>;
+  byBrainAndTitleKey: Map<string, Map<string, VaultNote>>;
   byTitleKey: Map<string, VaultNote>;
-  /** Resolved links only, deduplicated, no self-loops. Slugs on both ends. */
-  edges: { source: string; target: string }[];
-  /** Target slug → linking notes with context. */
+  /** Resolved links only, deduplicated, no self-loops. */
+  edges: LinkEdge[];
+  /** Target note ID -> linking notes with context. */
   backlinks: Map<string, Backlink[]>;
-  /** Target slug → notes that mention the title in prose without linking. */
+  /** Target note ID -> same-brain notes that mention the title without linking. */
   unlinkedMentions: Map<string, VaultNote[]>;
   /** Notes with zero inbound links. */
   orphans: VaultNote[];
   /** Wiki-links whose target does not exist. Reported as build warnings. */
   unresolved: UnresolvedLink[];
+}
+
+export interface BrainManifestInput {
+  brainId: string;
+  manifest: VaultManifest;
+}
+
+export type WikiLinkResolution =
+  | { kind: "resolved"; targetBrainId: string; note: VaultNote }
+  | { kind: "missing-note" | "unknown-brain"; targetBrainId: string };
+
+export function resolveWikiLinkTarget(
+  index: Pick<LinkIndex, "byBrainAndTitleKey">,
+  sourceBrainId: string,
+  link: WikiLink,
+): WikiLinkResolution {
+  const targetBrainId = link.targetBrainId ?? sourceBrainId;
+  const targetBrain = index.byBrainAndTitleKey.get(targetBrainId);
+  if (!targetBrain) return { kind: "unknown-brain", targetBrainId };
+  const note = targetBrain.get(link.target.toLowerCase());
+  return note
+    ? { kind: "resolved", targetBrainId, note }
+    : { kind: "missing-note", targetBrainId };
 }
 
 const NOTE_TYPES = ["fleeting", "literature", "permanent"] as const;
@@ -109,17 +154,21 @@ function searchableText(body: string): string {
   return stripMarkdownLinks(wikiLinksToText(stripCode(body)));
 }
 
-export function buildLinkIndex(manifest: VaultManifest): LinkIndex {
-  const notes: VaultNote[] = manifest.entries
+function scanBrain(input: BrainManifestInput, mode: InputMode): VaultNote[] {
+  const notes: VaultNote[] = input.manifest.entries
     .filter((entry) => entry.kind === "markdown")
     .map((entry) => {
       const source = fs.readFileSync(entry.absolutePath, "utf8");
       const { data, content } = matter(source);
       const title = path.basename(entry.path, path.extname(entry.path));
+      const slug = slugify(title);
       return {
-        slug: slugify(title),
+        id: noteId(mode, input.brainId, slug),
+        brainId: input.brainId,
+        compositeId: compositeNoteId(input.brainId, slug),
+        slug,
         title,
-        route: routes.note(slugify(title)),
+        route: routesFor({ mode, brainId: input.brainId }).note(slug),
         filePath: entry.absolutePath,
         meta: readMeta(data),
         body: content,
@@ -137,9 +186,9 @@ export function buildLinkIndex(manifest: VaultManifest): LinkIndex {
     const existing = byTitleKey.get(key);
     if (existing) {
       throw new Error(
-        `Duplicate note title "${note.title}" in vault:\n` +
+        `Duplicate note title "${note.title}" in brain "${input.brainId}":\n` +
           `  ${existing.filePath}\n  ${note.filePath}\n` +
-          `Note titles must be unique across the vault.`,
+          `Note titles must be unique within one brain.`,
       );
     }
     byTitleKey.set(key, note);
@@ -150,7 +199,26 @@ export function buildLinkIndex(manifest: VaultManifest): LinkIndex {
     note.attachments = parseAttachmentReferences(note.source, noteTitles);
   }
 
-  const edges: { source: string; target: string }[] = [];
+  return notes;
+}
+
+export function buildWorkspaceLinkIndex(
+  inputs: readonly BrainManifestInput[],
+  mode: InputMode = "workspace",
+): LinkIndex {
+  const notes = inputs.flatMap((input) => scanBrain(input, mode));
+  const byId = new Map(notes.map((note) => [note.id, note]));
+  const byBrainAndTitleKey = new Map<string, Map<string, VaultNote>>();
+  for (const input of inputs) byBrainAndTitleKey.set(input.brainId, new Map());
+  for (const note of notes) {
+    byBrainAndTitleKey.get(note.brainId)?.set(note.title.toLowerCase(), note);
+  }
+  // This compatibility map is authoritative only for single-vault callers.
+  const byTitleKey = mode === "vault"
+    ? (byBrainAndTitleKey.get(inputs[0]?.brainId ?? SINGLE_BRAIN_ID) ?? new Map())
+    : new Map<string, VaultNote>();
+
+  const edges: LinkEdge[] = [];
   const backlinks = new Map<string, Backlink[]>();
   const unresolved: UnresolvedLink[] = [];
   const unresolvedSeen = new Set<string>();
@@ -159,48 +227,86 @@ export function buildLinkIndex(manifest: VaultManifest): LinkIndex {
 
   for (const note of notes) {
     for (const link of note.links) {
-      const target = byTitleKey.get(link.target.toLowerCase());
-      if (!target) {
-        const key = `${note.filePath}${link.raw}`;
+      const resolution = resolveWikiLinkTarget(
+        { byBrainAndTitleKey },
+        note.brainId,
+        link,
+      );
+      if (resolution.kind !== "resolved") {
+        const { kind, targetBrainId } = resolution;
+        const key = JSON.stringify([note.id, kind, targetBrainId, link.raw]);
         if (!unresolvedSeen.has(key)) {
           unresolvedSeen.add(key);
-          unresolved.push({ source: note.filePath, raw: link.raw, target: link.target });
+          unresolved.push({
+            kind,
+            sourceBrainId: note.brainId,
+            targetBrainId,
+            source: note.filePath,
+            raw: link.raw,
+            target: link.target,
+          });
         }
         continue;
       }
-      if (target.slug === note.slug) continue;
-      const pairKey = `${note.slug}->${target.slug}`;
+      const target = resolution.note;
+      if (target.id === note.id) continue;
+      const pairKey = JSON.stringify([note.id, target.id]);
       linkedPairs.add(pairKey);
       if (edgeSeen.has(pairKey)) continue;
       edgeSeen.add(pairKey);
-      edges.push({ source: note.slug, target: target.slug });
-      backlinks.set(target.slug, [
-        ...(backlinks.get(target.slug) ?? []),
-        { source: note, context: extractContext(note.body, link) },
+      edges.push({
+        source: note.id,
+        target: target.id,
+        sourceBrainId: note.brainId,
+        targetBrainId: target.brainId,
+        crossBrain: note.brainId !== target.brainId,
+      });
+      backlinks.set(target.id, [
+        ...(backlinks.get(target.id) ?? []),
+        {
+          source: note,
+          sourceBrainId: note.brainId,
+          targetBrainId: target.brainId,
+          context: extractContext(note.body, link),
+        },
       ]);
     }
   }
 
   const unlinkedMentions = new Map<string, VaultNote[]>();
   const mentionable = notes.filter((n) => n.title.length >= MIN_MENTION_TITLE_LENGTH);
-  const textBySlug = new Map(notes.map((n) => [n.slug, searchableText(n.body)]));
+  const textById = new Map(notes.map((n) => [n.id, searchableText(n.body)]));
   for (const target of mentionable) {
     const pattern = new RegExp(`\\b${escapeRegExp(target.title)}\\b`, "i");
     for (const candidate of notes) {
-      if (candidate.slug === target.slug) continue;
-      if (linkedPairs.has(`${candidate.slug}->${target.slug}`)) continue;
-      if (pattern.test(textBySlug.get(candidate.slug) ?? "")) {
-        unlinkedMentions.set(target.slug, [
-          ...(unlinkedMentions.get(target.slug) ?? []),
+      if (candidate.brainId !== target.brainId || candidate.id === target.id) continue;
+      if (linkedPairs.has(JSON.stringify([candidate.id, target.id]))) continue;
+      if (pattern.test(textById.get(candidate.id) ?? "")) {
+        unlinkedMentions.set(target.id, [
+          ...(unlinkedMentions.get(target.id) ?? []),
           candidate,
         ]);
       }
     }
   }
 
-  const orphans = notes.filter((n) => !backlinks.has(n.slug));
+  const orphans = notes.filter((n) => !backlinks.has(n.id));
 
-  return { notes, byTitleKey, edges, backlinks, unlinkedMentions, orphans, unresolved };
+  return {
+    notes,
+    byId,
+    byBrainAndTitleKey,
+    byTitleKey,
+    edges,
+    backlinks,
+    unlinkedMentions,
+    orphans,
+    unresolved,
+  };
+}
+
+export function buildLinkIndex(manifest: VaultManifest): LinkIndex {
+  return buildWorkspaceLinkIndex([{ brainId: SINGLE_BRAIN_ID, manifest }], "vault");
 }
 
 export function scanVault(vaultDir: string = VAULT_DIR, exclusions: string[] = []): LinkIndex {

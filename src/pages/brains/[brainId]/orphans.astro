@@ -1,0 +1,12 @@
+---
+import OrphanNotes from "../../../components/OrphanNotes.astro";
+import { workspaceBrainPagePaths } from "../../../lib/page-paths";
+import { getWorkspaceSnapshot } from "../../../lib/vault-state";
+
+export function getStaticPaths() {
+  return workspaceBrainPagePaths(getWorkspaceSnapshot());
+}
+const { brainId } = Astro.params;
+---
+
+<OrphanNotes brainId={brainId} />

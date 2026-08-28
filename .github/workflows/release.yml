@@ -104,7 +104,8 @@ jobs:
           node --input-type=module - "$notes" <<'NODE'
           import fs from "node:fs";
           const image = `ghcr.io/${process.env.GITHUB_REPOSITORY.toLowerCase()}@${process.env.DIGEST}`;
-          fs.writeFileSync(process.argv[2], `# Brain v${process.env.VERSION}\n\nSee [CHANGELOG.md](https://github.com/${process.env.GITHUB_REPOSITORY}/blob/${process.env.GITHUB_SHA}/CHANGELOG.md) for release highlights.\n\n- Compatibility: v1\n- Release commit: \`${process.env.GITHUB_SHA}\`\n- Image source commit: \`${process.env.SOURCE_COMMIT}\`\n- OCI image: \`${image}\`\n- Platforms: \`linux/amd64\`, \`linux/arm64\`\n- Supply chain: SPDX SBOM and SLSA provenance are attached to the OCI index. GitHub build provenance is available through the repository attestations.\n`);
+          const major = process.env.VERSION.split(".")[0];
+          fs.writeFileSync(process.argv[2], `# Brain v${process.env.VERSION}\n\nSee [CHANGELOG.md](https://github.com/${process.env.GITHUB_REPOSITORY}/blob/${process.env.GITHUB_SHA}/CHANGELOG.md) for release highlights.\n\n- Compatibility: v${major}\n- Release commit: \`${process.env.GITHUB_SHA}\`\n- Image source commit: \`${process.env.SOURCE_COMMIT}\`\n- OCI image: \`${image}\`\n- Platforms: \`linux/amd64\`, \`linux/arm64\`\n- Supply chain: SPDX SBOM and SLSA provenance are attached to the OCI index. GitHub build provenance is available through the repository attestations.\n`);
           NODE
           gh release create "$GITHUB_REF_NAME" \
             --verify-tag \

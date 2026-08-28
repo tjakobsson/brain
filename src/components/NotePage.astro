@@ -1,0 +1,121 @@
+---
+import { render } from "astro:content";
+import BaseLayout from "../layouts/BaseLayout.astro";
+import NoteMeta from "./NoteMeta.astro";
+import NoteMentions from "./NoteMentions.astro";
+import { getLinkIndex } from "../lib/link-index";
+import { joinBase, routesFor } from "../lib/routes";
+import { getWorkspaceSnapshot } from "../lib/vault-state";
+
+const { entry } = Astro.props;
+const { Content } = await render(entry);
+const snapshot = getWorkspaceSnapshot();
+const index = getLinkIndex();
+const note = index.byId.get(entry.id);
+if (!note) throw new Error(`Note ${JSON.stringify(entry.id)} is missing from the workspace index.`);
+const title = entry.data.title ?? note.title;
+const brain = snapshot.registry.brains.find(({ id }) => id === note.brainId);
+if (!brain) throw new Error(`Note ${JSON.stringify(entry.id)} has unknown brain ${JSON.stringify(note.brainId)}.`);
+const adjacency = new Map<string, Set<string>>();
+for (const { source, target } of index.edges) {
+  adjacency.set(source, (adjacency.get(source) ?? new Set()).add(target));
+  adjacency.set(target, (adjacency.get(target) ?? new Set()).add(source));
+}
+const localIds = new Set([entry.id]);
+let frontier = [entry.id];
+for (let depth = 0; depth < 2; depth += 1) {
+  const next: string[] = [];
+  for (const id of frontier) {
+    for (const nearby of adjacency.get(id) ?? []) {
+      if (localIds.has(nearby) || index.byId.get(nearby)?.brainId !== note.brainId) continue;
+      localIds.add(nearby);
+      next.push(nearby);
+    }
+  }
+  frontier = next;
+}
+const nearbyIds = new Set<string>();
+for (const id of localIds) {
+  if (id !== entry.id) nearbyIds.add(id);
+  for (const nearby of adjacency.get(id) ?? []) {
+    if (index.byId.get(nearby)?.brainId !== note.brainId) nearbyIds.add(nearby);
+  }
+}
+const nearbyNotes = index.notes
+  .filter(({ id }) => nearbyIds.has(id))
+  .sort((a, b) => a.title.localeCompare(b.title));
+const contextualRoutes = routesFor(
+  snapshot.mode === "workspace"
+    ? { mode: "workspace", brainId: note.brainId }
+    : { mode: "vault" },
+);
+const url = (route: import("../lib/routes").LogicalRoute) =>
+  joinBase(import.meta.env.BASE_URL, route);
+---
+
+<BaseLayout title={title} activeBrainId={snapshot.mode === "workspace" ? note.brainId : undefined}>
+  <article
+    data-pagefind-body
+    data-brain-id={note.brainId}
+    data-brain-title={brain.title}
+    data-pagefind-filter={snapshot.mode === "workspace" ? "brain[data-brain-id]" : undefined}
+    data-pagefind-meta="brainId[data-brain-id], brainTitle[data-brain-title]"
+  >
+    <h1 data-pagefind-meta="title">{title}</h1>
+    <NoteMeta
+      brainId={note.brainId}
+      type={entry.data.type}
+      status={entry.data.status}
+      tags={entry.data.tags}
+      created={entry.data.created}
+      updated={entry.data.updated}
+    />
+    <Content />
+  </article>
+  {nearbyNotes.length > 0 && (
+    <section class="local-graph-panel" aria-labelledby="local-graph-heading">
+      <header class="local-graph-panel__header">
+        <div>
+          <h2 id="local-graph-heading">Connection map</h2>
+          <p>Notes up to two links away from this note.</p>
+        </div>
+        <div class="local-graph-panel__actions">
+          <button class="graph-control" type="button" data-fit-local-graph>Fit view</button>
+          <a href={url(contextualRoutes.graph)}>Open full graph</a>
+        </div>
+      </header>
+      <div class="local-graph" data-slug={entry.id} aria-hidden="true"></div>
+      <nav class="local-graph-links" aria-label="Notes in the connection map">
+        <span>Nearby notes</span>
+        <ul>
+          {nearbyNotes.map((nearby) => (
+            <li>
+              <a href={url(nearby.route)}>
+                {nearby.title}
+                {nearby.brainId !== note.brainId && <span class="brain-badge">↗ @{nearby.brainId}</span>}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </nav>
+    </section>
+  )}
+  <NoteMentions noteId={entry.id} brainId={note.brainId} />
+</BaseLayout>
+
+<script>
+  import { mountLocalGraphs } from "../lib/graph-view";
+
+  if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
+    for (const panel of document.querySelectorAll<HTMLElement>(".local-graph-panel")) {
+      panel.addEventListener("pointerenter", () => panel.setAttribute("data-spotlight", ""));
+      panel.addEventListener("pointermove", (event) => {
+        const bounds = panel.getBoundingClientRect();
+        panel.style.setProperty("--graph-spotlight-x", `${event.clientX - bounds.left}px`);
+        panel.style.setProperty("--graph-spotlight-y", `${event.clientY - bounds.top}px`);
+      });
+      panel.addEventListener("pointerleave", () => panel.removeAttribute("data-spotlight"));
+    }
+  }
+  mountLocalGraphs().catch((err) => console.error("[local-graph] failed to mount", err));
+</script>

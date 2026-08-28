@@ -7,23 +7,29 @@ import { afterEach, describe, expect, it } from "vitest";
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach((root) => fs.rmSync(root, { recursive: true, force: true })));
 
-describe("stress vault build", () => {
-  it("builds and indexes 2,000 public generated notes", () => {
+const GRAPH_PAYLOAD_LIMIT = 2 * 1024 * 1024;
+
+describe("stress workspace build", () => {
+  it("builds and indexes 2,000 public generated notes across four brains", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "stress-build-"));
     roots.push(root);
+    const fixture = path.join(root, "workspace");
     const output = path.join(root, "site");
-    const generated = spawnSync(process.execPath, [path.resolve("scripts/generate-stress-vault.mjs")], {
-      encoding: "utf8",
-    });
+    const generated = spawnSync(
+      process.execPath,
+      [path.resolve("scripts/generate-stress-vault.mjs"), "--output", fixture],
+      { encoding: "utf8" },
+    );
     expect(generated.status, generated.stderr).toBe(0);
 
+    const started = performance.now();
     const build = spawnSync(
       process.execPath,
       [
         path.resolve("scripts/generator.mjs"),
         "build",
-        "--vault",
-        path.resolve(".generated/stress-vault"),
+        "--workspace",
+        path.join(fixture, "workspace.json"),
         "--output",
         output,
         "--site",
@@ -35,14 +41,24 @@ describe("stress vault build", () => {
       { encoding: "utf8", maxBuffer: 10 * 1024 * 1024 },
     );
     expect(build.status, build.stderr).toBe(0);
+    const buildMilliseconds = Math.round(performance.now() - started);
 
-    const graph = JSON.parse(fs.readFileSync(path.join(output, "graph-data.json"), "utf8"));
+    const graphPath = path.join(output, "graph-data.json");
+    const graphPayloadBytes = fs.statSync(graphPath).size;
+    const graph = JSON.parse(fs.readFileSync(graphPath, "utf8"));
     const search = JSON.parse(fs.readFileSync(path.join(output, "search-index.json"), "utf8"));
+    expect(graph.mode).toBe("workspace");
+    expect(graph.brains).toHaveLength(4);
     expect(graph.nodes).toHaveLength(2_000);
+    expect(graph.edges.filter((edge: { crossBrain: boolean }) => edge.crossBrain)).toHaveLength(200);
+    // The former single-vault fixture measured 1,083,083 bytes. A 2 MiB ceiling leaves
+    // 94% for workspace ownership fields while still bounding the static graph download.
+    expect(graphPayloadBytes).toBeLessThanOrEqual(GRAPH_PAYLOAD_LIMIT);
     expect(search.filter((entry: { kind: string }) => entry.kind === "note")).toHaveLength(2_000);
-    expect(fs.existsSync(path.join(output, "notes", "generated-note-0001", "index.html"))).toBe(
-      true,
-    );
+    expect(fs.existsSync(
+      path.join(output, "brains", "brain-01", "notes", "generated-note-0001", "index.html"),
+    )).toBe(true);
     expect(fs.existsSync(path.join(output, "pagefind", "pagefind.js"))).toBe(true);
+    console.info(JSON.stringify({ buildMilliseconds, graphPayloadBytes }));
   }, 120_000);
 });

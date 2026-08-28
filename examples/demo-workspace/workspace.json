@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "title": "Demo Brain workspace",
+  "description": "A public fixture for several linked Brain directories.",
+  "exclusions": ["shared-private/**"],
+  "groups": [
+    { "id": "knowledge", "title": "Knowledge" },
+    { "id": "product", "title": "Product", "parent": "knowledge" },
+    { "id": "discovery", "title": "Discovery", "parent": "knowledge" }
+  ],
+  "brains": [
+    {
+      "id": "engineering",
+      "title": "Engineering",
+      "path": "./brains/engineering",
+      "group": "product",
+      "description": "Delivery and system knowledge",
+      "exclusions": ["drafts/**"]
+    },
+    {
+      "id": "design",
+      "title": "Design",
+      "path": "./brains/design",
+      "group": "product",
+      "description": "Interaction and visual decisions",
+      "accent": "#b56cff",
+      "exclusions": ["drafts/**"]
+    },
+    {
+      "id": "research",
+      "title": "Research",
+      "path": "./brains/research",
+      "group": "discovery",
+      "description": "Evidence and open questions"
+    }
+  ]
+}

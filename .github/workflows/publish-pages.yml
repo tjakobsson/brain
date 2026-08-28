@@ -4,17 +4,22 @@ on:
   workflow_call:
     inputs:
       vault:
-        description: Vault directory in the caller repository
+        description: Brain directory in the caller repository; leave empty when using workspace
         required: false
-        default: vault
+        default: ""
+        type: string
+      workspace:
+        description: Workspace manifest whose brain directories are in the caller repository
+        required: false
+        default: ""
         type: string
       exclusions:
-        description: Newline-delimited vault exclusion patterns
+        description: Newline-delimited Brain exclusion patterns
         required: false
         default: ""
         type: string
       strict-links:
-        description: Fail when the vault contains unresolved note links
+        description: Fail when a Brain link cannot be resolved
         required: false
         default: false
         type: boolean
@@ -47,23 +52,90 @@ jobs:
         env:
           GENERATOR_IMAGE: ghcr.io/tjakobsson/brain@sha256:b4dfbeb662a335e646b7d685e6b404cc1e80236b0c09be44792bb02556b1eb2a
           INPUT_VAULT: ${{ inputs.vault }}
+          INPUT_WORKSPACE: ${{ inputs.workspace }}
           INPUT_EXCLUSIONS: ${{ inputs.exclusions }}
           INPUT_STRICT_LINKS: ${{ inputs.strict-links }}
           PAGES_ORIGIN: ${{ steps.pages.outputs.origin }}
           PAGES_BASE_PATH: ${{ steps.pages.outputs.base_path }}
         run: |
           set -euo pipefail
-          vault_path="$(realpath -m -- "$GITHUB_WORKSPACE/$INPUT_VAULT")"
+          checkout="$(realpath -e -- "$GITHUB_WORKSPACE")"
+          vault_input="$INPUT_VAULT"
+          workspace_input="$INPUT_WORKSPACE"
+          if [[ -n "$vault_input" && -n "$workspace_input" ]]; then
+            echo "Options --vault and --workspace are mutually exclusive; choose one input mode." >&2
+            exit 1
+          fi
+          if [[ -z "$vault_input" && -z "$workspace_input" ]]; then
+            vault_input="vault"
+          fi
+
+          require_in_checkout() {
+            case "$1" in
+              "$checkout") printf '.' ;;
+              "$checkout"/*) printf '%s' "${1#"$checkout"/}" ;;
+              *)
+                echo "$2 must be inside the caller repository checkout: $1" >&2
+                exit 1
+                ;;
+            esac
+          }
+
           build_root="$RUNNER_TEMP/brain-pages"
           mkdir -p "$build_root/output" "$build_root/work" "$build_root/tmp"
 
           args=(
             build
-            --vault /vault
             --output /output/site
             --site "$PAGES_ORIGIN"
             --base "${PAGES_BASE_PATH:-/}"
           )
+          mounts=()
+          if [[ -n "$workspace_input" ]]; then
+            workspace_path="$(realpath -e -- "$GITHUB_WORKSPACE/$workspace_input")"
+            require_in_checkout "$workspace_path" "Workspace manifest" >/dev/null
+            node --input-type=module - "$workspace_path" "$checkout" <<'NODE'
+          import fs from "node:fs";
+          import path from "node:path";
+
+          const [manifestPath, checkout] = process.argv.slice(2);
+          let manifest;
+          try {
+            manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+          } catch {
+            process.exit(0); // The generator reports malformed manifests with its full diagnostic.
+          }
+          if (!Array.isArray(manifest.brains)) process.exit(0);
+
+          const inside = (candidate) => {
+            const relative = path.relative(checkout, candidate);
+            return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
+          };
+          for (const brain of manifest.brains) {
+            if (typeof brain?.path !== "string") continue;
+            const configured = path.resolve(path.dirname(manifestPath), brain.path);
+            let resolved = configured;
+            try {
+              resolved = fs.realpathSync(configured);
+            } catch {
+              // The image reports missing sources by brain ID after the boundary check.
+            }
+            if (!inside(configured) || !inside(resolved)) {
+              const id = typeof brain.id === "string" ? brain.id : "<unknown>";
+              console.error(`Brain ${JSON.stringify(id)} resolves outside the caller repository checkout: ${resolved}`);
+              console.error("The reusable Pages workflow supports only sources in the caller checkout. Prepare multiple checkouts in a caller-authored job and use the Brain build Action instead.");
+              process.exit(1);
+            }
+          }
+          NODE
+            args+=(--workspace "$workspace_path")
+            mounts+=(--mount "type=bind,src=$checkout,dst=$checkout,readonly")
+          else
+            vault_path="$(realpath -e -- "$GITHUB_WORKSPACE/$vault_input")"
+            require_in_checkout "$vault_path" "Brain directory" >/dev/null
+            args+=(--vault /vault)
+            mounts+=(--mount "type=bind,src=$vault_path,dst=/vault,readonly")
+          fi
           while IFS= read -r pattern || [[ -n "$pattern" ]]; do
             [[ -z "$pattern" ]] && continue
             args+=(--exclude "$pattern")
@@ -76,7 +148,7 @@ jobs:
             --read-only \
             --network none \
             --user "$(id -u):$(id -g)" \
-            --mount "type=bind,src=$vault_path,dst=/vault,readonly" \
+            "${mounts[@]}" \
             --mount "type=bind,src=$build_root/output,dst=/output" \
             --mount "type=bind,src=$build_root/work,dst=/work" \
             --mount "type=bind,src=$build_root/tmp,dst=/tmp" \

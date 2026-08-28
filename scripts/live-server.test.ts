@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createBuildCoordinator, serveLiveSite, waitUntilReady } from "./live-server.mjs";
+import { validateGeneratorInputs } from "./generator-safety.mjs";
 
 let root: string;
 const children: ReturnType<typeof spawn>[] = [];
@@ -34,6 +35,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
   await Promise.all(
     children.splice(0).map(
       (child) =>
@@ -271,6 +273,213 @@ describe("brain serve command", () => {
     expect(fs.statSync(vault).mode).toBe(vaultMode);
     expect(fs.readdirSync(root).some((entry) => entry.includes(".generation-"))).toBe(false);
   }, 60_000);
+
+  it("updates workspace roots only after successful generations and recovers through the manifest", async () => {
+    const workspace = path.join(root, "workspace.json");
+    const alpha = path.join(root, "alpha");
+    const beta = path.join(root, "beta");
+    const gamma = path.join(root, "gamma");
+    const missing = path.join(root, "missing");
+    for (const directory of [alpha, beta, gamma]) fs.mkdirSync(directory);
+    fs.writeFileSync(path.join(alpha, "Alpha.md"), "Alpha one.\n");
+    fs.writeFileSync(path.join(beta, "Beta.md"), "Beta one.\n");
+    fs.writeFileSync(path.join(gamma, "Gamma.md"), "Gamma one.\n");
+
+    function writeManifest({
+      title,
+      brains,
+      nested = false,
+    }: {
+      title: string;
+      brains: Array<{ id: string; path: string; group?: string }>;
+      nested?: boolean;
+    }) {
+      fs.writeFileSync(
+        workspace,
+        JSON.stringify({
+          version: 1,
+          title,
+          groups: nested
+            ? [
+                { id: "all", title: "All" },
+                { id: "nested", title: "Nested", parent: "all" },
+              ]
+            : [{ id: "all", title: "All" }],
+          brains: brains.map((brain) => ({
+            id: brain.id,
+            title: brain.id,
+            path: brain.path,
+            group: brain.group ?? "all",
+          })),
+        }),
+      );
+    }
+
+    writeManifest({
+      title: "Initial workspace",
+      brains: [
+        { id: "alpha", path: alpha },
+        { id: "beta", path: beta },
+      ],
+    });
+    const port = await availablePort();
+    const inputs = {
+      command: "serve",
+      mode: "workspace",
+      workspace,
+      output: path.join(root, "site"),
+      site: undefined,
+      base: "",
+      exclusions: [],
+      strictLinks: false,
+      host: "127.0.0.1",
+      port,
+    };
+    const abort = new AbortController();
+    let builds = 0;
+    const errors: string[] = [];
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation((message) => errors.push(String(message)));
+    const serving = serveLiveSite({
+      inputs,
+      signal: abort.signal,
+      async buildGeneration() {
+        builds += 1;
+        const validated = await validateGeneratorInputs(inputs);
+        const generation = path.join(root, `.workspace-generation-${builds}`);
+        const brainFiles = validated.workspaceDefinition.brains.map((brain) => ({
+          id: brain.id,
+          files: fs
+            .readdirSync(brain.path)
+            .filter((name) => name.endsWith(".md"))
+            .sort()
+            .map((name) => [name, fs.readFileSync(path.join(brain.path, name), "utf8")]),
+        }));
+        fs.mkdirSync(generation);
+        fs.writeFileSync(
+          path.join(generation, "index.html"),
+          `<html><body>${JSON.stringify({
+            title: validated.workspaceDefinition.title,
+            groups: validated.workspaceDefinition.groups,
+            brains: brainFiles,
+          })}</body></html>`,
+        );
+        return { output: generation, validated };
+      },
+    });
+    const url = `http://127.0.0.1:${port}/`;
+    const body = async () => {
+      try {
+        return await (await fetch(url)).text();
+      } catch {
+        return "";
+      }
+    };
+
+    await waitFor(async () => (await body()).includes("Initial workspace"), "workspace did not start");
+
+    fs.writeFileSync(path.join(alpha, "Alpha.md"), "Alpha two.\n");
+    await waitFor(async () => (await body()).includes("Alpha two."), "active brain edit did not rebuild");
+
+    fs.writeFileSync(path.join(beta, "Added.md"), "Added note.\n");
+    await waitFor(async () => (await body()).includes("Added note."), "added note did not rebuild");
+    fs.rmSync(path.join(beta, "Added.md"));
+    await waitFor(async () => !(await body()).includes("Added note."), "removed note did not rebuild");
+
+    writeManifest({
+      title: "Nested hierarchy",
+      nested: true,
+      brains: [
+        { id: "alpha", path: alpha, group: "nested" },
+        { id: "beta", path: beta },
+      ],
+    });
+    await waitFor(async () => (await body()).includes("Nested hierarchy"), "hierarchy edit did not rebuild");
+
+    writeManifest({
+      title: "Gamma added",
+      brains: [
+        { id: "alpha", path: alpha },
+        { id: "beta", path: beta },
+        { id: "gamma", path: gamma },
+      ],
+    });
+    await waitFor(async () => (await body()).includes("Gamma added"), "brain addition did not rebuild");
+    fs.writeFileSync(path.join(gamma, "Gamma.md"), "Gamma two.\n");
+    await waitFor(async () => (await body()).includes("Gamma two."), "added brain was not watched");
+
+    writeManifest({
+      title: "Alpha removed",
+      brains: [
+        { id: "beta", path: beta },
+        { id: "gamma", path: gamma },
+      ],
+    });
+    await waitFor(async () => (await body()).includes("Alpha removed"), "brain removal did not rebuild");
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const buildsAfterRemoval = builds;
+    fs.writeFileSync(path.join(alpha, "Alpha.md"), "Alpha should be ignored.\n");
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    expect(builds).toBe(buildsAfterRemoval);
+
+    const lastSuccess = await body();
+    fs.writeFileSync(workspace, '{"version": 1,');
+    await waitFor(() => errors.some((message) => message.includes("malformed JSON")), "malformed manifest did not fail");
+    expect(await body()).toBe(lastSuccess);
+    const buildsAfterMalformed = builds;
+    fs.writeFileSync(path.join(beta, "Beta.md"), "Beta while malformed.\n");
+    await waitFor(() => builds > buildsAfterMalformed, "prior brain roots were not retained after malformed manifest");
+    expect(await body()).toBe(lastSuccess);
+
+    writeManifest({
+      title: "Recovered once",
+      brains: [
+        { id: "beta", path: beta },
+        { id: "gamma", path: gamma },
+      ],
+    });
+    await waitFor(async () => (await body()).includes("Recovered once"), "malformed manifest did not recover");
+
+    writeManifest({
+      title: "Unavailable brain",
+      brains: [
+        { id: "beta", path: beta },
+        { id: "missing", path: missing },
+      ],
+    });
+    await waitFor(() => errors.some((message) => message.includes('Brain "missing"')), "invalid brain root did not fail");
+    expect(await body()).toContain("Recovered once");
+    const buildsAfterInvalidRoot = builds;
+    fs.writeFileSync(path.join(gamma, "Gamma.md"), "Gamma while invalid.\n");
+    await waitFor(() => builds > buildsAfterInvalidRoot, "prior watch set was not retained after validation failure");
+    expect(await body()).toContain("Recovered once");
+
+    writeManifest({
+      title: "Recovered twice",
+      brains: [
+        { id: "beta", path: beta },
+        { id: "gamma", path: gamma },
+      ],
+    });
+    await waitFor(async () => (await body()).includes("Recovered twice"), "valid manifest did not recover");
+
+    const buildsBeforeBurst = builds;
+    fs.writeFileSync(path.join(beta, "Beta.md"), "Burst one.\n");
+    fs.writeFileSync(path.join(beta, "Beta.md"), "Burst two.\n");
+    fs.writeFileSync(path.join(beta, "Beta.md"), "Burst final.\n");
+    await waitFor(async () => (await body()).includes("Burst final."), "debounced edit did not rebuild");
+    await new Promise((resolve) => setTimeout(resolve, 750));
+    expect(builds).toBe(buildsBeforeBurst + 1);
+
+    abort.abort();
+    await serving;
+    const buildsAfterShutdown = builds;
+    fs.writeFileSync(path.join(beta, "Beta.md"), "After shutdown.\n");
+    fs.writeFileSync(workspace, '{"version": 1,');
+    await new Promise((resolve) => setTimeout(resolve, 750));
+    expect(builds).toBe(buildsAfterShutdown);
+    expect(fs.readdirSync(root).some((entry) => entry.startsWith(".workspace-generation-"))).toBe(false);
+  }, 30_000);
 
   it("does not listen when initial validation fails", async () => {
     const port = await availablePort();

@@ -17,6 +17,7 @@ RUN ["/usr/bin/node", "-e", "require('node:fs').symlinkSync('/work/astro-types',
 COPY --from=dependencies --chown=65532:65532 /app/node_modules ./node_modules
 COPY --chown=65532:65532 package.json package-lock.json astro.config.ts tsconfig.json LICENSE THIRD_PARTY_NOTICES.md ./
 COPY --chown=65532:65532 examples/demo-vault ./examples/demo-vault
+COPY --chown=65532:65532 examples/demo-workspace ./examples/demo-workspace
 COPY --chown=65532:65532 public ./public
 COPY --chown=65532:65532 scripts/generator.mjs scripts/generator-inputs.mjs scripts/generator-safety.mjs scripts/live-server.mjs scripts/static-server.mjs ./scripts/
 COPY --chown=65532:65532 src ./src

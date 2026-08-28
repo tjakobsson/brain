@@ -1,0 +1,35 @@
+name: Build Brain workspace
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out publication configuration
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Check out Engineering brain
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: example/engineering-brain
+          path: brains/engineering
+
+      - name: Check out Design brain
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: example/design-brain
+          path: brains/design
+
+      - id: site
+        uses: tjakobsson/brain@v1
+        with:
+          workspace: workspace.json
+          output: dist
+          strict-links: true
+
+      - run: test -d "${{ steps.site.outputs.output-path }}"

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Renders vault notes into beautiful static pages with resolved wiki-links, Obsidian-flavored markdown extensions, and visible Zettelkasten metadata, so reading the site feels like browsing a living knowledge base.
+Renders Brain Markdown notes into static pages with resolved wiki-links, Brain Markdown extensions, and visible Zettelkasten metadata.
 
 ## Requirements
 
@@ -18,7 +18,7 @@ Every note SHALL be published as its own page. Wiki-links in the body MUST rende
 - **THEN** all internal links are plain `<a href>` elements in static HTML, functional with JavaScript disabled
 
 ### Requirement: Unwritten notes are visible, not fatal
-A wiki-link pointing to a note that does not exist SHALL render with visually distinct "unwritten note" styling (Obsidian-style dashed/muted treatment) and MUST produce a build warning naming the source file and unresolved target. Unresolved links MUST NOT fail the build.
+A wiki-link pointing to a note that does not exist SHALL render with visually distinct "unwritten note" styling and MUST produce a build warning naming the source file and unresolved target. Unresolved links MUST NOT fail the build.
 
 #### Scenario: Link to unwritten note
 - **WHEN** a published note contains `[[Future idea]]` and no such note exists
@@ -31,8 +31,8 @@ Each note page SHALL visibly display the note's `type` and `status` (as distinct
 - **WHEN** a reader opens a `draft` note and an `established` note
 - **THEN** the two statuses are distinguishable at a glance (e.g. icon or color), without reading frontmatter text
 
-### Requirement: Obsidian-flavored markdown extensions
-The renderer SHALL support Obsidian callouts (`> [!note]`, `> [!warning]`, etc.) rendered as styled admonition blocks, and `==highlighted text==` rendered with highlight styling.
+### Requirement: Brain Markdown extensions
+The renderer SHALL support Brain callouts (`> [!note]`, `> [!warning]`, etc.) rendered as styled admonition blocks, and `==highlighted text==` rendered with highlight styling.
 
 #### Scenario: Callout rendering
 - **WHEN** a note contains a `> [!warning]` callout block

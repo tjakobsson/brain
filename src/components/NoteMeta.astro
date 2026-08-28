@@ -1,8 +1,10 @@
 ---
-import { joinBase, routes } from "../lib/routes";
+import { joinBase, routesFor } from "../lib/routes";
 import { formatTimestamp } from "../lib/timestamps";
+import { getWorkspaceSnapshot } from "../lib/vault-state";
 
 interface Props {
+  brainId: string;
   type: "fleeting" | "literature" | "permanent";
   status: "draft" | "developing" | "established";
   tags: string[];
@@ -10,7 +12,11 @@ interface Props {
   updated?: Date;
 }
 
-const { type, status, tags, created, updated } = Astro.props;
+const { brainId, type, status, tags, created, updated } = Astro.props;
+const snapshot = getWorkspaceSnapshot();
+const contextualRoutes = routesFor(
+  snapshot.mode === "workspace" ? { mode: "workspace", brainId } : { mode: "vault" },
+);
 
 const STATUS_GLYPHS = { draft: "○", developing: "◐", established: "●" } as const;
 ---
@@ -21,7 +27,7 @@ const STATUS_GLYPHS = { draft: "○", developing: "◐", established: "●" } as
     <span class="glyph">{STATUS_GLYPHS[status]}</span>
     {status}
   </span>
-  {tags.map((tag) => <a class="tag-link" href={joinBase(import.meta.env.BASE_URL, routes.tag(tag))}>#{tag}</a>)}
+  {tags.map((tag) => <a class="tag-link" href={joinBase(import.meta.env.BASE_URL, contextualRoutes.tag(tag))}>#{tag}</a>)}
   {created && <span>created <time datetime={created.toISOString()}>{formatTimestamp(created)}</time></span>}
   {updated && <span>updated <time datetime={updated.toISOString()}>{formatTimestamp(updated)}</time></span>}
 </div>

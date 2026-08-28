@@ -1,5 +1,5 @@
 import type { LinkIndex } from "./vault-scan";
-import { getVaultSnapshot } from "./vault-state";
+import { getWorkspaceSnapshot } from "./vault-state";
 
 /**
  * The shared Phase-1 link index. Primed by the vault Astro integration at
@@ -7,5 +7,7 @@ import { getVaultSnapshot } from "./vault-state";
  * endpoints work regardless of hook ordering.
  */
 export function getLinkIndex(): LinkIndex {
-  return getVaultSnapshot().index;
+  return getWorkspaceSnapshot().index;
 }
+
+export type { LinkIndex } from "./vault-scan";

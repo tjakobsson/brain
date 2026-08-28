@@ -1,22 +1,23 @@
 # Brain
 
-Brain turns a plain Markdown Obsidian vault into a static, searchable second-brain site. The same generator runs from source, as a non-root OCI image, or through a composite GitHub Action that can feed a GitHub Pages workflow.
+Brain turns Brain Markdown directories and workspaces into static, searchable second-brain sites. The same generator runs from source, as a non-root OCI image, or through a composite GitHub Action that can feed a GitHub Pages workflow.
 
 ![Brain showing linked notes on desktop and mobile](docs/brain-showcase.svg)
 
 ## Get started
 
-- [Run your vault locally with Docker](#start-with-docker)
-- [Publish your vault with GitHub Pages](#publish-with-github-pages)
-- [Prepare your vault](#vault-format)
+- [Run a Brain locally with Docker](#start-with-docker)
+- [Publish a Brain with GitHub Pages](#publish-with-github-pages)
+- [Prepare Brain Markdown](#brain-markdown-format)
+- [Combine several brains in a workspace](docs/workspaces.md)
 - [Build Brain from source](#source-build)
 
 ## Start with Docker
 
-You only need [Docker Desktop](https://www.docker.com/products/docker-desktop/), or Docker Engine on Linux, and an Obsidian vault. You do not need Node.js or a copy of this repository. Brain mounts the vault read-only, so it does not change your notes.
+You only need [Docker Desktop](https://www.docker.com/products/docker-desktop/), or Docker Engine on Linux, and a Brain Markdown directory. You do not need Node.js or a copy of this repository. Brain mounts the source read-only, so it does not change your notes.
 
 1. Install and start Docker.
-2. Open a terminal in your Obsidian vault folder.
+2. Open a terminal in your Brain directory.
 3. Run this command:
 
    ```sh
@@ -25,24 +26,24 @@ You only need [Docker Desktop](https://www.docker.com/products/docker-desktop/),
 
 4. Open [http://127.0.0.1:4321/](http://127.0.0.1:4321/) in a browser.
 
-Keep the terminal open while using Brain. Changes to the vault rebuild the site and reload the browser after a successful build. Press `Ctrl+C` to stop it.
+Keep the terminal open while using Brain. Source changes rebuild the site and reload the browser after a successful build. Press `Ctrl+C` to stop it.
 
-The `v1` image tracks backward-compatible v1 releases. Pin an exact version or digest when the deployment must not move.
+The `v1` image tracks maintained v1 releases. Pin an exact version or digest when the deployment must not move.
 
 ## Publish with GitHub Pages
 
-GitHub Actions can rebuild and publish the site whenever you push changes to your vault. Only use this with a vault intended for public reading: Brain publishes every included note and referenced attachment.
+GitHub Actions can rebuild and publish the site whenever you push changes to your Brain directory. Only use this with content intended for public reading. Brain publishes every included note and referenced attachment.
 
-1. Create a GitHub repository for your vault and push the vault files to its `main` branch.
+1. Create a GitHub repository for your Brain directory and push the files to its `main` branch.
 2. Open the repository's **Settings > Pages** and set **Source** to **GitHub Actions**.
-3. Add [`pages-major.yml`](docs/examples/pages-major.yml) to the vault repository as `.github/workflows/pages.yml`.
+3. Add [`pages-major.yml`](docs/examples/pages-major.yml) to the Brain repository as `.github/workflows/pages.yml`.
 4. Commit and push the workflow. Follow the **Publish second brain** run in the repository's **Actions** tab; its deploy job links to the published site.
 
-The workflow grants only the permissions needed to read the vault and publish GitHub Pages. For an immutable deployment, replace `tjakobsson/brain@v1` with a full Brain commit SHA.
+The workflow grants only the permissions needed to read the source and publish GitHub Pages. For an immutable deployment, replace `tjakobsson/brain@v1` with a full Brain commit SHA.
 
-## Vault Format
+## Brain Markdown format
 
-Note filenames are titles and must be unique across the vault. Do not repeat the title as an H1. Optional frontmatter controls note type, maturity, tags, and dates or ISO timestamps:
+Note filenames are titles and must be unique inside one Brain directory. Do not repeat the title as an H1. Optional frontmatter controls note type, maturity, tags, and dates or ISO timestamps:
 
 ```yaml
 ---
@@ -54,7 +55,11 @@ updated: 2026-08-27T16:40:00Z
 ---
 ```
 
-Wiki-links use titles, not paths: `[[Portable notes]]`, `[[Portable notes|an alias]]`, or `[[Portable notes#Heading]]`. Unresolved note links produce warnings unless strict validation is enabled.
+Brain wiki-links use titles, not paths: `[[Portable notes]]`, `[[Portable notes|an alias]]`, or `[[Portable notes#Heading]]`. Unresolved note links produce warnings unless strict validation is enabled. Callouts, highlights, and attachment embeds are Brain Markdown features defined by this project.
+
+Brain Markdown remains readable as plain text in general Markdown tools. Native compatibility with a specific knowledge-management application is not part of the contract. `.obsidian` is excluded by default as migration metadata.
+
+To publish several independent directories together, use a [Brain workspace](docs/workspaces.md). Workspace links can target another registered brain with `[[@brain-id/Note Title]]`.
 
 ## Source Build
 
@@ -82,7 +87,7 @@ node scripts/generator.mjs preview \
 
 Open `http://localhost:4322/notes/`.
 
-For live authoring, `serve` watches the vault and runs the same complete production build and Pagefind indexing after changes. It keeps the last successful site available if a note is temporarily invalid and reloads the browser only after a successful replacement:
+For live authoring, `serve` watches the Brain directory and runs the same complete production build and Pagefind indexing after changes. It keeps the last successful site available if a note is temporarily invalid and reloads the browser only after a successful replacement:
 
 ```sh
 node scripts/generator.mjs serve \
@@ -90,6 +95,16 @@ node scripts/generator.mjs serve \
   --output .generated/source-live \
   --port 4321
 ```
+
+Workspace commands use the public fixture manifest:
+
+```sh
+node scripts/generator.mjs build \
+  --workspace examples/demo-workspace/workspace.json \
+  --output .generated/workspace-site
+```
+
+See [Brain workspaces](docs/workspaces.md) for the complete v1 schema, source and container commands, routes, scope rules, and publication constraints.
 
 ## Build the Docker image locally
 
@@ -100,6 +115,8 @@ docker build --tag brain:source .
 ```
 
 Use `brain:source` in place of `ghcr.io/tjakobsson/brain:v1` in the quick-start command above.
+
+For a workspace build or preview, mount the manifest and every referenced Brain directory read-only. The [workspace container examples](docs/workspaces.md#container-mounts) run against `examples/demo-workspace/workspace.json`.
 
 For a one-shot static build, prepare caller-owned output directories:
 
@@ -179,30 +196,31 @@ Podman on macOS or Windows first requires a running Podman machine and shared ac
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `--vault <path>` | `./examples/demo-vault` | Readable Obsidian vault |
+| `--vault <path>` | `./examples/demo-vault` | One readable Brain directory |
+| `--workspace <path>` | unset | Workspace v1 JSON manifest; mutually exclusive with `--vault` |
 | `--output <path>` | `./dist` | Static output directory |
 | `--site <origin>` | unset | Canonical HTTP(S) origin without a path |
 | `--base <path>` | `/` | Root or project deployment path |
-| `--exclude <glob>` | none | Additional vault exclusion; repeatable |
+| `--exclude <glob>` | none | Additional Brain exclusion; repeatable |
 | `--strict-links` | off | Fail on unresolved wiki-links |
 | `--host <host>` | `localhost` | Preview or live-server bind host |
 | `--port <port>` | `4321` | Preview or live-server port |
 
-Hidden path segments, `.obsidian`, `.github`, and `Templates` are excluded by default. An excluded referenced attachment is an error. An excluded linked note becomes an unresolved-link warning or, with `--strict-links`, an error.
+Hidden path segments, `.obsidian`, `.github`, and `Templates` are excluded by default. `.obsidian` is treated only as migration metadata. An excluded referenced attachment is an error. An excluded linked note becomes an unresolved-link warning or, with `--strict-links`, an error.
 
-The generator rejects invalid URLs, unsafe output locations, unreadable or empty vaults, duplicate titles, invalid frontmatter, missing or ambiguous attachments, and unwritable output parents. Output promotion is atomic, so a failed build preserves the previous site.
+The generator rejects invalid URLs, unsafe output locations, unreadable or empty Brain directories, duplicate titles within one brain, invalid frontmatter, missing or ambiguous attachments, and unwritable output parents. Output promotion is atomic, so a failed build preserves the previous site.
 
 ## Attachments
 
-The generator publishes only referenced files while preserving their vault-relative paths. Supported references are:
+The generator publishes only referenced files while preserving their Brain-relative paths. Supported references are:
 
 ```md
 ![Markdown image](media/diagram.svg)
 [Download](media/reference.txt)
-![[media/diagram.svg|Obsidian image alias]]
+![[media/diagram.svg|Brain image alias]]
 ```
 
-Paths may be relative to the note or vault root. A unique filename can resolve without a directory; ambiguous filenames fail. Missing, excluded, escaping-symlink, and outside-vault targets fail the build. Raw HTML references, plugin-specific embeds, and Markdown transclusion are not attachment inputs.
+Paths may be relative to the note or Brain root. A unique filename can resolve without a directory; ambiguous filenames fail. Missing, excluded, escaping-symlink, and outside-source targets fail the build. Raw HTML references, plugin-specific embeds, and Markdown transclusion are not attachment inputs. Workspace attachments never resolve across brain boundaries.
 
 ## Deployment Addressing
 
@@ -230,21 +248,25 @@ The Pages examples derive both values from GitHub Pages configuration, including
 
 ## GitHub Action
 
-The Linux composite Action creates caller-owned directories, runs the immutable release image as the runner UID/GID, and returns `output-path`. `exclusions` is newline-delimited.
+The Linux composite Action creates caller-owned directories, runs the immutable release image as the runner UID/GID, and returns `output-path`. `exclusions` is newline-delimited. Supply either `vault` for one Brain directory or `workspace` for a manifest, never both.
 
-Use `tjakobsson/brain@v1` for compatible v1 updates or replace `v1` with a reviewed full commit SHA for an immutable toolchain. See [`docs/examples/build-action-major.yml`](docs/examples/build-action-major.yml) for a complete example.
+Use `tjakobsson/brain@v1` for maintained v1 updates or replace `v1` with a reviewed full commit SHA for an immutable toolchain. See [`docs/examples/build-action-major.yml`](docs/examples/build-action-major.yml) for one Brain and [`build-action-workspace-major.yml`](docs/examples/build-action-workspace-major.yml) for caller-prepared multi-repository checkouts.
+
+For a workspace spanning repositories, the caller must check out every repository before invoking the Action. See [GitHub Action checkouts](docs/workspaces.md#github-action-checkouts).
 
 ## GitHub Pages
 
-In the vault repository, select **Settings > Pages > Build and deployment > Source > GitHub Actions**. The workflow grants only `contents: read`, `pages: write`, and `id-token: write`. It checks out the vault, builds with `tjakobsson/brain`, uploads one official Pages artifact, and deploys through the `github-pages` environment.
+In the Brain repository, select **Settings > Pages > Build and deployment > Source > GitHub Actions**. The workflow grants only `contents: read`, `pages: write`, and `id-token: write`. It checks out the source, builds with `tjakobsson/brain`, uploads one official Pages artifact, and deploys through the `github-pages` environment.
 
-Use `tjakobsson/brain@v1` in the build step for compatible v1 updates or replace `v1` with a reviewed full commit SHA for immutable deployment. See [`docs/examples/pages-major.yml`](docs/examples/pages-major.yml).
+Use `tjakobsson/brain@v1` in the build step for maintained v1 updates or replace `v1` with a reviewed full commit SHA for immutable deployment. See [`docs/examples/pages-major.yml`](docs/examples/pages-major.yml).
+
+The reusable Pages workflow supports a workspace only when its manifest and every Brain directory are inside the caller repository checkout. Multi-repository publication requires a caller-authored job with explicit checkouts and the build Action. See [the Pages limitation](docs/workspaces.md#github-pages-limitation).
 
 Removing or renaming an input, changing a default or output, or changing supported behavior requires a new major release. Backward-compatible fixes update the maintained major reference. A full SHA never moves.
 
 ## Rollback
 
-For a failed local generation, fix the input and rerun; atomic promotion leaves the prior output untouched. For automation regressions, pin the prior Action commit SHA and its associated image digest. Release notes identify the source commit, OCI digest, SBOM, provenance, and compatibility level. Repository migration rollback restores the vault from its verified consumer repository before changing publication workflows.
+For a failed local generation, fix the input and rerun; atomic promotion leaves the prior output untouched. For automation regressions, pin the prior Action commit SHA and its associated image digest. Release notes identify the source commit, OCI digest, SBOM, provenance, and compatibility level. Repository migration rollback restores the Brain source from its verified consumer repository before changing publication workflows.
 
 ## Verification
 

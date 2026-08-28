@@ -9,6 +9,7 @@ let root: string;
 let vault: string;
 let output: string;
 const generator = path.resolve("scripts/generator.mjs");
+const compareOutputTrees = path.resolve("scripts/compare-output-trees.mjs");
 
 describe("generator command metadata", () => {
   it("prints the package version", () => {
@@ -28,6 +29,23 @@ function run(extraEnv: NodeJS.ProcessEnv = {}) {
       env: { ...process.env, ...extraEnv },
       encoding: "utf8",
     },
+  );
+}
+
+function runWorkspace(destination: string) {
+  return spawnSync(
+    process.execPath,
+    [
+      generator,
+      "build",
+      "--workspace",
+      path.resolve("examples/demo-workspace/workspace.json"),
+      "--output",
+      destination,
+      "--site",
+      "https://example.com",
+    ],
+    { cwd: root, env: process.env, encoding: "utf8" },
   );
 }
 
@@ -101,4 +119,32 @@ describe("generator build command", () => {
     expect(run().status).toBe(0);
     expect(hashes(output)).toEqual(hashes(first));
   }, 30_000);
+
+  it("produces deterministic workspace content without leaking source paths", () => {
+    const first = path.join(root, "workspace-site");
+    const second = path.join(root, "workspace-site-again");
+    const firstBuild = runWorkspace(first);
+    const secondBuild = runWorkspace(second);
+
+    expect(firstBuild.status, firstBuild.stderr).toBe(0);
+    expect(secondBuild.status, secondBuild.stderr).toBe(0);
+    expect(fs.existsSync(path.join(first, "brains", "engineering", "notes", "principles", "index.html"))).toBe(true);
+    expect(fs.existsSync(path.join(first, "brains", "design", "notes", "principles", "index.html"))).toBe(true);
+
+    const comparison = spawnSync(
+      process.execPath,
+      [compareOutputTrees, "--normalize-pagefind", first, second],
+      { encoding: "utf8" },
+    );
+    expect(comparison.status, comparison.stderr).toBe(0);
+
+    const generatedText = fs
+      .readdirSync(first, { recursive: true, encoding: "utf8" })
+      .filter((entry) => /\.(?:html|js|json|css)$/u.test(entry))
+      .map((entry) => fs.readFileSync(path.join(first, entry), "utf8"))
+      .join("\n");
+    expect(generatedText).not.toContain(path.resolve("examples/demo-workspace"));
+    expect(generatedText).not.toContain(root);
+    expect(generatedText).not.toContain(".staging-");
+  }, 60_000);
 });

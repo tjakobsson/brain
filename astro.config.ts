@@ -15,9 +15,9 @@ export default defineConfig({
   outDir: internalSettings.output,
   cacheDir: internalSettings.work ? path.join(internalSettings.work, "astro") : undefined,
   integrations: [attachmentIntegration()],
-  redirects: {
-    [routes.graphAlias]: joinBase(internalSettings.base, routes.home),
-  },
+  redirects: internalSettings.mode === "vault"
+    ? { [routes.graphAlias]: joinBase(internalSettings.base, routes.home) }
+    : {},
   markdown: {
     shikiConfig: {
       themes: {

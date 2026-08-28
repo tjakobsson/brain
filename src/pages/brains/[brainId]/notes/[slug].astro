@@ -1,0 +1,15 @@
+---
+import { getCollection } from "astro:content";
+import NotePage from "../../../../components/NotePage.astro";
+import { workspaceNotePagePaths } from "../../../../lib/page-paths";
+import { getWorkspaceSnapshot } from "../../../../lib/vault-state";
+
+export async function getStaticPaths() {
+  const notes = await getCollection("notes");
+  return workspaceNotePagePaths(notes, getWorkspaceSnapshot());
+}
+
+const { entry } = Astro.props;
+---
+
+<NotePage entry={entry} />

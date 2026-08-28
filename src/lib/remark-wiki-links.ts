@@ -1,78 +1,144 @@
+import path from "node:path";
 import type { Link, PhrasingContent, Root, Text } from "mdast";
 import type { VFile } from "vfile";
 import { getLinkIndex } from "./link-index";
 import { transformTextNodes } from "./mdast-text";
-import type { LinkIndex } from "./vault-scan";
+import { resolveWikiLinkTarget, type LinkIndex, type VaultNote } from "./vault-scan";
 import { displayText, parseWikiLinks, type WikiLink } from "./wiki-links";
 import { slugify } from "./slugify";
 import { joinBase, withFragment } from "./routes";
+import { getWorkspaceSnapshot } from "./vault-state";
 
 export interface RemarkWikiLinksOptions {
-  /** Injectable for tests; defaults to the shared Phase-1 link index. */
+  /** Injectable for tests; defaults to the shared workspace link index. */
   index?: LinkIndex;
   /** Deployment base applied when the Markdown link is rendered. */
   base?: string;
+  /** Narrows synthetic test fixtures whose paths do not identify an owner. */
+  sourceBrainId?: string;
+  /** Injectable presentation metadata for workspace rendering tests. */
+  brainAccents?: ReadonlyMap<string, string>;
 }
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-function toLinkNode(link: WikiLink, index: LinkIndex, file: VFile, base: string): PhrasingContent {
-  const target = index.byTitleKey.get(link.target.toLowerCase());
-  const text = displayText(link);
+function findSource(index: LinkIndex, file: VFile, brainId?: string): VaultNote | undefined {
+  const source = file.path ? path.resolve(file.path) : "";
+  return index.notes.find(
+    (note) =>
+      path.resolve(note.filePath) === source &&
+      (brainId === undefined || note.brainId === brainId),
+  );
+}
 
-  if (!target) {
-    const node: PhrasingContent = {
-      type: "html",
-      value:
-        `<span class="wiki-link wiki-link--unwritten" ` +
-        `title="Not yet written: ${escapeHtml(link.target)}">${escapeHtml(text)}</span>`,
-    };
-    return node;
+function unwrittenNode(
+  link: WikiLink,
+  kind: "missing-note" | "unknown-brain",
+  brainId: string,
+  sourceBrainId: string | undefined,
+  accent: string | undefined,
+): PhrasingContent {
+  const text = displayText(link);
+  const unknownClass = kind === "unknown-brain" ? " wiki-link--unknown-brain" : "";
+  const foreign = sourceBrainId !== undefined && brainId !== sourceBrainId;
+  const foreignClass = foreign ? " wiki-link--foreign" : "";
+  const title = kind === "unknown-brain"
+    ? `Unknown brain: ${brainId}`
+    : `Not yet written in @${brainId}: ${link.target}`;
+  const marker = kind === "unknown-brain" ? "?" : "↗";
+  const badge = foreign
+    ? `<span class="brain-badge"><span aria-hidden="true">${marker}</span> @${escapeHtml(brainId)}</span>`
+    : "";
+  const style = accent ? ` style="--brain-accent: ${escapeHtml(accent)}"` : "";
+  return {
+    type: "html",
+    value:
+      `<span class="wiki-link wiki-link--unwritten${foreignClass}${unknownClass}"${style} ` +
+      `data-brain-id="${escapeHtml(brainId)}" title="${escapeHtml(title)}">` +
+      `<span>${escapeHtml(text)}</span>${badge}</span>`,
+  };
+}
+
+function toLinkNode(
+  link: WikiLink,
+  index: LinkIndex,
+  source: VaultNote | undefined,
+  base: string,
+  brainAccents: ReadonlyMap<string, string>,
+): PhrasingContent {
+  if (!source) {
+    const brainId = link.targetBrainId ?? "unknown";
+    return unwrittenNode(link, "missing-note", brainId, undefined, brainAccents.get(brainId));
+  }
+  const resolution = resolveWikiLinkTarget(index, source.brainId, link);
+  if (resolution.kind !== "resolved") {
+    return unwrittenNode(
+      link,
+      resolution.kind,
+      resolution.targetBrainId,
+      source.brainId,
+      brainAccents.get(resolution.targetBrainId),
+    );
   }
 
-  const route = withFragment(target.route, link.anchor ? slugify(link.anchor) : "");
+  const route = withFragment(resolution.note.route, link.anchor ? slugify(link.anchor) : "");
+  const foreign = resolution.note.brainId !== source.brainId;
   const node: Link = {
     type: "link",
     url: joinBase(base, route),
-    children: [{ type: "text", value: text }],
-    data: { hProperties: { className: ["wiki-link"] } },
+    children: [
+      { type: "text", value: displayText(link) },
+      ...(foreign
+        ? [{
+            type: "html" as const,
+            value: `<span class="brain-badge"><span aria-hidden="true">↗</span> @${escapeHtml(resolution.targetBrainId)}</span>`,
+          }]
+        : []),
+    ],
+    data: {
+      hProperties: {
+        className: ["wiki-link", ...(foreign ? ["wiki-link--foreign"] : [])],
+        ...(foreign ? {
+          "data-brain-id": resolution.targetBrainId,
+          style: `--brain-accent: ${brainAccents.get(resolution.targetBrainId) ?? "var(--accent)"}`,
+        } : {}),
+      },
+    },
   };
   return node;
 }
 
-function splitTextNode(node: Text, index: LinkIndex, file: VFile, base: string): PhrasingContent[] {
+function splitTextNode(
+  node: Text,
+  index: LinkIndex,
+  source: VaultNote | undefined,
+  base: string,
+  brainAccents: ReadonlyMap<string, string>,
+): PhrasingContent[] {
   const links = parseWikiLinks(node.value);
   if (links.length === 0) return [node];
 
   const out: PhrasingContent[] = [];
   let cursor = 0;
   for (const link of links) {
-    if (link.index > cursor) {
-      out.push({ type: "text", value: node.value.slice(cursor, link.index) });
-    }
-    out.push(toLinkNode(link, index, file, base));
+    if (link.index > cursor) out.push({ type: "text", value: node.value.slice(cursor, link.index) });
+    out.push(toLinkNode(link, index, source, base, brainAccents));
     cursor = link.index + link.length;
   }
-  if (cursor < node.value.length) {
-    out.push({ type: "text", value: node.value.slice(cursor) });
-  }
+  if (cursor < node.value.length) out.push({ type: "text", value: node.value.slice(cursor) });
   return out;
 }
 
-function processChildren(tree: Root, index: LinkIndex, file: VFile, base: string): void {
-  transformTextNodes(tree, (node) => splitTextNode(node, index, file, base));
-}
-
-/**
- * Phase 2: resolve Obsidian wiki-links against the Phase-1 link index.
- * Resolvable → real anchor; unresolvable → "unwritten" span + build warning.
- */
 export function remarkWikiLinks(options: RemarkWikiLinksOptions = {}) {
   const base = options.base ?? "";
   return (tree: Root, file: VFile) => {
     const index = options.index ?? getLinkIndex();
-    processChildren(tree, index, file, base);
+    const source = findSource(index, file, options.sourceBrainId);
+    const brainAccents = options.brainAccents ?? new Map(
+      getWorkspaceSnapshot().registry.brains.map((brain) => [brain.id, brain.accent]),
+    );
+    transformTextNodes(tree, (node) => splitTextNode(node, index, source, base, brainAccents));
   };
 }

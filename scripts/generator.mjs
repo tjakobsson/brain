@@ -67,12 +67,15 @@ export function runNode(script, args, env, { signal, stdio = "inherit" } = {}) {
 function internalEnvironment(inputs, staging) {
   return {
     ...process.env,
-    BRAIN_VAULT: inputs.vault,
+    BRAIN_INPUT_MODE: inputs.mode,
+    BRAIN_VAULT: inputs.mode === "vault" ? inputs.vault : "",
+    BRAIN_WORKSPACE: inputs.mode === "workspace" ? inputs.workspace : "",
     BRAIN_OUTPUT: staging,
     BRAIN_SITE: inputs.site ?? "",
     BRAIN_BASE: inputs.base,
     BRAIN_EXCLUSIONS: JSON.stringify(inputs.exclusions),
     BRAIN_STRICT_LINKS: String(inputs.strictLinks),
+    BRAIN_WORK: inputs.work ?? "",
   };
 }
 
@@ -89,30 +92,9 @@ function promote(staging, output) {
   }
 }
 
-function prospectiveRealPath(candidate) {
-  const missing = [];
-  let current = candidate;
-  while (!fs.existsSync(current)) {
-    const parent = path.dirname(current);
-    if (parent === current) return candidate;
-    missing.push(path.basename(current));
-    current = parent;
-  }
-  return path.join(fs.realpathSync(current), ...missing.reverse());
-}
-
-function within(parent, candidate) {
-  const relative = path.relative(parent, candidate);
-  return relative === "" || (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`));
-}
-
 function prepareWork(validated) {
-  const configuredWork = process.env.BRAIN_WORK?.trim();
-  const work = configuredWork ? prospectiveRealPath(path.resolve(configuredWork)) : undefined;
+  const work = validated.work;
   if (work) {
-    if (within(validated.vault, work)) {
-      throw new Error(`Unsafe work directory ${work}: work must be outside the read-only vault ${validated.vault}.`);
-    }
     fs.mkdirSync(path.join(work, "astro-types"), { recursive: true });
     const workModules = path.join(work, "node_modules");
     if (!fs.existsSync(workModules)) fs.symlinkSync(path.join(root, "node_modules"), workModules, "dir");
@@ -153,7 +135,11 @@ async function generateSite(validated, destination, { signal } = {}) {
 }
 
 export async function buildSite(inputs, { signal } = {}) {
-  const validated = await validateGeneratorInputs(inputs);
+  const configuredWork = process.env.BRAIN_WORK?.trim();
+  const validated = await validateGeneratorInputs({
+    ...inputs,
+    work: configuredWork ? path.resolve(configuredWork) : undefined,
+  });
   const work = prepareWork(validated);
   const buildId = randomUUID();
   const staging = path.join(
@@ -182,7 +168,11 @@ export async function buildSite(inputs, { signal } = {}) {
 }
 
 export async function buildLiveGeneration(inputs, { signal } = {}) {
-  const validated = await validateGeneratorInputs(inputs);
+  const configuredWork = process.env.BRAIN_WORK?.trim();
+  const validated = await validateGeneratorInputs({
+    ...inputs,
+    work: configuredWork ? path.resolve(configuredWork) : undefined,
+  });
   const work = prepareWork(validated);
   const generation = path.join(
     work || path.dirname(validated.output),

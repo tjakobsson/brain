@@ -38,24 +38,27 @@ afterEach(async () => {
   );
 });
 
-describe("stress vault live serving", () => {
+describe("stress workspace live serving", () => {
   it("serves throughout one serialized 2,000-note rebuild without idle rebuilds", async () => {
-    const generated = spawnSync(process.execPath, [path.resolve("scripts/generate-stress-vault.mjs")], {
-      encoding: "utf8",
-    });
-    expect(generated.status, generated.stderr).toBe(0);
-    const vault = path.resolve(".generated/stress-vault");
-    const note = path.join(vault, "cluster-01", "Generated note 0001.md");
-    const original = fs.readFileSync(note, "utf8");
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "brain-stress-live-"));
+    const fixture = path.join(root, "workspace");
+    const generated = spawnSync(
+      process.execPath,
+      [path.resolve("scripts/generate-stress-vault.mjs"), "--output", fixture],
+      { encoding: "utf8" },
+    );
+    expect(generated.status, generated.stderr).toBe(0);
+    const workspace = path.join(fixture, "workspace.json");
+    const note = path.join(fixture, "brains", "brain-01", "cluster-01", "Generated note 0001.md");
+    const original = fs.readFileSync(note, "utf8");
     const port = await availablePort();
     const child = spawn(
       process.execPath,
       [
         generator,
         "serve",
-        "--vault",
-        vault,
+        "--workspace",
+        workspace,
         "--output",
         path.join(root, "site"),
         "--host",
@@ -73,7 +76,7 @@ describe("stress vault live serving", () => {
 
     try {
       await waitFor(() => logs.includes("Live server:"), `stress server did not start:\n${logs}`);
-      const url = `http://127.0.0.1:${port}/notes/generated-note-0001/`;
+      const url = `http://127.0.0.1:${port}/brains/brain-01/notes/generated-note-0001/`;
       expect((await fetch(url)).status).toBe(200);
       await new Promise((resolve) => setTimeout(resolve, 1_000));
       expect(logs).not.toContain("Live site updated.");
@@ -92,7 +95,7 @@ describe("stress vault live serving", () => {
       expect(logs.split("Live site updated.").length - 1).toBe(1);
 
       fs.writeFileSync(note, original);
-      await waitFor(async () => !(await (await fetch(url)).text()).includes("Unique live stress phrase."), "stress vault did not restore");
+      await waitFor(async () => !(await (await fetch(url)).text()).includes("Unique live stress phrase."), "stress workspace did not restore");
       child.kill("SIGTERM");
       await new Promise<void>((resolve) => child.once("exit", () => resolve()));
       expect(fs.readdirSync(root).some((entry) => entry.includes(".generation-"))).toBe(false);

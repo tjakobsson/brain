@@ -1,15 +1,19 @@
 ---
 import { getLinkIndex } from "../lib/link-index";
 import { joinBase } from "../lib/routes";
+import { getWorkspaceSnapshot } from "../lib/vault-state";
 
 interface Props {
-  slug: string;
+  noteId: string;
+  brainId: string;
 }
 
-const { slug } = Astro.props;
+const { noteId, brainId } = Astro.props;
 const index = getLinkIndex();
-const linked = index.backlinks.get(slug) ?? [];
-const unlinked = index.unlinkedMentions.get(slug) ?? [];
+const snapshot = getWorkspaceSnapshot();
+const linked = index.backlinks.get(noteId) ?? [];
+const unlinked = index.unlinkedMentions.get(noteId) ?? [];
+const brains = new Map(snapshot.registry.brains.map((brain) => [brain.id, brain]));
 ---
 
 {linked.length > 0 && (
@@ -17,8 +21,14 @@ const unlinked = index.unlinkedMentions.get(slug) ?? [];
     <h2>Linked mentions</h2>
     <ul>
       {linked.map(({ source, context }) => (
-        <li>
+        <li
+          class:list={[{ "mention--foreign": source.brainId !== brainId }]}
+          style={source.brainId !== brainId ? `--brain-accent: ${brains.get(source.brainId)?.accent}` : undefined}
+        >
           <a href={joinBase(import.meta.env.BASE_URL, source.route)}>{source.title}</a>
+          {source.brainId !== brainId && (
+            <span class="brain-badge"><span aria-hidden="true">↗</span> @{source.brainId}</span>
+          )}
           {context && <span class="context">{context}</span>}
         </li>
       ))}

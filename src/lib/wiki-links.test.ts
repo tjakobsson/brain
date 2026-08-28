@@ -14,6 +14,7 @@ describe("parseWikiLinks", () => {
     expect(links[0]).toMatchObject({
       raw: "[[Note Title]]",
       target: "Note Title",
+      targetBrainId: null,
       anchor: null,
       alias: null,
       index: 4,
@@ -24,6 +25,7 @@ describe("parseWikiLinks", () => {
     const links = parseWikiLinks("[[Zettelkasten method|the ZK method]]");
     expect(links[0]).toMatchObject({
       target: "Zettelkasten method",
+      targetBrainId: null,
       alias: "the ZK method",
       anchor: null,
     });
@@ -33,6 +35,7 @@ describe("parseWikiLinks", () => {
     const links = parseWikiLinks("[[Graphs of thought#Clustering]]");
     expect(links[0]).toMatchObject({
       target: "Graphs of thought",
+      targetBrainId: null,
       anchor: "Clustering",
       alias: null,
     });
@@ -42,6 +45,7 @@ describe("parseWikiLinks", () => {
     const links = parseWikiLinks("[[Note#Section|read this]]");
     expect(links[0]).toMatchObject({
       target: "Note",
+      targetBrainId: null,
       anchor: "Section",
       alias: "read this",
     });
@@ -62,12 +66,56 @@ describe("parseWikiLinks", () => {
     expect(links[0].alias).toBe("alias");
   });
 
+  it.each([
+    ["[[@design/Interaction model]]", "design", "Interaction model", null, null],
+    ["[[@product-design/Interaction model|the model]]", "product-design", "Interaction model", null, "the model"],
+    ["[[@research/Cognitive load#Measurements]]", "research", "Cognitive load", "Measurements", null],
+    ["[[@research/Cognitive load#Measurements|the data]]", "research", "Cognitive load", "Measurements", "the data"],
+    ["[[@people/Email @ work]]", "people", "Email @ work", null, null],
+    ["[[  @brain-2/  Spaced Note  #  Deep Dive  |  alias  ]]", "brain-2", "Spaced Note", "Deep Dive", "alias"],
+  ])(
+    "parses a foreign link: %s",
+    (source, targetBrainId, target, anchor, alias) => {
+      expect(parseWikiLinks(source)).toMatchObject([
+        { raw: source, targetBrainId, target, anchor, alias, index: 0, length: source.length },
+      ]);
+    },
+  );
+
+  it.each([
+    "[[@/Note]]",
+    "[[@brain]]",
+    "[[@brain/]]",
+    "[[@brain/   ]]",
+    "[[@Brain/Note]]",
+    "[[@brain_id/Note]]",
+    "[[@-brain/Note]]",
+    "[[@brain-/Note]]",
+    "[[@brain--id/Note]]",
+    "[[@brain id/Note]]",
+    "[[@@brain/Note]]",
+    "[[@brain//Note]]",
+    "[[@brain/folder/Note]]",
+    "[[@Bad/Note#Heading|alias]]",
+  ])("rejects a malformed leading brain namespace instead of treating it as a local title: %s", (source) => {
+    expect(parseWikiLinks(source)).toEqual([]);
+  });
+
+  it.each([
+    ["[[Email @ work]]", "Email @ work"],
+    ["[[name@example.com]]", "name@example.com"],
+    ["[[Note@brain]]", "Note@brain"],
+    ["[[Note @brain/section]]", "Note @brain/section"],
+  ])("preserves an ordinary @ in a local title: %s", (source, target) => {
+    expect(parseWikiLinks(source)).toMatchObject([{ target, targetBrainId: null }]);
+  });
+
   it("returns nothing for plain markdown and empty text", () => {
     expect(parseWikiLinks("no links [here](page.md)")).toHaveLength(0);
     expect(parseWikiLinks("")).toHaveLength(0);
   });
 
-  it("ignores Obsidian attachment embeds", () => {
+  it("ignores Brain attachment embeds", () => {
     expect(parseWikiLinks("![[diagram.svg|preview]] and [[Note]]")).toMatchObject([
       { raw: "[[Note]]", target: "Note" },
     ]);
@@ -83,15 +131,25 @@ describe("parseWikiLinks", () => {
 });
 
 describe("displayText", () => {
-  it("prefers alias, falls back to target", () => {
+  it("returns the alias or unqualified target title", () => {
     expect(displayText(parseWikiLinks("[[A|b]]")[0])).toBe("b");
     expect(displayText(parseWikiLinks("[[A]]")[0])).toBe("A");
+    expect(displayText(parseWikiLinks("[[@design/A]]")[0])).toBe("A");
+    expect(displayText(parseWikiLinks("[[@design/A|b]]")[0])).toBe("b");
   });
 });
 
 describe("wikiLinksToText", () => {
-  it("replaces links with their display text", () => {
-    expect(wikiLinksToText("a [[A|alpha]] and [[B]]")).toBe("a alpha and B");
+  it("reduces local and foreign links using their display text", () => {
+    expect(wikiLinksToText("[[A]], [[@design/B]], and [[@research/C#Part|cee]]")).toBe(
+      "A, B, and cee",
+    );
+  });
+
+  it("leaves malformed namespaces literal while reducing later valid links", () => {
+    expect(wikiLinksToText("[[@Bad/A]] then [[B]] and [[Email @ work]]")).toBe(
+      "[[@Bad/A]] then B and Email @ work",
+    );
   });
 });
 

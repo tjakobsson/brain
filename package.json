@@ -1,8 +1,8 @@
 {
   "name": "brain",
-  "description": "Generate a static second-brain site from an Obsidian vault",
+  "description": "Generate a static second-brain site from Brain Markdown",
   "type": "module",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "license": "MIT",
   "repository": {
@@ -24,10 +24,12 @@
     "build": "node scripts/generator.mjs build",
     "preview": "node scripts/generator.mjs preview",
     "test:container-live": "node scripts/container-live-smoke.mjs",
+    "test:container-workspace": "node scripts/container-workspace-smoke.mjs",
     "vault:generate": "node scripts/generate-stress-vault.mjs",
     "astro": "astro",
     "test": "vitest run",
-    "test:browser": "playwright test"
+    "test:browser": "playwright test",
+    "test:stress-graph": "playwright test --config playwright.stress.config.ts"
   },
   "dependencies": {
     "@astrojs/markdown-remark": "7.2.4",

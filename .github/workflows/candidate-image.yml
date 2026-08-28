@@ -17,7 +17,7 @@ on:
         type: boolean
 
 concurrency:
-  group: candidate-image-v2-${{ github.ref }}
+  group: candidate-image-v1-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:

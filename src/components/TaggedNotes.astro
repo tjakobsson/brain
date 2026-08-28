@@ -1,0 +1,25 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { getLinkIndex } from "../lib/link-index";
+import { joinBase } from "../lib/routes";
+
+interface Props { tag: string; brainId?: string }
+const { tag, brainId } = Astro.props;
+const notes = getLinkIndex().notes.filter(
+  (note) => note.meta.tags.includes(tag) && (brainId === undefined || note.brainId === brainId),
+);
+---
+
+<BaseLayout title={`#${tag}`} activeBrainId={brainId}>
+  <h1>#{tag}</h1>
+  <ul class="note-list">
+    {notes.map((note) => (
+      <li>
+        <div class="note-line">
+          <a href={joinBase(import.meta.env.BASE_URL, note.route)}>{note.title}</a>
+          <span class={`status status-${note.meta.status}`}>{note.meta.status}</span>
+        </div>
+      </li>
+    ))}
+  </ul>
+</BaseLayout>

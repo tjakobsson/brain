@@ -24,6 +24,32 @@ function inputs(overrides: Record<string, unknown> = {}) {
   };
 }
 
+async function workspaceInputs(
+  brains: Array<{ id: string; path: string; exclusions?: string[] }>,
+  overrides: Record<string, unknown> = {},
+) {
+  const manifest = path.join(root, `workspace-${Math.random().toString(16).slice(2)}.json`);
+  await fs.writeFile(
+    manifest,
+    JSON.stringify({
+      version: 1,
+      title: "Test workspace",
+      brains: brains.map((brain) => ({ title: brain.id, ...brain })),
+    }),
+  );
+  return {
+    command: "build",
+    mode: "workspace",
+    workspace: manifest,
+    output,
+    site: undefined,
+    base: "",
+    exclusions: [],
+    strictLinks: false,
+    ...overrides,
+  };
+}
+
 async function snapshot(directory: string) {
   const result: Array<[string, string]> = [];
 
@@ -158,5 +184,172 @@ describe("validateGeneratorInputs", () => {
 
     await expect(validateGeneratorInputs(inputs())).rejects.toThrow("Output parent is not writable");
     await expect(fs.stat(output)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("canonicalizes a workspace manifest and every brain root", async () => {
+    const second = path.join(root, "second");
+    const linked = path.join(root, "linked-second");
+    await fs.mkdir(second);
+    await fs.writeFile(path.join(second, "Second.md"), "Second note");
+    await fs.symlink(second, linked);
+    const configured = await workspaceInputs([
+      { id: "first", path: vault },
+      { id: "second", path: linked },
+    ]);
+    const manifestLink = path.join(root, "linked-workspace.json");
+    await fs.symlink(configured.workspace as string, manifestLink);
+
+    await expect(
+      validateGeneratorInputs({ ...configured, workspace: manifestLink }),
+    ).resolves.toMatchObject({
+      mode: "workspace",
+      workspace: await fs.realpath(configured.workspace as string),
+      workspaceDefinition: {
+        brains: [
+          { id: "first", path: await fs.realpath(vault) },
+          { id: "second", path: await fs.realpath(second) },
+        ],
+      },
+    });
+  });
+
+  it("rejects duplicate brain roots reached through different symlinks", async () => {
+    const firstAlias = path.join(root, "first-alias");
+    const secondAlias = path.join(root, "second-alias");
+    await fs.symlink(vault, firstAlias);
+    await fs.symlink(vault, secondAlias);
+
+    await expect(
+      validateGeneratorInputs(
+        await workspaceInputs([
+          { id: "first", path: firstAlias },
+          { id: "second", path: secondAlias },
+        ]),
+      ),
+    ).rejects.toThrow('Brains "first" and "second" resolve to the same source directory');
+  });
+
+  it("rejects output overlap with every brain after resolving symlink escapes", async () => {
+    const second = path.join(root, "second");
+    const secondAlias = path.join(root, "second-alias");
+    await fs.mkdir(second);
+    await fs.writeFile(path.join(second, "Second.md"), "Second note");
+    await fs.symlink(second, secondAlias);
+
+    await expect(
+      validateGeneratorInputs(
+        await workspaceInputs(
+          [
+            { id: "first", path: vault },
+            { id: "second", path: second },
+          ],
+          { output: path.join(secondAlias, "generated") },
+        ),
+      ),
+    ).rejects.toThrow('output must not overlap brain "second"');
+  });
+
+  it("rejects output or work directories that contain workspace inputs", async () => {
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), "brain-safety-output-"));
+    try {
+      const configured = await workspaceInputs([{ id: "first", path: vault }], { output: root });
+      await expect(validateGeneratorInputs(configured)).rejects.toThrow("must not contain workspace manifest");
+
+      await expect(
+        validateGeneratorInputs({ ...configured, output: outside, work: root }),
+      ).rejects.toThrow("work directory must not contain workspace manifest");
+    } finally {
+      await fs.rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a work-directory symlink escape into a named brain", async () => {
+    const workAlias = path.join(root, "work-alias");
+    await fs.symlink(vault, workAlias);
+
+    await expect(
+      validateGeneratorInputs({
+        ...(await workspaceInputs([{ id: "first", path: vault }])),
+        work: path.join(workAlias, "cache"),
+      }),
+    ).rejects.toThrow('work directory must not overlap brain "first"');
+  });
+
+  it("reports missing, unreadable, and empty roots with the brain ID", async () => {
+    const missing = path.join(root, "missing-brain");
+    await expect(
+      validateGeneratorInputs(await workspaceInputs([{ id: "missing-brain", path: missing }])),
+    ).rejects.toThrow('Brain "missing-brain" is not a readable directory');
+
+    const empty = path.join(root, "empty-brain");
+    await fs.mkdir(empty);
+    await expect(
+      validateGeneratorInputs(await workspaceInputs([{ id: "empty-brain", path: empty }])),
+    ).rejects.toThrow('Brain "empty-brain" contains no publishable Markdown notes');
+
+    const unreadable = path.join(root, "unreadable-brain");
+    await fs.mkdir(unreadable);
+    await fs.writeFile(path.join(unreadable, "Note.md"), "Unreadable");
+    await fs.chmod(unreadable, 0o000);
+    try {
+      await expect(
+        validateGeneratorInputs(await workspaceInputs([{ id: "unreadable-brain", path: unreadable }])),
+      ).rejects.toThrow('Brain "unreadable-brain" is not a readable directory');
+    } finally {
+      await fs.chmod(unreadable, 0o700);
+    }
+  });
+
+  it("rejects unavailable workspace manifests before inspecting brain roots", async () => {
+    await expect(
+      validateGeneratorInputs({
+        ...(await workspaceInputs([{ id: "first", path: vault }])),
+        workspace: path.join(root, "missing-workspace.json"),
+      }),
+    ).rejects.toThrow("Workspace manifest is not readable");
+
+    const directory = path.join(root, "workspace-directory");
+    await fs.mkdir(directory);
+    await expect(
+      validateGeneratorInputs({
+        ...(await workspaceInputs([{ id: "first", path: vault }])),
+        workspace: directory,
+      }),
+    ).rejects.toThrow("Workspace manifest is not a file");
+  });
+
+  it("applies command, global, and per-brain exclusions during safety validation", async () => {
+    const excluded = path.join(root, "excluded-brain");
+    await fs.mkdir(path.join(excluded, "global"), { recursive: true });
+    await fs.mkdir(path.join(excluded, "local"));
+    await fs.mkdir(path.join(excluded, "command"));
+    await fs.writeFile(path.join(excluded, "global", "One.md"), "One");
+    await fs.writeFile(path.join(excluded, "local", "Two.md"), "Two");
+    await fs.writeFile(path.join(excluded, "command", "Three.md"), "Three");
+    const manifest = path.join(root, "excluded-workspace.json");
+    await fs.writeFile(
+      manifest,
+      JSON.stringify({
+        version: 1,
+        title: "Excluded",
+        exclusions: ["global/**"],
+        brains: [
+          {
+            id: "excluded",
+            title: "Excluded",
+            path: excluded,
+            exclusions: ["local/**"],
+          },
+        ],
+      }),
+    );
+
+    await expect(
+      validateGeneratorInputs({
+        ...(await workspaceInputs([{ id: "placeholder", path: vault }])),
+        workspace: manifest,
+        exclusions: ["command/**"],
+      }),
+    ).rejects.toThrow('Brain "excluded" contains no publishable Markdown notes');
   });
 });

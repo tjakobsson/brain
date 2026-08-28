@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Defines a portable build contract that converts an external Obsidian-compatible vault and its referenced attachments into a complete static second-brain site at any deployment base path.
+Defines a portable build contract that converts an external Brain Markdown directory and its referenced attachments into a complete static second-brain site at any deployment base path.
 
 ## Requirements
 
@@ -18,11 +18,11 @@ The generator SHALL accept an external vault directory, a distinct output direct
 - **THEN** the generator exits non-zero before deleting or replacing any content
 
 ### Requirement: Vault discovery and default exclusions
-The generator SHALL discover Markdown notes recursively while excluding hidden directories, `.obsidian`, `.github`, `Templates`, generator output, and configurable exclusion patterns. Files excluded from publication MUST NOT appear in pages, search data, graph data, or copied assets.
+The generator SHALL discover Markdown notes recursively while excluding hidden directories, `.obsidian`, `.github`, `Templates`, generator output, and configurable exclusion patterns. `.obsidian` is migration metadata excluded by default and does not define the content contract. Files excluded from publication MUST NOT appear in pages, search data, graph data, or copied assets.
 
 #### Scenario: Build a repository-root vault
 - **WHEN** a consumer points the generator at a repository root containing notes, `.obsidian`, and `.github`
-- **THEN** notes are published while Obsidian metadata and workflow files are excluded
+- **THEN** notes are published while migration metadata and workflow files are excluded
 
 #### Scenario: Apply consumer exclusions
 - **WHEN** the consumer supplies additional exclusion patterns
@@ -40,7 +40,7 @@ The generator SHALL prefix every internal page URL, navigation target, redirect,
 - **THEN** all site features use root-relative URLs without an extra path segment
 
 ### Requirement: Referenced attachment publication
-The generator SHALL publish files referenced by Markdown images, Markdown links, and Obsidian attachment embeds such as `![[image.png]]`. It MUST preserve vault-relative attachment paths in a dedicated generated asset namespace and MUST NOT copy unreferenced vault files.
+The generator SHALL publish files referenced by Markdown images, Markdown links, and Brain attachment embeds such as `![[image.png]]`. It MUST preserve Brain-relative attachment paths in a dedicated generated asset namespace and MUST NOT copy unreferenced source files.
 
 #### Scenario: Publish referenced media
 - **WHEN** a note references an image and a PDF inside the vault
@@ -57,7 +57,7 @@ The generator SHALL publish files referenced by Markdown images, Markdown links,
 ### Requirement: Deterministic attachment resolution
 The generator SHALL resolve an attachment by an exact vault-relative path first and by a unique filename only when no exact path is supplied. Missing or ambiguous attachment references MUST fail the build with the source note and reference in the diagnostic.
 
-#### Scenario: Resolve a unique Obsidian embed
+#### Scenario: Resolve a unique Brain embed
 - **WHEN** `![[diagram.png]]` identifies exactly one non-excluded file in the vault
 - **THEN** the generator publishes and links that file
 

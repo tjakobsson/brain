@@ -61,7 +61,7 @@ Serve mode SHALL notify connected pages after a new generation is active so they
 ### Requirement: Local serving remains read-only toward the vault
 Serve mode MUST NOT create, modify, or delete content in the mounted vault and SHALL keep generated output, caches, and temporary generations outside it. Documentation SHALL provide one `docker run` command using a read-only vault mount, container-owned writable temporary storage, and a port published to the host loopback interface.
 
-#### Scenario: Run against a local Obsidian vault
+#### Scenario: Run against a local Brain directory
 - **WHEN** a user executes the documented container command from a vault directory
 - **THEN** the site is available on localhost, host-side note edits trigger rebuilds, and no generated files appear in the vault
 

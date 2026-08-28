@@ -341,7 +341,7 @@ test("all site features stay within the deployment base", async ({ page }, testI
       `${base}/graph-data.json`,
       `${base}/search-index.json`,
       `${base}/pagefind/pagefind-ui.css`,
-      `${base}/pagefind/pagefind-ui.js`,
+      `${base}/pagefind/pagefind.js`,
       `${base}/favicon.svg`,
       `${base}/vault-assets/media/diagram.svg`,
       `${base}/vault-assets/media/reference.txt`,

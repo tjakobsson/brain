@@ -1,0 +1,19 @@
+name: Publish Brain workspace
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  pages:
+    uses: tjakobsson/brain/.github/workflows/publish-pages.yml@v1
+    with:
+      workspace: examples/demo-workspace/workspace.json
+      strict-links: false

@@ -1,5 +1,7 @@
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   GENERATOR_USAGE,
   GeneratorUsageError,
@@ -7,6 +9,19 @@ import {
 } from "./generator-inputs.mjs";
 
 const cwd = path.resolve("/caller/project");
+const temporaryDirectories: string[] = [];
+
+afterEach(() => {
+  temporaryDirectories.splice(0).forEach((directory) => fs.rmSync(directory, { recursive: true, force: true }));
+});
+
+function workspace(contents: unknown): string {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "brain-inputs-"));
+  temporaryDirectories.push(directory);
+  const manifest = path.join(directory, "workspace.json");
+  fs.writeFileSync(manifest, typeof contents === "string" ? contents : JSON.stringify(contents));
+  return manifest;
+}
 
 function parse(args: string[]) {
   return parseGeneratorInputs(args, { cwd });
@@ -29,6 +44,7 @@ describe("parseGeneratorInputs", () => {
   it("normalizes build defaults from the caller working directory", () => {
     expect(parse(["build"])).toEqual({
       command: "build",
+      mode: "vault",
       vault: path.join(cwd, "examples/demo-vault"),
       output: path.join(cwd, "dist"),
       site: undefined,
@@ -41,6 +57,7 @@ describe("parseGeneratorInputs", () => {
   it("normalizes preview defaults", () => {
     expect(parse(["preview"])).toEqual({
       command: "preview",
+      mode: "vault",
       vault: path.join(cwd, "examples/demo-vault"),
       output: path.join(cwd, "dist"),
       site: undefined,
@@ -55,6 +72,7 @@ describe("parseGeneratorInputs", () => {
   it("normalizes serve defaults", () => {
     expect(parse(["serve"])).toEqual({
       command: "serve",
+      mode: "vault",
       vault: path.join(cwd, "examples/demo-vault"),
       output: path.join(cwd, "dist"),
       site: undefined,
@@ -64,6 +82,41 @@ describe("parseGeneratorInputs", () => {
       host: "localhost",
       port: 4321,
     });
+  });
+
+  it.each(["build", "preview", "serve"])("loads workspace mode for %s", (command) => {
+    const manifest = workspace({
+      version: 1,
+      title: "Team knowledge",
+      brains: [{ id: "engineering", title: "Engineering", path: "./engineering" }],
+    });
+    const result = parse([command, "--workspace", manifest]);
+
+    expect(result).toMatchObject({
+      command,
+      mode: "workspace",
+      workspace: manifest,
+      workspaceDefinition: {
+        title: "Team knowledge",
+        brains: [{ id: "engineering", path: path.join(path.dirname(manifest), "engineering") }],
+      },
+    });
+    expect(result).not.toHaveProperty("vault");
+  });
+
+  it.each(["build", "preview", "serve"])("rejects conflicting input modes for %s", (command) => {
+    expectUsageError(
+      [command, "--vault", "notes", "--workspace", "workspace.json"],
+      "--vault and --workspace are mutually exclusive",
+    );
+  });
+
+  it("reports malformed JSON and unsupported workspace versions", () => {
+    expectUsageError(["build", "--workspace", workspace('{"version": 1,')], "malformed JSON");
+    expectUsageError(
+      ["build", "--workspace", workspace({ version: 2, title: "Future", brains: [] })],
+      "unsupported version 2",
+    );
   });
 
   it("resolves relative paths and preserves absolute paths", () => {
@@ -153,7 +206,7 @@ describe("parseGeneratorInputs", () => {
     expectUsageError(["preview", "--host", ""], "Invalid --host value");
   });
 
-  it.each(["vault", "output", "site", "base", "strict-links", "host", "port"])(
+  it.each(["vault", "workspace", "output", "site", "base", "strict-links", "host", "port"])(
     "rejects repeated singleton option --%s",
     (option) => {
       const command = option === "host" || option === "port" ? "serve" : "build";

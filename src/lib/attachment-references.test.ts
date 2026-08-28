@@ -23,10 +23,10 @@ describe("parseAttachmentReferences", () => {
     ]);
   });
 
-  it("preserves spaces, Unicode names, aliases, and anchors in Obsidian embeds", () => {
+  it("preserves spaces, Unicode names, aliases, and anchors in Brain embeds", () => {
     expect(parseAttachmentReferences("![[Média/über diagram.png#crop|Wide preview]]")).toMatchObject([
       {
-        kind: "obsidian-embed",
+        kind: "brain-embed",
         target: "Média/über diagram.png",
         anchor: "crop",
         alias: "Wide preview",
@@ -37,16 +37,16 @@ describe("parseAttachmentReferences", () => {
   it("parses filename-only and vault-root references", () => {
     expect(parseAttachmentReferences("![[diagram.png]]\n[download](/Files/report.pdf)"))
       .toMatchObject([
-        { kind: "obsidian-embed", target: "diagram.png" },
+        { kind: "brain-embed", target: "diagram.png" },
         { kind: "markdown-link", target: "/Files/report.pdf" },
       ]);
   });
 
-  it("parses an Obsidian embed after wrapped prose with its source offset", () => {
+  it("parses a Brain embed after wrapped prose with its source offset", () => {
     const source = "before\n![[diagram.png]]\nafter";
     expect(parseAttachmentReferences(source)).toMatchObject([
       {
-        kind: "obsidian-embed",
+        kind: "brain-embed",
         raw: "![[diagram.png]]",
         target: "diagram.png",
         index: source.indexOf("![[diagram.png]]"),

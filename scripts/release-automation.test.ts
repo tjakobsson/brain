@@ -54,4 +54,10 @@ describe("release automation", () => {
   it("keeps package and candidate versions aligned", () => {
     expect(packageMetadata.version).toBe(candidate.version);
   });
+
+  it("keeps workspace distribution interfaces on the maintained v1 line", () => {
+    expect(packageMetadata.version).toBe("1.2.0");
+    expect(candidate.version).toBe("1.2.0");
+    expect(releaseSource).toContain('const major = process.env.VERSION.split(".")[0]');
+  });
 });

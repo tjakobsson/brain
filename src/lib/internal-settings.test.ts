@@ -5,7 +5,9 @@ import { INTERNAL_ENV, loadInternalSettings } from "./internal-settings";
 describe("loadInternalSettings", () => {
   it("loads repository-local defaults", () => {
     expect(loadInternalSettings("/generator", {})).toEqual({
+      mode: "vault",
       vault: path.resolve("/generator/examples/demo-vault"),
+      workspace: undefined,
       output: path.resolve("/generator/dist"),
       site: undefined,
       base: "",
@@ -27,13 +29,27 @@ describe("loadInternalSettings", () => {
         [INTERNAL_ENV.work]: "/work",
       }),
     ).toEqual({
+      mode: "vault",
       vault: "/caller/vault",
+      workspace: undefined,
       output: "/tmp/staging",
       site: "https://example.com",
       base: "/vault-repo",
       exclusions: ["Archive/**", "Private.md"],
       strictLinks: true,
       work: "/work",
+    });
+  });
+
+  it("loads workspace mode without treating the manifest as a vault", () => {
+    expect(
+      loadInternalSettings("/generator", {
+        [INTERNAL_ENV.mode]: "workspace",
+        [INTERNAL_ENV.workspace]: "fixtures/workspace.json",
+      }),
+    ).toMatchObject({
+      mode: "workspace",
+      workspace: path.resolve("/generator/fixtures/workspace.json"),
     });
   });
 
@@ -50,5 +66,18 @@ describe("loadInternalSettings", () => {
     expect(() =>
       loadInternalSettings("/generator", { [INTERNAL_ENV.base]: "/vault-repo/" }),
     ).toThrow("normalized root-relative");
+    expect(() =>
+      loadInternalSettings("/generator", { [INTERNAL_ENV.mode]: "other" }),
+    ).toThrow("must be vault or workspace");
+    expect(() =>
+      loadInternalSettings("/generator", { [INTERNAL_ENV.mode]: "workspace" }),
+    ).toThrow("is required in workspace mode");
+    expect(() =>
+      loadInternalSettings("/generator", {
+        [INTERNAL_ENV.mode]: "workspace",
+        [INTERNAL_ENV.workspace]: "workspace.json",
+        [INTERNAL_ENV.vault]: "vault",
+      }),
+    ).toThrow("mutually exclusive");
   });
 });

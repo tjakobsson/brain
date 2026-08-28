@@ -1,0 +1,33 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { getLinkIndex } from "../lib/link-index";
+import { joinBase } from "../lib/routes";
+
+interface Props { brainId?: string }
+const { brainId } = Astro.props;
+const orphans = getLinkIndex().orphans.filter(
+  (note) => brainId === undefined || note.brainId === brainId,
+);
+---
+
+<BaseLayout title="Orphans" activeBrainId={brainId}>
+  <h1>Orphan notes</h1>
+  <p>
+    Notes no other note links to. In a Zettelkasten, an orphan is a thought that
+    hasn't been woven in yet. Find it a connection or let it go.
+  </p>
+  {orphans.length === 0 ? (
+    <p>No orphans. Every note is connected.</p>
+  ) : (
+    <ul class="note-list">
+      {orphans.map((note) => (
+        <li>
+          <div class="note-line">
+            <a href={joinBase(import.meta.env.BASE_URL, note.route)}>{note.title}</a>
+            <span class={`status status-${note.meta.status}`}>{note.meta.status}</span>
+          </div>
+        </li>
+      ))}
+    </ul>
+  )}
+</BaseLayout>

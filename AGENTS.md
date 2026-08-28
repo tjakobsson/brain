@@ -8,14 +8,14 @@ astro dev --background
 
 Manage the background server with `astro dev stop`, `astro dev status`, and `astro dev logs`.
 
-## Demo vault contract
+## Demo Brain contract
 
-`examples/demo-vault/` is a public plain-markdown Zettelkasten fixture. Personal vaults live in external consumer repositories and must not be copied into this generator checkout. Changes to fixture notes are made directly as files; the vault must remain openable as a native Obsidian vault.
+`examples/demo-vault/` is a public Brain Markdown Zettelkasten fixture. Personal Brain directories live in external consumer repositories and must not be copied into this generator checkout. Changes to fixture notes are made directly as files. The fixture must remain readable as plain Markdown and follow the Brain Markdown contract below. `.obsidian` is excluded by default as migration metadata; it does not define compatibility.
 
 ### Filenames = titles
 
 - A note's title is its filename without `.md` (e.g. `Graphs of thought.md`).
-- Titles must be unique across the whole vault, regardless of subfolder — the build fails on duplicates.
+- Titles must be unique across the whole fixture, regardless of subfolder; the build fails on duplicates.
 - Folders are free-form organization only; they never affect URLs or link resolution.
 - Don't repeat the title as an `# H1` in the body — the site renders the title itself.
 
@@ -42,22 +42,22 @@ Status describes maturity, not the note's role:
 
 ### Linking
 
-Use Obsidian wiki-links by note **title**, never file paths:
+Use Brain wiki-links by note **title**, never file paths:
 
-- `[[Note Title]]` — plain link
-- `[[Note Title|display text]]` — alias
-- `[[Note Title#Heading]]` — heading anchor
+- `[[Note Title]]` - plain link
+- `[[Note Title|display text]]` - alias
+- `[[Note Title#Heading]]` - heading anchor
 
 Links to notes that don't exist yet are allowed: they render with "unwritten" styling and log a build warning, but don't fail the build. When renaming a fixture note, update every `[[wiki-link]]` in `examples/demo-vault/` that targets it.
 
 ### Verification
 
-After editing demo content, run `npx astro build` — it validates frontmatter, rejects duplicate titles, and warns on unresolved links.
+After editing demo content, run `npx astro build`. It validates frontmatter, rejects duplicate titles, and warns on unresolved links.
 
 ## Dependency policy
 
 - Always look up and pin the latest stable release (including security patches) at install time; never rely on remembered versions.
-- Permissive licenses only (MIT, ISC, BSD-2/3-Clause, Apache-2.0, CC0-1.0, 0BSD, Python-2.0, BlueOak-1.0.0). Copyleft (GPL/AGPL/LGPL/MPL/SSPL family) requires explicit user agreement, recorded as an ADR in `docs/adr/` before the dependency is added. Accepted exceptions: ADR 0001 (libvips via sharp, lightningcss — build-time tooling).
+- Permissive licenses only (MIT, ISC, BSD-2/3-Clause, Apache-2.0, CC0-1.0, 0BSD, Python-2.0, BlueOak-1.0.0). Copyleft (GPL/AGPL/LGPL/MPL/SSPL family) requires explicit user agreement, recorded as an ADR in `docs/adr/` before the dependency is added. Accepted exceptions: ADR 0001 (libvips via sharp, lightningcss, build-time tooling).
 
 ## Documentation
 

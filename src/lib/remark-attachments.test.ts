@@ -5,7 +5,11 @@ import type { ResolvedAttachment } from "./attachment-resolution";
 import { remarkAttachments } from "./remark-attachments";
 
 const attachment: ResolvedAttachment = {
+  brainId: "default",
   source: {
+    id: "source",
+    brainId: "default",
+    compositeId: "default/source",
     slug: "source",
     title: "Source",
     route: "/notes/source",
@@ -19,7 +23,7 @@ const attachment: ResolvedAttachment = {
     attachments: [],
   },
   reference: {
-    kind: "obsidian-embed",
+    kind: "brain-embed",
     raw: "![[diagram.png]]",
     target: "diagram.png",
     anchor: null,
@@ -32,6 +36,8 @@ const attachment: ResolvedAttachment = {
     realPath: "/vault/Media/diagram.png",
     kind: "file",
   },
+  route: "/vault-assets/Media/diagram.png",
+  outputPath: "vault-assets/Media/diagram.png",
 };
 
 describe("remarkAttachments", () => {
