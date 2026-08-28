@@ -1,12 +1,13 @@
 ---
 import { joinBase, routes } from "../lib/routes";
+import { formatTimestamp } from "../lib/timestamps";
 
 interface Props {
   type: "fleeting" | "literature" | "permanent";
   status: "draft" | "developing" | "established";
   tags: string[];
-  created?: string;
-  updated?: string;
+  created?: Date;
+  updated?: Date;
 }
 
 const { type, status, tags, created, updated } = Astro.props;
@@ -21,6 +22,6 @@ const STATUS_GLYPHS = { draft: "○", developing: "◐", established: "●" } as
     {status}
   </span>
   {tags.map((tag) => <a class="tag-link" href={joinBase(import.meta.env.BASE_URL, routes.tag(tag))}>#{tag}</a>)}
-  {created && <span>created {created}</span>}
-  {updated && <span>updated {updated}</span>}
+  {created && <span>created <time datetime={created.toISOString()}>{formatTimestamp(created)}</time></span>}
+  {updated && <span>updated <time datetime={updated.toISOString()}>{formatTimestamp(updated)}</time></span>}
 </div>

@@ -120,6 +120,7 @@ test("all site features stay within the deployment base", async ({ page }, testI
   await page.getByRole("option", { name: /^Welcome/ }).click();
   await expect(page).toHaveURL(new RegExp(`${base}/notes/welcome/?$`));
   await expect(page.locator(".local-graph canvas.sigma-nodes")).toBeVisible();
+  await expect(page.locator(".note-meta")).toContainText("created 2026-08-27 00:00 UTC");
   await expect(page.getByRole("heading", { name: "Connection map" })).toBeVisible();
   await expect(page.locator("article .local-graph-panel")).toHaveCount(0);
   await expect(page.locator(".local-graph-panel")).toContainText(

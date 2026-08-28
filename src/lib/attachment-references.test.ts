@@ -42,6 +42,26 @@ describe("parseAttachmentReferences", () => {
       ]);
   });
 
+  it("parses an Obsidian embed after wrapped prose with its source offset", () => {
+    const source = "before\n![[diagram.png]]\nafter";
+    expect(parseAttachmentReferences(source)).toMatchObject([
+      {
+        kind: "obsidian-embed",
+        raw: "![[diagram.png]]",
+        target: "diagram.png",
+        index: source.indexOf("![[diagram.png]]"),
+      },
+    ]);
+  });
+
+  it.each([
+    "![[diagram\n.png]]",
+    "![[diagram.png#crop\narea]]",
+    "![[diagram.png|wide\npreview]]",
+  ])("rejects a line break inside embed delimiters: %j", (source) => {
+    expect(parseAttachmentReferences(source)).toEqual([]);
+  });
+
   it("does not treat note links, transclusions, external URLs, or anchors as attachments", () => {
     const noteTitles = new Set(["note title"]);
     const source = [

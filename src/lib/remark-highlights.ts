@@ -2,7 +2,7 @@ import type { Html, PhrasingContent, Root, Text } from "mdast";
 import type { VFile } from "vfile";
 import { transformTextNodes } from "./mdast-text";
 
-const HIGHLIGHT_RE = /==([^=\n]+?)==/g;
+const HIGHLIGHT_RE = /==([^=]+?)==/g;
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");

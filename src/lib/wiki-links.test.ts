@@ -72,6 +72,14 @@ describe("parseWikiLinks", () => {
       { raw: "[[Note]]", target: "Note" },
     ]);
   });
+
+  it.each([
+    "[[Note\nB]]",
+    "[[Note B#Deep\nDive]]",
+    "[[Note B|read\nthis]]",
+  ])("rejects a line break inside wiki-link delimiters: %j", (source) => {
+    expect(parseWikiLinks(source)).toEqual([]);
+  });
 });
 
 describe("displayText", () => {
