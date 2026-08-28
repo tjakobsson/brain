@@ -1,14 +1,15 @@
-name: Generator Action parity
+name: Candidate Action parity
 
 on:
   pull_request:
-    paths-ignore:
-      - "openspec/**"
+    paths:
+      - "release/candidate.json"
   push:
     branches:
       - main
-    paths-ignore:
-      - "openspec/**"
+    paths:
+      - "release/candidate.json"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -109,11 +110,6 @@ jobs:
           action.yml
           .github/workflows/action-parity.yml
           .github/workflows/publish-pages.yml
-
-      - name: Verify live container workflow
-        run: |
-          docker build --tag brain:source .
-          BRAIN_IMAGE=brain:source npm run test:container-live
 
       - name: Build through source command
         run: >-

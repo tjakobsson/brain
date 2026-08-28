@@ -1,0 +1,108 @@
+name: Source image parity
+
+on:
+  pull_request:
+    paths:
+      - ".dockerignore"
+      - ".github/workflows/source-parity.yml"
+      - "Dockerfile"
+      - "LICENSE"
+      - "THIRD_PARTY_NOTICES.md"
+      - "astro.config.ts"
+      - "examples/demo-vault/**"
+      - "package-lock.json"
+      - "package.json"
+      - "public/**"
+      - "scripts/compare-output-trees.mjs"
+      - "scripts/container-live-smoke.mjs"
+      - "scripts/generator-inputs.mjs"
+      - "scripts/generator-safety.mjs"
+      - "scripts/generator.mjs"
+      - "scripts/live-server.mjs"
+      - "scripts/static-server.mjs"
+      - "src/**"
+      - "tsconfig.json"
+  push:
+    branches:
+      - main
+    paths:
+      - ".dockerignore"
+      - ".github/workflows/source-parity.yml"
+      - "Dockerfile"
+      - "LICENSE"
+      - "THIRD_PARTY_NOTICES.md"
+      - "astro.config.ts"
+      - "examples/demo-vault/**"
+      - "package-lock.json"
+      - "package.json"
+      - "public/**"
+      - "scripts/compare-output-trees.mjs"
+      - "scripts/container-live-smoke.mjs"
+      - "scripts/generator-inputs.mjs"
+      - "scripts/generator-safety.mjs"
+      - "scripts/generator.mjs"
+      - "scripts/live-server.mjs"
+      - "scripts/static-server.mjs"
+      - "src/**"
+      - "tsconfig.json"
+
+permissions:
+  contents: read
+
+jobs:
+  parity:
+    name: Source command and image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Build source image
+        run: docker build --tag brain:source .
+
+      - name: Verify live container workflow
+        run: BRAIN_IMAGE=brain:source npm run test:container-live
+
+      - name: Build through source command
+        run: >-
+          node scripts/generator.mjs build
+          --vault examples/demo-vault
+          --output .generated/source-command
+          --site https://example.com
+          --base /notes
+          --exclude '.obsidian/**'
+          --strict-links
+
+      - name: Build through source image
+        run: |
+          mkdir -p .generated/source-image .generated/source-image-work .generated/source-image-tmp
+          docker run --rm \
+            --read-only \
+            --network none \
+            --user "$(id -u):$(id -g)" \
+            --mount "type=bind,src=$PWD/examples/demo-vault,dst=/vault,readonly" \
+            --mount "type=bind,src=$PWD/.generated/source-image,dst=/output" \
+            --mount "type=bind,src=$PWD/.generated/source-image-work,dst=/work" \
+            --mount "type=bind,src=$PWD/.generated/source-image-tmp,dst=/tmp" \
+            brain:source build \
+            --vault /vault \
+            --output /output/site \
+            --site https://example.com \
+            --base /notes \
+            --exclude '.obsidian/**' \
+            --strict-links
+
+      - name: Verify source output parity
+        run: >-
+          node scripts/compare-output-trees.mjs
+          .generated/source-command
+          .generated/source-image/site
