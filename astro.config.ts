@@ -19,6 +19,12 @@ export default defineConfig({
     [routes.graphAlias]: joinBase(internalSettings.base, routes.home),
   },
   markdown: {
+    shikiConfig: {
+      themes: {
+        light: "github-light",
+        dark: "github-dark",
+      },
+    },
     processor: unified({
       remarkPlugins: [
         [remarkAttachments, { base: internalSettings.base }],

@@ -156,6 +156,8 @@ test("all site features stay within the deployment base", async ({ page }, testI
   await page.emulateMedia({ colorScheme: "dark" });
 
   const noteHeader = page.locator(".site-header[data-scroll-compact]");
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect(noteHeader).not.toHaveClass(/is-compact/);
   await page.evaluate(() => window.scrollTo(0, 400));
   await expect(noteHeader).toHaveClass(/is-compact/);
   await expect(noteHeader.locator(".site-nav")).toBeHidden();
