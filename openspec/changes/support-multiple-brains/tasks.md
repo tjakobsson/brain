@@ -33,8 +33,8 @@
 
 - [x] 5.1 Extend live serving to watch the workspace manifest and every active brain root, update the root set only after successful activation, and retain the last successful site and watch set after failure; verify live-server tests cover edits, additions, removals, hierarchy changes, failed manifest updates, recovery, debouncing, and shutdown.
 - [x] 5.2 Update container build and preview examples and smoke tests for read-only workspace manifests and brain mounts; verify a network-disabled container builds and previews the multi-brain fixture without writing to any input.
-- [ ] 5.3 Add mutually exclusive workspace input support to the composite GitHub Action and parity workflows, including caller-prepared multi-repository checkouts; verify Action parity compares source and container workspace output and reports unavailable brain mounts by ID.
-- [ ] 5.4 Add workspace input support to the reusable Pages workflow for sources inside its caller checkout and reject external sources with Action-based guidance; verify workflow fixtures cover single-brain defaults, multi-brain publication inputs, conflicting inputs, and failed validation without deployment.
+- [x] 5.3 Add mutually exclusive workspace input support to the composite GitHub Action and parity workflows, including caller-prepared multi-repository checkouts; verify Action parity compares source and container workspace output and reports unavailable brain mounts by ID.
+- [x] 5.4 Add workspace input support to the reusable Pages workflow for sources inside its caller checkout and reject external sources with Action-based guidance; verify workflow fixtures cover single-brain defaults, multi-brain publication inputs, conflicting inputs, and failed validation without deployment.
 
 ## 6. Documentation and migration
 
