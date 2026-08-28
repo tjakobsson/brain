@@ -1,5 +1,6 @@
 import type Graph from "graphology";
 import type Sigma from "sigma";
+import { fitRenderedGraph } from "./graph-fit";
 import {
   MotionGeneration,
   adaptPositionsToViewport,
@@ -9,7 +10,6 @@ import {
   loadGraphView,
   loadPositions,
   motionPlan,
-  positionBounds,
   positionCacheKey,
   savePositions,
   saveGraphView,
@@ -255,17 +255,14 @@ export class GraphMotionController {
 
   private fitVisible(ids: string[], animate: boolean, generation: number): void {
     if (!this.generations.isCurrent(generation)) return;
-    const positions = this.capturePositions(ids);
-    this.renderer.setCustomBBox(positionBounds(positions, ids));
-    this.renderer.refresh();
-    const target = { x: 0.5, y: 0.5, angle: 0, ratio: 1.12 };
-    if (!animate) {
-      this.renderer.getCamera().setState(target);
-      return;
-    }
-    this.cameraAnimating = true;
-    this.renderer.getCamera().animate(target, { duration: 320, easing: "quadraticInOut" }, () => {
-      if (this.generations.isCurrent(generation)) this.cameraAnimating = false;
+    fitRenderedGraph(this.renderer, ids, {
+      animate,
+      onAnimationStart: () => {
+        this.cameraAnimating = true;
+      },
+      onAnimationComplete: () => {
+        if (this.generations.isCurrent(generation)) this.cameraAnimating = false;
+      },
     });
   }
 

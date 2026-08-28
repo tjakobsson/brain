@@ -2,7 +2,7 @@
 
 Brain turns a plain Markdown Obsidian vault into a static, searchable second-brain site. The same generator runs from source, as a non-root OCI image, or through a composite GitHub Action that can feed a GitHub Pages workflow.
 
-![Brain running on desktop and mobile](docs/brain-showcase.svg)
+![Brain showing linked notes on desktop and mobile](docs/brain-showcase.svg)
 
 ## Get started
 

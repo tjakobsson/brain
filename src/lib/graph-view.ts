@@ -7,6 +7,7 @@ import {
   wireGraphHover,
   type GraphHoverState,
 } from "./graph-interaction";
+import { fitRenderedGraph } from "./graph-fit";
 import { GraphMotionController } from "./graph-motion";
 import { ResizeSettler } from "./graph-motion-core";
 import { joinBase, routes, type LogicalRoute } from "./routes";
@@ -126,12 +127,6 @@ export function buildGraph(data: GraphData): Graph {
     }
   }
   return graph;
-}
-
-/** Sigma's initial fit touches the frame edges exactly; zoom out slightly for margin. */
-function fitWithMargin(renderer: Sigma): void {
-  const camera = renderer.getCamera();
-  camera.setState({ ratio: camera.getState().ratio * 1.2 });
 }
 
 function baseSettings(theme: GraphTheme, nodeCount: number) {
@@ -364,7 +359,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   const renderer = new Sigma(graph, ui.host, baseSettings(theme, graph.order));
   const motion = new GraphMotionController(renderer, graph, data);
   const restored = motion.restoreSession();
-  if (!restored.view) fitWithMargin(renderer);
+  if (!restored.view) fitRenderedGraph(renderer, graph.nodes());
 
   let sessionTimer: number | null = null;
   const saveSession = () => {
@@ -611,7 +606,16 @@ export async function mountLocalGraphs(): Promise<void> {
       ...baseSettings(theme, graph.order),
       labelRenderedSizeThreshold: 3,
     });
-    fitWithMargin(renderer);
+    const fitButton = host
+      .closest<HTMLElement>(".local-graph-panel")
+      ?.querySelector<HTMLButtonElement>("[data-fit-local-graph]");
+    const fitView = (animate: boolean) => {
+      if (animate) stopCameraAnimation(renderer);
+      fitRenderedGraph(renderer, graph.nodes(), {
+        animate: animate && !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+      });
+    };
+    fitView(false);
     const state: InteractionState = {
       hovered: null,
       neighbors: new Set(),
@@ -623,6 +627,9 @@ export async function mountLocalGraphs(): Promise<void> {
     wireHoverAndClick(renderer, graph, state);
     wireNodeDragging(renderer, graph, state);
     wireTheme(renderer, state);
+    const onFitView = () => fitView(true);
+    fitButton?.addEventListener("click", onFitView);
+    renderer.on("kill", () => fitButton?.removeEventListener("click", onFitView));
     if (import.meta.env.DEV) {
       (window as unknown as Record<string, unknown>).__localGraphDebug = { renderer, graph };
     }

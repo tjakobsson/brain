@@ -8,10 +8,9 @@ interface Props {
   wide?: boolean;
   /** Full-bleed pages (graph): no max-width, no padding. */
   fluid?: boolean;
-  compactHeader?: boolean;
 }
 
-const { title, wide = false, fluid = false, compactHeader = false } = Astro.props;
+const { title, wide = false, fluid = false } = Astro.props;
 const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.meta.env.BASE_URL, route);
 ---
 
@@ -24,107 +23,50 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
     <title>{title}</title>
   </head>
   <body>
-    <div class="site-header-slot has-floating-header">
-      <header class="site-header" data-scroll-compact={compactHeader ? "" : undefined}>
-        <nav class="site-nav" aria-label="Primary navigation">
-          <a href={url(routes.home)}>Graph</a>
-          <a href={url(routes.tags)}>Tags</a>
-          <a href={url(routes.recent)}>Recent</a>
-          <a href={url(routes.orphans)}>Orphans</a>
-          <a href={url(routes.search)}>Search</a>
+    <div class="site-header-slot">
+      <header class="site-header">
+        <nav class="site-nav-pill" aria-label="Primary navigation">
+          <a class="nav-action graph-trigger" href={url(routes.home)} aria-label="Graph">
+            <svg class="nav-icon graph-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M7.5 7.5 12 5l4.5 2.5v5L12 15l-4.5-2.5z"></path>
+              <path d="M7.5 12.5 5 17m11.5-4.5L19 17M12 15v4"></path>
+              <circle cx="5" cy="17" r="1.5"></circle>
+              <circle cx="19" cy="17" r="1.5"></circle>
+              <circle cx="12" cy="20" r="1.5"></circle>
+            </svg>
+          </a>
+          <button
+            class="nav-action search-trigger"
+            data-open-switcher
+            type="button"
+            aria-label="Search"
+            aria-haspopup="dialog"
+            aria-controls="quick-switcher"
+          >
+            <svg class="nav-icon search-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="6.5"></circle>
+              <path d="m16 16 4 4"></path>
+            </svg>
+          </button>
+          <details class="nav-menu">
+            <summary class="nav-action" aria-label="More navigation">
+              <svg class="nav-icon expand-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m14.5 6-6 6 6 6"></path>
+              </svg>
+            </summary>
+            <div class="nav-menu-panel">
+              <a href={url(routes.tags)}>Tags</a>
+              <a href={url(routes.recent)}>Recent</a>
+              <a href={url(routes.orphans)}>Orphans</a>
+              <a href={url(routes.search)}>Search</a>
+            </div>
+          </details>
         </nav>
-        <details class="mobile-nav">
-          <summary aria-label="Site navigation">
-            <span class="menu-icon" aria-hidden="true"></span>
-          </summary>
-          <nav class="mobile-nav-panel" aria-label="Site navigation">
-            <a href={url(routes.home)}>Graph</a>
-            <a href={url(routes.tags)}>Tags</a>
-            <a href={url(routes.recent)}>Recent</a>
-            <a href={url(routes.orphans)}>Orphans</a>
-            <a href={url(routes.search)}>Search</a>
-          </nav>
-        </details>
-        <button
-          class="search-trigger"
-          data-open-switcher
-          type="button"
-          aria-label="Search"
-          aria-haspopup="dialog"
-          aria-controls="quick-switcher"
-        >
-          <span class="search-label">Search</span>
-          <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="11" cy="11" r="6.5"></circle>
-            <path d="m16 16 4 4"></path>
-          </svg>
-          <kbd>⌘K</kbd>
-        </button>
       </header>
     </div>
     <main class:list={[{ wide, fluid }]}>
       <slot />
     </main>
     <QuickSwitcher />
-    <script>
-      const compactHeader = document.querySelector<HTMLElement>("[data-scroll-compact]");
-      if (compactHeader) {
-        const menu = compactHeader.querySelector<HTMLDetailsElement>(".mobile-nav");
-        let previousY = Math.max(window.scrollY, 0);
-        let direction = 0;
-        let distance = 0;
-        let frame: number | null = null;
-
-        const reconcileHeader = (ignoreFocus = false) => {
-          if (!ignoreFocus && (compactHeader.matches(":focus-within") || menu?.open)) return;
-          if (window.scrollY <= 80 || (direction < 0 && distance >= 16)) {
-            compactHeader.classList.remove("is-compact");
-          } else if (direction > 0 && distance >= 24) {
-            compactHeader.classList.add("is-compact");
-          }
-        };
-
-        const updateHeader = () => {
-          frame = null;
-          const currentY = Math.max(window.scrollY, 0);
-          const delta = currentY - previousY;
-          const nextDirection = Math.sign(delta);
-          const interacting = compactHeader.matches(":focus-within") || menu?.open;
-
-          if (nextDirection !== 0) {
-            if (nextDirection !== direction) distance = 0;
-            direction = nextDirection;
-            distance += Math.abs(delta);
-          }
-
-          if (currentY <= 80 && !interacting) {
-            compactHeader.classList.remove("is-compact");
-            distance = 0;
-          } else if (!interacting && nextDirection !== 0) {
-            if (direction > 0 && distance >= 24) compactHeader.classList.add("is-compact");
-            if (direction < 0 && distance >= 16) compactHeader.classList.remove("is-compact");
-          }
-          previousY = currentY;
-        };
-
-        window.addEventListener(
-          "scroll",
-          () => {
-            if (frame === null) frame = requestAnimationFrame(updateHeader);
-          },
-          { passive: true },
-        );
-        if (previousY > 80) compactHeader.classList.add("is-compact");
-        compactHeader.addEventListener("focusout", () => window.setTimeout(reconcileHeader, 0));
-        menu?.addEventListener("toggle", () => {
-          if (menu.open) return;
-          const focusWasInMenu = menu.contains(document.activeElement);
-          reconcileHeader(true);
-          if (focusWasInMenu && menu.offsetParent === null) {
-            compactHeader.querySelector<HTMLElement>(".search-trigger")?.focus();
-          }
-        });
-      }
-    </script>
   </body>
 </html>

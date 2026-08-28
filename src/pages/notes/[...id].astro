@@ -36,7 +36,7 @@ const url = (route: import("../../lib/routes").LogicalRoute) =>
   joinBase(import.meta.env.BASE_URL, route);
 ---
 
-<BaseLayout title={title} compactHeader>
+<BaseLayout title={title}>
   <article data-pagefind-body>
     <h1>{title}</h1>
     <NoteMeta
@@ -55,7 +55,10 @@ const url = (route: import("../../lib/routes").LogicalRoute) =>
           <h2 id="local-graph-heading">Connection map</h2>
           <p>Notes up to two links away from this note.</p>
         </div>
-        <a href={url(routes.home)}>Open full graph</a>
+        <div class="local-graph-panel__actions">
+          <button class="graph-control" type="button" data-fit-local-graph>Fit view</button>
+          <a href={url(routes.home)}>Open full graph</a>
+        </div>
       </header>
       <div class="local-graph" data-slug={entry.id} aria-hidden="true"></div>
       <nav class="local-graph-links" aria-label="Notes in the connection map">

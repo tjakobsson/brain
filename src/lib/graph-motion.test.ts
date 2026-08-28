@@ -51,10 +51,16 @@ class FakeWorker {
 
 function fixture(reducedMotion = true) {
   const storage = new MemoryStorage();
+  let cameraState = { x: 0.5, y: 0.5, angle: 0, ratio: 1 };
   const camera = {
-    getState: vi.fn(() => ({ x: 0.5, y: 0.5, angle: 0, ratio: 1 })),
-    setState: vi.fn(),
-    animate: vi.fn((_state, _options, callback?: () => void) => callback?.()),
+    getState: vi.fn(() => ({ ...cameraState })),
+    setState: vi.fn((state: Partial<typeof cameraState>) => {
+      cameraState = { ...cameraState, ...state };
+    }),
+    animate: vi.fn((state: typeof cameraState, _options: unknown, callback?: () => void) => {
+      cameraState = { ...state };
+      callback?.();
+    }),
   };
   const renderer = {
     getDimensions: vi.fn(() => ({ width: 390, height: 844 })),
@@ -64,6 +70,27 @@ function fixture(reducedMotion = true) {
     getBBox: vi.fn(() => ({ x: [-1, 1], y: [0, 1] })),
     refresh: vi.fn(),
     scheduleRefresh: vi.fn(),
+    getGraph: vi.fn(() => graph),
+    getNodeDisplayedLabels: vi.fn(() => new Set<string>()),
+    getSettings: vi.fn(() => ({ labelWeight: "500", labelSize: 13, labelFont: "sans-serif" })),
+    getSetting: vi.fn(() => 10),
+    setSetting: vi.fn(),
+    getCanvases: vi.fn(() => ({})),
+    getNodeDisplayData: vi.fn((id: string) => ({
+      x: graph.getNodeAttribute(id, "x") as number,
+      y: graph.getNodeAttribute(id, "y") as number,
+      size: graph.getNodeAttribute(id, "size") as number,
+      hidden: false,
+    })),
+    framedGraphToViewport: vi.fn((point: { x: number; y: number }) => ({
+      x: 195 + ((point.x - cameraState.x) * 120) / cameraState.ratio,
+      y: 422 + ((point.y - cameraState.y) * 120) / cameraState.ratio,
+    })),
+    viewportToFramedGraph: vi.fn((point: { x: number; y: number }) => ({
+      x: cameraState.x + ((point.x - 195) * cameraState.ratio) / 120,
+      y: cameraState.y + ((point.y - 422) * cameraState.ratio) / 120,
+    })),
+    scaleSize: vi.fn((size: number) => size / Math.sqrt(cameraState.ratio)),
   };
   const graph = new Graph();
   graph.addNode("a", { x: -1, y: 0, size: 5 });
@@ -198,15 +225,24 @@ describe("GraphMotionController", () => {
   it("fits the visible graph only when requested", () => {
     const { camera, renderer, graph, data } = fixture(false);
     const controller = new GraphMotionController(renderer as never, graph, data);
+    const positions = Object.fromEntries(
+      graph.nodes().map((id) => [id, { x: graph.getNodeAttribute(id, "x"), y: graph.getNodeAttribute(id, "y") }]),
+    );
 
     controller.fitView(["a", "b"]);
 
     expect(renderer.setCustomBBox).toHaveBeenCalledOnce();
+    expect(renderer.getNodeDisplayData).not.toHaveBeenCalledWith("c");
     expect(camera.animate).toHaveBeenCalledWith(
-      { x: 0.5, y: 0.5, angle: 0, ratio: 1.12 },
+      expect.objectContaining({ angle: 0 }),
       { duration: 320, easing: "quadraticInOut" },
       expect.any(Function),
     );
+    expect(
+      Object.fromEntries(
+        graph.nodes().map((id) => [id, { x: graph.getNodeAttribute(id, "x"), y: graph.getNodeAttribute(id, "y") }]),
+      ),
+    ).toEqual(positions);
     controller.destroy();
   });
 
