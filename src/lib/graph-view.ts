@@ -1,6 +1,12 @@
 import Graph from "graphology";
 import Sigma from "sigma";
 import type { MouseCoords, TouchCoords, WheelCoords } from "sigma/types";
+import {
+  createHoverReducers,
+  stopCameraAnimation,
+  wireGraphHover,
+  type GraphHoverState,
+} from "./graph-interaction";
 import { GraphMotionController } from "./graph-motion";
 import { ResizeSettler } from "./graph-motion-core";
 import { joinBase, routes, type LogicalRoute } from "./routes";
@@ -145,9 +151,7 @@ function baseSettings(theme: GraphTheme, nodeCount: number) {
   };
 }
 
-interface InteractionState {
-  hovered: string | null;
-  neighbors: Set<string>;
+interface InteractionState extends GraphHoverState {
   dragged: string | null;
   draggedMoved: boolean;
   theme: GraphTheme;
@@ -190,23 +194,17 @@ function touchTargetNode(renderer: Sigma, graph: Graph, point: { x: number; y: n
   return closestLabel?.node ?? closestNode?.node ?? null;
 }
 
-function wireHoverAndClick(renderer: Sigma, graph: Graph, state: InteractionState): void {
+function wireHoverAndClick(
+  renderer: Sigma,
+  graph: Graph,
+  state: InteractionState,
+  onNodeEnter?: () => void,
+): void {
   const navigateToNode = (node: string) => {
     const route = graph.getNodeAttribute(node, "route") as LogicalRoute | undefined;
     if (route) window.location.assign(joinBase(import.meta.env.BASE_URL, route));
   };
-  renderer.on("enterNode", ({ node }) => {
-    state.hovered = node;
-    state.neighbors = new Set(graph.neighbors(node));
-    renderer.getContainer().style.cursor = "pointer";
-    renderer.refresh();
-  });
-  renderer.on("leaveNode", () => {
-    state.hovered = null;
-    state.neighbors.clear();
-    if (!state.dragged) renderer.getContainer().style.cursor = "";
-    renderer.refresh();
-  });
+  wireGraphHover(renderer, graph, state, onNodeEnter, () => state.dragged !== null);
   renderer.on("clickNode", ({ node }) => {
     if (state.draggedMoved) {
       state.draggedMoved = false;
@@ -344,28 +342,6 @@ function wireNodeDragging(
   });
 }
 
-function hoverReducers(renderer: Sigma, graph: Graph, state: InteractionState): void {
-  renderer.setSetting("nodeReducer", (node, attrs) => {
-    const res = { ...attrs } as Record<string, unknown>;
-    if (state.hovered && node !== state.hovered && !state.neighbors.has(node)) {
-      res.color = state.theme.fadedNode;
-    }
-    return res as typeof attrs;
-  });
-  renderer.setSetting("edgeReducer", (edge, attrs) => {
-    const res = { ...attrs } as Record<string, unknown>;
-    if (
-      state.hovered &&
-      graph.source(edge) !== state.hovered &&
-      graph.target(edge) !== state.hovered
-    ) {
-      res.color = state.theme.fadedEdge;
-      res.label = "";
-    }
-    return res as typeof attrs;
-  });
-}
-
 /* ------------------------------------------------------------------------ */
 /* Global graph                                                              */
 /* ------------------------------------------------------------------------ */
@@ -414,6 +390,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     draggedMoved: false,
     theme,
   };
+  const hoverReducers = createHoverReducers(graph, state);
   let query = "";
 
   const activeTypes = () =>
@@ -446,9 +423,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       }
       const label = (attrs.label as string).toLowerCase();
       if (state.hovered) {
-        if (node !== state.hovered && !state.neighbors.has(node)) {
-          res.color = state.theme.fadedNode;
-        }
+        return hoverReducers.nodeReducer(node, attrs);
       } else if (query && !label.includes(query)) {
         res.color = state.theme.fadedNode;
         res.label = "";
@@ -460,9 +435,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       const source = graph.source(edge);
       const target = graph.target(edge);
       if (hidden.has(source) || hidden.has(target)) res.hidden = true;
-      else if (state.hovered && source !== state.hovered && target !== state.hovered) {
-        res.color = state.theme.fadedEdge;
-      }
+      else if (state.hovered) return hoverReducers.edgeReducer(edge, attrs);
       return res as typeof attrs;
     });
     renderer.refresh();
@@ -523,17 +496,12 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   const onFitView = () => motion.fitView(visibleIds());
   ui.fitViewButton.addEventListener("click", onFitView);
 
-  wireHoverAndClick(renderer, graph, state);
-
-  const stopCameraAnimation = () => {
-    const camera = renderer.getCamera();
-    if (camera.isAnimated()) void camera.animate(camera.getState(), { duration: 0 });
-  };
+  const stopCamera = () => stopCameraAnimation(renderer);
   const mouse = renderer.getMouseCaptor();
   const onWheel = (event: WheelCoords) => {
     if (!state.dragged) return;
     event.preventSigmaDefault();
-    stopCameraAnimation();
+    stopCamera();
   };
   mouse.on("wheel", onWheel);
   wireTheme(renderer, state);
@@ -554,18 +522,19 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     resizeSettler.update(ui.host.clientWidth, ui.host.clientHeight);
   });
   resizeObserver.observe(ui.host);
-  const cancelForDrag = () => {
-    stopCameraAnimation();
+  const interruptAutomaticMotion = () => {
+    stopCamera();
     resizeSettler.reset(ui.host.clientWidth, ui.host.clientHeight);
     motion.cancel();
   };
+  wireHoverAndClick(renderer, graph, state, interruptAutomaticMotion);
   const commitDrag = (_node: string, _neighborhood: string[], moved: boolean) => {
-    stopCameraAnimation();
+    stopCamera();
     motion.cancel();
     resizeSettler.reset(ui.host.clientWidth, ui.host.clientHeight);
     if (moved) motion.commitSession();
   };
-  wireNodeDragging(renderer, graph, state, commitDrag, cancelForDrag);
+  wireNodeDragging(renderer, graph, state, commitDrag, interruptAutomaticMotion);
 
   const onVisibilityChange = () => {
     if (document.hidden) motion.cancel();
@@ -650,7 +619,7 @@ export async function mountLocalGraphs(): Promise<void> {
       draggedMoved: false,
       theme,
     };
-    hoverReducers(renderer, graph, state);
+    renderer.setSettings(createHoverReducers(graph, state));
     wireHoverAndClick(renderer, graph, state);
     wireNodeDragging(renderer, graph, state);
     wireTheme(renderer, state);

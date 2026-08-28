@@ -139,6 +139,44 @@ describe("GraphMotionController", () => {
     expect(cancelAnimationFrame).toHaveBeenCalledWith(1);
   });
 
+  it("freezes the current frame on cancellation and accepts a later settle", () => {
+    const { renderer, graph, data } = fixture(false);
+    const frames = new Map<number, FrameRequestCallback>();
+    let nextFrame = 1;
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((callback: FrameRequestCallback) => {
+        const id = nextFrame++;
+        frames.set(id, callback);
+        return id;
+      }),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn((id: number) => frames.delete(id)));
+    const controller = new GraphMotionController(renderer as never, graph, data);
+
+    controller.settle("initial", graph.nodes());
+    const firstWorker = FakeWorker.instances[0];
+    firstWorker.emit("message", {
+      generation: (firstWorker.request as { generation: number }).generation,
+      positions: { a: { x: -3, y: -2 }, b: { x: 3, y: 2 }, c: { x: 0, y: 3 } },
+    });
+    const firstFrame = frames.get(1)!;
+    firstFrame(performance.now() + 100);
+    const frozen = Object.fromEntries(
+      graph.nodes().map((node) => [node, { ...graph.getNodeAttributes(node) }]),
+    );
+
+    controller.cancel();
+    firstFrame(performance.now() + 500);
+    expect(Object.fromEntries(graph.nodes().map((node) => [node, graph.getNodeAttributes(node)])))
+      .toEqual(frozen);
+
+    controller.settle("filter", graph.nodes());
+    expect(FakeWorker.instances).toHaveLength(2);
+    expect(FakeWorker.instances[1].request).toBeDefined();
+    controller.destroy();
+  });
+
   it("settles a dragged neighborhood without fitting the camera", () => {
     const { camera, renderer, graph, data } = fixture();
     const controller = new GraphMotionController(renderer as never, graph, data);

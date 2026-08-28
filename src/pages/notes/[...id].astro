@@ -17,7 +17,6 @@ const { Content } = await render(entry);
 const index = getLinkIndex();
 const note = index.notes.find((n) => n.slug === entry.id);
 const title = entry.data.title ?? note?.title ?? entry.id;
-const date = (d?: Date) => d?.toISOString().slice(0, 10);
 const adjacency = new Map<string, Set<string>>();
 for (const { source, target } of index.edges) {
   adjacency.set(source, (adjacency.get(source) ?? new Set()).add(target));
@@ -44,8 +43,8 @@ const url = (route: import("../../lib/routes").LogicalRoute) =>
       type={entry.data.type}
       status={entry.data.status}
       tags={entry.data.tags}
-      created={date(entry.data.created)}
-      updated={date(entry.data.updated)}
+      created={entry.data.created}
+      updated={entry.data.updated}
     />
     <Content />
   </article>

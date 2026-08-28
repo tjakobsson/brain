@@ -45,7 +45,6 @@ function run(text: string, titles: string[], base = ""): Paragraph {
 }
 
 describe("remarkWikiLinks", () => {
-
   it("resolves a plain link to the note URL", () => {
     const para = run("See [[Note B]] for more.", ["Note B"]);
     const link = para.children[1] as Link;
@@ -79,6 +78,14 @@ describe("remarkWikiLinks", () => {
     expect(para.children.map((c) => c.type)).toEqual(["text", "link", "text"]);
     expect((para.children[0] as Text).value).toBe("before ");
     expect((para.children[2] as Text).value).toBe(" after");
+  });
+
+  it("resolves a link after wrapped prose without consuming line breaks", () => {
+    const para = run("before\n[[Note B]]\nafter", ["Note B"]);
+    expect(para.children.map((c) => c.type)).toEqual(["text", "link", "text"]);
+    expect((para.children[0] as Text).value).toBe("before\n");
+    expect((para.children[1] as Link).url).toBe("/notes/note-b");
+    expect((para.children[2] as Text).value).toBe("\nafter");
   });
 
   it("renders unwritten targets as a styled span", () => {

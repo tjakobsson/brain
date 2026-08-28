@@ -42,15 +42,15 @@ The workflow grants only the permissions needed to read the vault and publish Gi
 
 ## Vault Format
 
-Note filenames are titles and must be unique across the vault. Do not repeat the title as an H1. Optional frontmatter controls note type, maturity, tags, and dates:
+Note filenames are titles and must be unique across the vault. Do not repeat the title as an H1. Optional frontmatter controls note type, maturity, tags, and dates or ISO timestamps:
 
 ```yaml
 ---
 type: permanent
 status: established
 tags: [pkm, web]
-created: 2026-08-26
-updated: 2026-08-27
+created: 2026-08-26T09:15:00Z
+updated: 2026-08-27T16:40:00Z
 ---
 ```
 

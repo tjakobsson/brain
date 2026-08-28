@@ -29,8 +29,8 @@ title: Optional override        # default: filename
 type: permanent                 # fleeting | literature | permanent (default: permanent)
 status: draft                   # draft | developing | established (default: draft)
 tags: [pkm, web]                # default: []
-created: 2026-08-26             # optional date
-updated: 2026-08-27             # optional date
+created: 2026-08-26T09:15:00Z   # optional date or ISO timestamp
+updated: 2026-08-27T16:40:00Z   # optional date or ISO timestamp
 ---
 ```
 
