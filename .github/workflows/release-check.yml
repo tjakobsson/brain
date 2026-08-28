@@ -2,9 +2,13 @@ name: Release dry run
 
 on:
   pull_request:
+    paths-ignore:
+      - "openspec/**"
   push:
     branches:
       - main
+    paths-ignore:
+      - "openspec/**"
   workflow_dispatch:
 
 permissions:

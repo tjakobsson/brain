@@ -4,11 +4,12 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const historicalFiles = new Set([
-  "openspec/changes/package-second-brain-generator/design.md",
-  "openspec/changes/complete-brain-rename-and-live-serve/proposal.md",
-  "openspec/changes/complete-brain-rename-and-live-serve/design.md",
-  "openspec/changes/complete-brain-rename-and-live-serve/tasks.md",
-  "openspec/changes/complete-brain-rename-and-live-serve/specs/brain-product-interface/spec.md",
+  "openspec/changes/archive/2026-08-28-package-second-brain-generator/design.md",
+  "openspec/changes/archive/2026-08-28-complete-brain-rename-and-live-serve/proposal.md",
+  "openspec/changes/archive/2026-08-28-complete-brain-rename-and-live-serve/design.md",
+  "openspec/changes/archive/2026-08-28-complete-brain-rename-and-live-serve/tasks.md",
+  "openspec/changes/archive/2026-08-28-complete-brain-rename-and-live-serve/specs/brain-product-interface/spec.md",
+  "openspec/specs/brain-product-interface/spec.md",
 ]);
 const formerNames = [
   ["brain", "manual"].join("-"),
