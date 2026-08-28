@@ -384,12 +384,46 @@ article img {
   border: 1px solid var(--border);
 }
 
-article code {
+article :not(pre) > code {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 0.1em 0.35em;
   font-size: 0.88em;
+}
+
+article pre {
+  width: 100%;
+  max-width: 100%;
+  margin: 1.4rem 0;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  overflow-x: auto;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+article pre code {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font: inherit;
+}
+
+@media (prefers-color-scheme: dark) {
+  .astro-code,
+  .astro-code span {
+    color: var(--shiki-dark) !important;
+    background-color: var(--shiki-dark-bg) !important;
+    font-style: var(--shiki-dark-font-style) !important;
+    font-weight: var(--shiki-dark-font-weight) !important;
+    text-decoration: var(--shiki-dark-text-decoration) !important;
+  }
 }
 
 mark {
