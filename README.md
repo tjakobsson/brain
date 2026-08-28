@@ -4,6 +4,13 @@ Brain turns a plain Markdown Obsidian vault into a static, searchable second-bra
 
 ![Brain running on desktop and mobile](docs/brain-showcase.svg)
 
+## Get started
+
+- [Run your vault locally with Docker](#start-with-docker)
+- [Publish your vault with GitHub Pages](#publish-with-github-pages)
+- [Prepare your vault](#vault-format)
+- [Build Brain from source](#source-build)
+
 ## Start with Docker
 
 You only need [Docker Desktop](https://www.docker.com/products/docker-desktop/), or Docker Engine on Linux, and an Obsidian vault. You do not need Node.js or a copy of this repository. Brain mounts the vault read-only, so it does not change your notes.
@@ -20,7 +27,18 @@ You only need [Docker Desktop](https://www.docker.com/products/docker-desktop/),
 
 Keep the terminal open while using Brain. Changes to the vault rebuild the site and reload the browser after a successful build. Press `Ctrl+C` to stop it.
 
-The repository is preparing its first public release. The `main` image used above is a rolling pre-release and may change. Once `v1.0.0` is published, use `ghcr.io/tjakobsson/brain:v1` for compatible updates.
+The repository is preparing its first public release. The `main` image and Action used in these guides are rolling pre-releases and may change. Once `v1.0.0` is published, use `ghcr.io/tjakobsson/brain:v1` and `tjakobsson/brain@v1` for compatible updates.
+
+## Publish with GitHub Pages
+
+GitHub Actions can rebuild and publish the site whenever you push changes to your vault. Only use this with a vault intended for public reading: Brain publishes every included note and referenced attachment.
+
+1. Create a GitHub repository for your vault and push the vault files to its `main` branch.
+2. Open the repository's **Settings > Pages** and set **Source** to **GitHub Actions**.
+3. Add [`pages-main.yml`](docs/examples/pages-main.yml) to the vault repository as `.github/workflows/pages.yml`.
+4. Commit and push the workflow. Follow the **Publish second brain** run in the repository's **Actions** tab; its deploy job links to the published site.
+
+The workflow grants only the permissions needed to read the vault and publish GitHub Pages. For an immutable deployment, replace `tjakobsson/brain@main` with a full Brain commit SHA.
 
 ## Vault Format
 
