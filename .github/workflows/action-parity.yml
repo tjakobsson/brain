@@ -11,16 +11,20 @@ permissions:
   packages: read
 
 env:
-  GENERATOR_IMAGE: ghcr.io/tjakobsson/brain@sha256:cca6a649f110011cc297a32598f27d824f660e96f7881ffeb50bece534f4fd0c
+  GENERATOR_IMAGE: ghcr.io/tjakobsson/brain@sha256:ba0ab4d2a751dd547ac0284709c0bba4c0ee85030e3e8d3158e873cc52e9b236
 
 jobs:
   image-platform:
     name: Candidate image (${{ matrix.platform }})
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
-        platform: [linux/amd64, linux/arm64]
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -30,9 +34,6 @@ jobs:
         with:
           node-version: 24
           cache: npm
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8
 
       - name: Install locked dependencies
         run: npm ci
