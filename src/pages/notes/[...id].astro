@@ -74,5 +74,17 @@ const url = (route: import("../../lib/routes").LogicalRoute) =>
 
 <script>
   import { mountLocalGraphs } from "../../lib/graph-view";
+
+  if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
+    for (const panel of document.querySelectorAll<HTMLElement>(".local-graph-panel")) {
+      panel.addEventListener("pointerenter", () => panel.setAttribute("data-spotlight", ""));
+      panel.addEventListener("pointermove", (event) => {
+        const bounds = panel.getBoundingClientRect();
+        panel.style.setProperty("--graph-spotlight-x", `${event.clientX - bounds.left}px`);
+        panel.style.setProperty("--graph-spotlight-y", `${event.clientY - bounds.top}px`);
+      });
+      panel.addEventListener("pointerleave", () => panel.removeAttribute("data-spotlight"));
+    }
+  }
   mountLocalGraphs().catch((err) => console.error("[local-graph] failed to mount", err));
 </script>

@@ -130,6 +130,30 @@ test("all site features stay within the deployment base", async ({ page }, testI
   );
   await expect(page.locator("main")).toHaveCSS("max-width", "864px");
   await expect(page.locator(".local-graph")).toHaveCSS("height", "420px");
+  await expect(page.locator(".local-graph")).toHaveCSS("border-top-width", "0px");
+  const localGraphPanel = page.locator(".local-graph-panel");
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(localGraphPanel).toHaveCSS("border-top-color", "rgb(42, 42, 51)");
+  expect(
+    await localGraphPanel.evaluate((panel) =>
+      getComputedStyle(panel).getPropertyValue("--graph-spotlight-edge").trim(),
+    ),
+  ).toBe("#8b7ff0a3");
+  await localGraphPanel.hover({ position: { x: 4, y: 120 } });
+  await expect(localGraphPanel).toHaveAttribute("data-spotlight", "");
+  await expect
+    .poll(() => localGraphPanel.evaluate((panel) => getComputedStyle(panel, "::after").opacity))
+    .toBe("1");
+  await page.mouse.move(0, 0);
+  await expect(localGraphPanel).not.toHaveAttribute("data-spotlight", "");
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect(localGraphPanel).toHaveCSS("border-top-color", "rgb(226, 223, 216)");
+  expect(
+    await localGraphPanel.evaluate((panel) =>
+      getComputedStyle(panel).getPropertyValue("--graph-spotlight-edge").trim(),
+    ),
+  ).toBe("#5b4bc46b");
+  await page.emulateMedia({ colorScheme: "dark" });
 
   const noteHeader = page.locator(".site-header[data-scroll-compact]");
   await page.evaluate(() => window.scrollTo(0, 400));

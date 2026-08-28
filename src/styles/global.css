@@ -6,6 +6,8 @@
   --text-muted: #9b97a0;
   --accent: #8b7ff0;
   --accent-soft: rgba(139, 127, 240, 0.14);
+  --graph-spotlight-edge: rgba(139, 127, 240, 0.64);
+  --graph-spotlight-glow: rgba(139, 127, 240, 0.14);
   --border: #2a2a33;
   --link: #a99df5;
   --unwritten: #6e6a78;
@@ -28,6 +30,8 @@
     --text-muted: #6b6774;
     --accent: #5b4bc4;
     --accent-soft: rgba(91, 75, 196, 0.1);
+    --graph-spotlight-edge: rgba(91, 75, 196, 0.42);
+    --graph-spotlight-glow: rgba(91, 75, 196, 0.08);
     --border: #e2dfd8;
     --link: #5244c9;
     --unwritten: #a39dae;
@@ -591,19 +595,60 @@ div[data-callout] > .callout-title {
   position: relative;
   height: 420px;
   margin: 2rem 0;
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  border: 0;
+  border-radius: 9px;
   background: var(--bg-soft);
   overflow: hidden;
 }
 
 .local-graph-panel {
+  --graph-spotlight-x: 50%;
+  --graph-spotlight-y: 50%;
+  position: relative;
+  isolation: isolate;
   margin: 3rem 0 2.5rem;
   padding: 1rem;
   border: 1px solid var(--border);
-  border-top: 3px solid var(--accent);
-  border-radius: 12px;
+  border-radius: 14px;
   background: var(--bg-elevated);
+}
+
+.local-graph-panel::after {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  inset: -1px;
+  padding: 1px;
+  border-radius: inherit;
+  background: radial-gradient(
+    190px circle at var(--graph-spotlight-x) var(--graph-spotlight-y),
+    var(--graph-spotlight-edge),
+    transparent 72%
+  );
+  filter: drop-shadow(0 0 7px var(--graph-spotlight-glow));
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .local-graph-panel[data-spotlight]::after {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .local-graph-panel::after {
+    transition: none;
+  }
 }
 
 .local-graph-panel__header {
