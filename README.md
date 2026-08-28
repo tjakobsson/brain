@@ -2,7 +2,25 @@
 
 Brain turns a plain Markdown Obsidian vault into a static, searchable second-brain site. The same generator runs from source, as a non-root OCI image, or through a composite GitHub Action that can feed a GitHub Pages workflow.
 
-The repository is preparing its first public release. Until `v1.0.0` is published, build the image from source; the documented `@v1` references describe the maintained release contract but are not available yet.
+![Brain running on desktop and mobile](docs/brain-showcase.svg)
+
+## Start with Docker
+
+You only need [Docker Desktop](https://www.docker.com/products/docker-desktop/), or Docker Engine on Linux, and an Obsidian vault. You do not need Node.js or a copy of this repository. Brain mounts the vault read-only, so it does not change your notes.
+
+1. Install and start Docker.
+2. Open a terminal in your Obsidian vault folder.
+3. Run this command:
+
+   ```sh
+   docker run --rm --init --read-only --publish 127.0.0.1:4321:4321 --mount "type=bind,src=$PWD,dst=/vault,readonly" --tmpfs /work:rw,mode=1777 --tmpfs /tmp:rw,mode=1777 ghcr.io/tjakobsson/brain:main serve --vault /vault --output /work/site --host 0.0.0.0 --port 4321
+   ```
+
+4. Open [http://127.0.0.1:4321/](http://127.0.0.1:4321/) in a browser.
+
+Keep the terminal open while using Brain. Changes to the vault rebuild the site and reload the browser after a successful build. Press `Ctrl+C` to stop it.
+
+The repository is preparing its first public release. The `main` image used above is a rolling pre-release and may change. Once `v1.0.0` is published, use `ghcr.io/tjakobsson/brain:v1` for compatible updates.
 
 ## Vault Format
 
@@ -55,31 +73,15 @@ node scripts/generator.mjs serve \
   --port 4321
 ```
 
-## Docker
+## Build the Docker image locally
 
-Build the multi-stage image from this checkout:
+To run the exact code in this checkout instead of the rolling `main` image, build the multi-stage image:
 
 ```sh
 docker build --tag brain:source .
 ```
 
-Then change to any local Obsidian vault and run one container. The vault is mounted read-only, all generated state stays in container-owned temporary filesystems, and the port is exposed only on this computer:
-
-```sh
-docker run --rm --init \
-  --read-only \
-  --publish 127.0.0.1:4321:4321 \
-  --mount "type=bind,src=$PWD,dst=/vault,readonly" \
-  --tmpfs /work:rw,mode=1777 \
-  --tmpfs /tmp:rw,mode=1777 \
-  brain:source serve \
-  --vault /vault \
-  --output /work/site \
-  --host 0.0.0.0 \
-  --port 4321
-```
-
-Open `http://127.0.0.1:4321/`. Once v1 is published, `ghcr.io/tjakobsson/brain:v1` can replace `brain:source` without requiring the generator checkout or Node.js on the host.
+Use `brain:source` in place of `ghcr.io/tjakobsson/brain:main` in the quick-start command above.
 
 For a one-shot static build, prepare caller-owned output directories:
 
