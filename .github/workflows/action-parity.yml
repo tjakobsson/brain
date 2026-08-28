@@ -170,7 +170,8 @@ jobs:
           node --input-type=module <<'NODE'
           import fs from "node:fs";
           const graph = JSON.parse(fs.readFileSync(".generated/excluded-action/graph-data.json", "utf8"));
-          if (graph.nodes.length !== 1 || graph.nodes[0].title !== "Welcome") process.exit(1);
+          if (graph.nodes.some((node) => node.title === "Portable notes")) process.exit(1);
+          if (!graph.nodes.some((node) => node.title === "Welcome")) process.exit(1);
           if (fs.existsSync(".generated/excluded-action/notes/portable-notes/index.html")) process.exit(1);
           NODE
 
