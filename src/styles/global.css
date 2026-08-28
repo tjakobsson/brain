@@ -199,10 +199,11 @@ main.fluid {
   padding: 0;
 }
 
-.site-header-slot + main:not(.fluid) > h1:first-child,
-.site-header-slot + main:not(.fluid) > :first-child > h1:first-child,
-.site-header-slot + main > article:first-child > .note-meta {
-  padding-right: calc(2.5rem + max(0.5rem, env(safe-area-inset-right)));
+.site-header-slot + main:not(.fluid)::before {
+  content: "";
+  float: right;
+  width: calc(2.5rem + max(0.5rem, env(safe-area-inset-right)));
+  height: calc(7.9rem + max(0.5rem, env(safe-area-inset-top)));
 }
 
 /* --- Note metadata --------------------------------------------------- */

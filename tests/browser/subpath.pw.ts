@@ -80,6 +80,21 @@ async function graphInkBounds(host: Locator) {
   });
 }
 
+async function initialListContentClearsNavigation(page: Page) {
+  return page.locator(".note-list li").first().evaluate((row) => {
+    const navigation = document.querySelector<HTMLElement>(".site-header")!.getBoundingClientRect();
+    return [...row.children].every((child) => {
+      const bounds = child.getBoundingClientRect();
+      return (
+        bounds.right <= navigation.left ||
+        bounds.left >= navigation.right ||
+        bounds.bottom <= navigation.top ||
+        bounds.top >= navigation.bottom
+      );
+    });
+  });
+}
+
 test("all site features stay within the deployment base", async ({ page }, testInfo) => {
   const { origin, base } = deployment(testInfo);
   const escapedRequests: string[] = [];
@@ -518,10 +533,7 @@ test("mobile navigation stays within the deployment base", async ({ page }, test
   await page.locator(".nav-menu-panel").getByRole("link", { name: "Recent" }).click();
   await expect(page).toHaveURL(new RegExp(`${base}/recent/?$`));
   await expect(page.locator(".site-header")).toHaveCSS("width", "48px");
-  await expect(page.getByRole("heading", { name: "Recently changed" })).toHaveCSS(
-    "padding-right",
-    "48px",
-  );
+  expect(await initialListContentClearsNavigation(page)).toBe(true);
 });
 
 test("touch layouts keep the local graph interactive", async ({ browser }, testInfo) => {
@@ -542,7 +554,7 @@ test("touch layouts keep the local graph interactive", async ({ browser }, testI
   await expect(page.locator(".site-header")).toHaveCSS("width", "48px");
   await page.goto(`${origin}${base}/tags`);
   await expect(page.locator(".site-header")).toHaveCSS("width", "48px");
-  await expect(page.getByRole("heading", { name: "Tags" })).toHaveCSS("padding-right", "48px");
+  expect(await initialListContentClearsNavigation(page)).toBe(true);
 
   await page.goto(`${origin}${base}/notes/welcome`);
   await expect(page.locator(".local-graph canvas.sigma-nodes")).toBeVisible();
