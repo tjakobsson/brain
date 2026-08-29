@@ -266,6 +266,18 @@ describe("GraphMotionController", () => {
     controller.destroy();
   });
 
+  it("commits and reports an empty settlement", () => {
+    const { storage, renderer, graph, data } = fixture();
+    const onSettled = vi.fn();
+    const controller = new GraphMotionController(renderer as never, graph, data, onSettled);
+
+    controller.settle("filter", []);
+
+    expect(storage.values.size).toBe(2);
+    expect(onSettled).toHaveBeenCalledOnce();
+    controller.destroy();
+  });
+
   it("restores only a compatible graph and viewport cache entry", () => {
     const { storage, renderer, graph, data } = fixture();
     const signature = graphSignature(data.nodes, data.edges);

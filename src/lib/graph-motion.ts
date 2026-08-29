@@ -109,7 +109,8 @@ export class GraphMotionController {
       ? [...new Set(cameraIds)].filter((id) => this.graph.hasNode(id)).sort()
       : ids;
     if (ids.length === 0) {
-      this.fitVisible([], false, this.generations.next());
+      const generation = this.generations.next();
+      this.fitVisible([], false, generation, () => this.finish(generation));
       return;
     }
 
