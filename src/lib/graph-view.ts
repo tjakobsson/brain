@@ -310,7 +310,26 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   const data = await fetchGraphData();
   const activeBrainId = ui.host.dataset.activeBrainId;
   const combined = ui.host.dataset.graphMode === "combined";
+  const relatedBrainsStorageKey = activeBrainId && ui.relatedBrainsToggle
+    ? `graph-related-brains:${window.location.pathname}`
+    : null;
   let showRelatedBrains = false;
+  let relatedBrainsStateRecorded = false;
+  if (relatedBrainsStorageKey) {
+    try {
+      const stored = window.sessionStorage.getItem(relatedBrainsStorageKey);
+      if (stored === "true" || stored === "false") {
+        showRelatedBrains = stored === "true";
+        relatedBrainsStateRecorded = true;
+      }
+    } catch {
+      // Session storage can be unavailable in restricted browsing contexts.
+    }
+    ui.relatedBrainsToggle?.setAttribute("aria-pressed", String(showRelatedBrains));
+    if (ui.relatedBrainsToggle) {
+      ui.relatedBrainsToggle.textContent = showRelatedBrains ? "Hide related brains" : "Show related brains";
+    }
+  }
   let selectedBrainIds = combined
     ? (new URLSearchParams(window.location.search).get("brains") ?? "").split(",").filter(Boolean)
     : [];
@@ -323,21 +342,37 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   const theme = graphTheme();
   const renderer = new Sigma(graph, ui.host, baseSettings(theme, graph.order));
   const motion = new GraphMotionController(renderer, graph, data);
-  const restored = motion.restoreSession();
+  const restored = relatedBrainsStorageKey === null || relatedBrainsStateRecorded
+    ? motion.restoreSession()
+    : { positions: false, view: false };
   if (!restored.view) fitRenderedGraph(renderer, graph.nodes());
+
+  const saveRelatedBrainsState = () => {
+    if (!relatedBrainsStorageKey) return;
+    try {
+      window.sessionStorage.setItem(relatedBrainsStorageKey, String(showRelatedBrains));
+    } catch {
+      // Session storage can be unavailable in restricted browsing contexts.
+    }
+  };
+  const commitSession = () => {
+    motion.commitSession();
+    saveRelatedBrainsState();
+  };
+  saveRelatedBrainsState();
 
   let sessionTimer: number | null = null;
   const saveSession = () => {
     if (sessionTimer !== null) window.clearTimeout(sessionTimer);
     sessionTimer = window.setTimeout(() => {
       sessionTimer = null;
-      motion.commitSession();
+      commitSession();
     }, 120);
   };
   const flushSession = () => {
     if (sessionTimer !== null) window.clearTimeout(sessionTimer);
     sessionTimer = null;
-    motion.commitSession();
+    commitSession();
   };
   renderer.getCamera().on("updated", saveSession);
   window.addEventListener("pagehide", flushSession);
@@ -460,6 +495,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     if (ui.relatedBrainsToggle) {
       ui.relatedBrainsToggle.textContent = showRelatedBrains ? "Hide related brains" : "Show related brains";
     }
+    saveRelatedBrainsState();
     refresh();
     renderSearchResults();
   };
@@ -581,7 +617,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     stopCamera();
     motion.cancel();
     resizeSettler.reset(ui.host.clientWidth, ui.host.clientHeight);
-    if (moved) motion.commitSession();
+    if (moved) commitSession();
   };
   wireNodeDragging(renderer, graph, state, commitDrag, interruptAutomaticMotion);
 

@@ -26,7 +26,7 @@ The generator SHALL accept either one external brain directory or a workspace co
 - **THEN** the generator exits non-zero before deleting or replacing content
 
 ### Requirement: Vault discovery and default exclusions
-The generator SHALL discover Markdown notes recursively within every configured brain while excluding hidden directories, `.github`, `Templates`, generator output, and configurable exclusion patterns. Files excluded from publication MUST NOT appear in pages, search data, graph data, or copied assets. Obsidian metadata MAY be excluded by default for migration convenience but SHALL NOT define the content contract.
+The generator SHALL discover Markdown notes recursively within every configured brain while excluding hidden directories, `.github`, `Templates`, generator output, and configurable exclusion patterns. Files excluded from publication MUST NOT appear in pages, search data, graph data, or copied assets. Legacy application metadata MAY be excluded by default for migration convenience but SHALL NOT define the content contract.
 
 #### Scenario: Build a repository-root brain
 - **WHEN** a consumer points the generator at a repository containing notes, hidden metadata, and `.github`

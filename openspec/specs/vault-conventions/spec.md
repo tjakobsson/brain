@@ -7,7 +7,7 @@ Defines the Brain Markdown authoring contract so AI and human authors produce co
 ## Requirements
 
 ### Requirement: Plain Markdown Brain directory
-Each brain source SHALL be a directory of plain `.md` files readable by general Markdown tools. Brain-specific frontmatter and link syntax MUST remain legible as plain text, but native compatibility with Obsidian or any other knowledge-management application is NOT required.
+Each brain source SHALL be a directory of plain `.md` files readable by general Markdown tools. Brain-specific frontmatter and link syntax MUST remain legible as plain text, but native compatibility with any specific knowledge-management application is NOT required.
 
 #### Scenario: Read source without Brain
 - **WHEN** a brain directory is opened in a text editor or general Markdown reader

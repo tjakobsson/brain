@@ -8,6 +8,8 @@ astro dev --background
 
 Manage the background server with `astro dev stop`, `astro dev status`, and `astro dev logs`.
 
+Run the required test suites after all final edits, including OpenSpec sync or archive operations. `npm test` validates active main specs as part of the product documentation contract.
+
 ## Demo Brain contract
 
 `examples/demo-vault/` is a public Brain Markdown Zettelkasten fixture. Personal Brain directories live in external consumer repositories and must not be copied into this generator checkout. Changes to fixture notes are made directly as files. The fixture must remain readable as plain Markdown and follow the Brain Markdown contract below. `.obsidian` is excluded by default as migration metadata; it does not define compatibility.

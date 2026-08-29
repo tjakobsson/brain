@@ -154,6 +154,12 @@ test("graph payload and scoped views keep ownership boundaries and canonical bra
   await expect(graph).toHaveAttribute("data-cross-edges", "4");
   await expect(graph).toHaveAttribute("data-related-brains-visible", "true");
 
+  await page.reload();
+  await expect(relatedBrains).toHaveAttribute("aria-pressed", "true");
+  await expect(relatedBrains).toHaveText("Hide related brains");
+  await expect(graph).toHaveAttribute("data-foreign-nodes", "2");
+  await expect(graph).toHaveAttribute("data-related-brains-visible", "true");
+
   await page.getByRole("button", { name: "Filters" }).click();
   await expect(page.locator("[data-brain-key=engineering]")).toContainText("@engineering: Engineering");
   await expect(page.locator("[data-brain-key=design]")).toContainText("foreign ↗");
