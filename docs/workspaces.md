@@ -130,15 +130,13 @@ Workspace mode uses stable brain IDs in routes:
 | `/brains/<brain-id>/tags/<tag>` | One brain and tag |
 | `/brains/<brain-id>/recent` | One brain's recent notes |
 | `/brains/<brain-id>/orphans` | One brain's orphans |
-| `/brains/<brain-id>/search` | One brain's search |
 | `/graph?brains=<id,id>` | Reader-selected combined graph |
-| `/search?brains=<id,id>` | Reader-selected combined search |
 
 Generated attachment URLs are also namespaced by the owning brain, so equal attachment paths in different brains cannot collide.
 
 Combined selections contain exactly the requested declared brains. Brain removes duplicates and writes IDs in manifest registry order to produce one canonical, shareable URL. An unknown ID produces an error instead of silently changing scope.
 
-Search and the quick switcher default to the active brain. A combined page can search the current selection, and an explicit all-brains scope searches the complete registry. Search opened from the root chooser uses all brains because no brain is active.
+The navigation pill's quick switcher searches note titles and tags. It defaults to the active brain, uses the current selection on a combined page, and offers an explicit all-brains scope. Search opened from the root chooser uses all brains because no brain is active.
 
 A per-brain graph contains all local notes plus directly connected foreign notes as boundary nodes. It does not add unrelated notes from foreign brains. A combined graph contains notes owned by the selected brains and resolved edges whose endpoints remain in that selection. Graph search identifies each result's owning brain, including when two brains use the same title.
 

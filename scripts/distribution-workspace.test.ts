@@ -42,8 +42,8 @@ describe("workspace distribution contracts", () => {
     expect(candidateParity).toContain("workspace: examples/demo-workspace/workspace.json");
     expect(sourceParity).toContain("npm run test:container-workspace");
     expect(sourceParity).toContain(".generated/workspace-source-action");
-    expect(sourceParity).toContain("--normalize-pagefind");
-    expect(candidateParity).toContain("--normalize-pagefind");
+    expect(sourceParity).not.toContain("--normalize-pagefind");
+    expect(candidateParity).not.toContain("--normalize-pagefind");
   });
 
   it("exposes exclusive reusable Pages inputs with the legacy vault fallback", () => {

@@ -49,7 +49,7 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
             <details class="context-switcher">
               <summary style={activeBrain ? `--brain-accent: ${activeBrain.accent}` : undefined}>
                 <BrainMark />
-                <span>{contextLabel}</span>
+                <span title={contextLabel}>{contextLabel}</span>
               </summary>
               <div class="context-switcher__panel">
                 <a href={url(routes.home)}>Brain chooser</a>
@@ -106,10 +106,6 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
               {(!isWorkspace || activeBrain) && <a href={url(contextualRoutes.tags)}>Tags</a>}
               {(!isWorkspace || activeBrain) && <a href={url(contextualRoutes.recent)}>Recent</a>}
               {(!isWorkspace || activeBrain) && <a href={url(contextualRoutes.orphans)}>Orphans</a>}
-              <a
-                href={url(activeBrain ? contextualRoutes.search : routes.search)}
-                data-combined-route={combined ? "" : undefined}
-              >Search</a>
             </div>
           </details>
         </nav>

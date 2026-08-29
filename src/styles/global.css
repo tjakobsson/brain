@@ -107,7 +107,7 @@ a:hover {
   position: absolute;
   top: max(0.5rem, env(safe-area-inset-top));
   right: max(0.5rem, env(safe-area-inset-right));
-  width: 3rem;
+  max-width: calc(100vw - max(1rem, env(safe-area-inset-left) + env(safe-area-inset-right)));
   padding: 0.2rem;
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -118,7 +118,7 @@ a:hover {
 
 .site-nav-pill {
   display: flex;
-  flex-direction: column;
+  align-items: center;
 }
 
 .visually-hidden {
@@ -147,26 +147,33 @@ a:hover {
 }
 
 .context-switcher {
-  position: absolute;
-  top: 0;
-  right: calc(100% + 0.55rem);
+  position: relative;
+  min-width: 0;
 }
 
 .context-switcher summary {
   display: flex;
   align-items: center;
   gap: 0.55rem;
-  min-height: 3rem;
-  max-width: min(13rem, calc(100vw - 4.6rem));
-  padding: 0.35rem 0.85rem;
-  border: 1px solid var(--border);
+  min-height: 2.5rem;
+  max-width: min(13rem, calc(100vw - 9.7rem));
+  padding: 0 0.65rem;
   border-radius: 999px;
   color: var(--text);
-  background: var(--bg-elevated);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
   cursor: pointer;
   list-style: none;
   white-space: nowrap;
+}
+
+.context-switcher summary:hover,
+.context-switcher[open] > summary {
+  background: var(--accent-soft);
+}
+
+.context-switcher summary span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .context-switcher summary::-webkit-details-marker {
@@ -181,14 +188,19 @@ a:hover {
 .context-switcher__panel {
   position: absolute;
   top: calc(100% + 0.45rem);
-  right: 0;
+  left: 0;
   display: grid;
-  min-width: 13rem;
+  width: max-content;
+  min-width: min(13rem, calc(100vw - 1rem));
+  max-width: calc(100vw - 1rem);
+  max-height: calc(100dvh - 4.5rem);
+  box-sizing: border-box;
   padding: 0.4rem;
   border: 1px solid var(--border);
   border-radius: 9px;
   background: var(--bg-elevated);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+  overflow-y: auto;
 }
 
 .context-switcher__panel a {
@@ -250,7 +262,7 @@ a:hover {
 }
 
 .nav-menu {
-  position: static;
+  position: relative;
 }
 
 .nav-menu summary {
@@ -271,11 +283,12 @@ a:hover {
 
 .nav-menu-panel {
   position: absolute;
-  top: 0;
-  right: calc(100% + 0.55rem);
+  top: calc(100% + 0.45rem);
+  right: 0;
   display: grid;
   min-width: 10rem;
-  max-height: calc(100dvh - 1rem);
+  max-height: calc(100dvh - 4.5rem);
+  box-sizing: border-box;
   padding: 0.4rem;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -304,6 +317,10 @@ main {
   max-width: 54rem;
   margin: 0 auto;
   padding: 2rem 1.5rem 4rem;
+}
+
+main:not(.fluid) {
+  padding-top: calc(4.25rem + env(safe-area-inset-top));
 }
 
 main.wide {
@@ -520,13 +537,6 @@ main.fluid {
   color: var(--text-muted);
   font-size: 0.82rem;
   transform: translateX(-50%);
-}
-
-.site-header-slot + main:not(.fluid)::before {
-  content: "";
-  float: right;
-  width: calc(2.5rem + max(0.5rem, env(safe-area-inset-right)));
-  height: calc(7.9rem + max(0.5rem, env(safe-area-inset-top)));
 }
 
 /* --- Note metadata --------------------------------------------------- */
@@ -1256,8 +1266,7 @@ div[data-callout] [data-callout-body] > :last-child {
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
 }
 
-.switcher-scope,
-.search-scope {
+.switcher-scope {
   display: flex;
   align-items: center;
   gap: 0.6rem;
@@ -1276,8 +1285,7 @@ div[data-callout] [data-callout-body] > :last-child {
   display: none;
 }
 
-.switcher-scope select,
-.search-scope select {
+.switcher-scope select {
   max-width: 100%;
   padding: 0.3rem 0.5rem;
   border: 1px solid var(--border);
@@ -1345,17 +1353,6 @@ div[data-callout] [data-callout-body] > :last-child {
   padding: 0.8rem 1rem;
   color: var(--text-muted);
   font-size: 0.9rem;
-}
-
-/* --- Search page --------------------------------------------------------- */
-
-.search-page .pagefind-ui__search-input {
-  font: inherit;
-}
-
-.search-scope {
-  justify-content: flex-start;
-  margin: 0 0 1rem;
 }
 
 .graph-search-results {

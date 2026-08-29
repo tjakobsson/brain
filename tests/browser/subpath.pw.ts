@@ -264,7 +264,7 @@ test("all site features stay within the deployment base", async ({ page }, testI
   const noteHeader = page.locator(".site-header");
   await page.evaluate(() => window.scrollTo(0, 0));
   const pillBeforeScroll = await noteHeader.boundingBox();
-  await expect(noteHeader).toHaveCSS("width", "48px");
+  expect(pillBeforeScroll!.width).toBeGreaterThan(120);
   await expect(noteHeader.getByRole("link", { name: "Graph" })).toBeVisible();
   await expect(noteHeader.getByRole("button", { name: "Search" })).toBeVisible();
   const compactMenu = noteHeader.locator(".nav-menu > summary");
@@ -276,6 +276,7 @@ test("all site features stay within the deployment base", async ({ page }, testI
   await compactMenu.focus();
   await page.keyboard.press("Enter");
   await expect(noteHeader.locator(".nav-menu")).toHaveJSProperty("open", true);
+  await expect(noteHeader.locator(".nav-menu-panel").getByRole("link", { name: "Search" })).toHaveCount(0);
   await page.setViewportSize({ width: 900, height: 200 });
   const compactMenuPanel = noteHeader.locator(".nav-menu-panel");
   await expect(compactMenuPanel).toHaveCSS("overflow-y", "auto");
@@ -309,17 +310,6 @@ test("all site features stay within the deployment base", async ({ page }, testI
     if (!response.ok) throw new Error(`attachment: HTTP ${response.status}`);
   });
 
-  await noteHeader.locator(".nav-menu > summary").click();
-  await noteHeader.locator(".nav-menu-panel").getByRole("link", { name: "Search" }).click();
-  const searchInput = page.locator(".pagefind-ui__search-input");
-  await expect(searchInput).toBeVisible();
-  await searchInput.fill("public vault demonstrates");
-  const resultLink = page.locator(".pagefind-ui__result-link").first();
-  await expect(resultLink).toBeVisible();
-  await expect(resultLink).toHaveAttribute("href", new RegExp(`^${base}/notes/`));
-  await resultLink.click();
-  await expect(page).toHaveURL(new RegExp(`${base}/notes/welcome/?$`));
-
   await page.getByRole("link", { name: "Graph", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`${base}/?$`));
   await page.goto(`${base}/notes/welcome`);
@@ -340,13 +330,12 @@ test("all site features stay within the deployment base", async ({ page }, testI
     expect.arrayContaining([
       `${base}/graph-data.json`,
       `${base}/search-index.json`,
-      `${base}/pagefind/pagefind-ui.css`,
-      `${base}/pagefind/pagefind.js`,
       `${base}/favicon.svg`,
       `${base}/vault-assets/media/diagram.svg`,
       `${base}/vault-assets/media/reference.txt`,
     ]),
   );
+  expect([...requestedPaths].some((path) => path.startsWith(`${base}/pagefind/`))).toBe(false);
   expect(escapedRequests).toEqual([]);
   expect(pageErrors).toEqual([]);
 });
@@ -441,7 +430,7 @@ test("mobile navigation stays within the deployment base", async ({ page }, test
   await page.goto(`${base}/`);
   const graphHeader = page.locator(".site-header");
   await expect(page.locator(".site-header-slot")).toHaveCSS("position", "fixed");
-  await expect(graphHeader).toHaveCSS("width", "48px");
+  expect((await graphHeader.boundingBox())!.width).toBeGreaterThan(120);
   await expect(graphHeader.getByRole("link", { name: "Graph" })).toBeVisible();
   await expect(graphHeader.locator(".search-icon")).toBeVisible();
   expect(
@@ -514,7 +503,7 @@ test("mobile navigation stays within the deployment base", async ({ page }, test
   const noteHeader = page.locator(".site-header");
   await expect(page.locator(".site-header-slot")).toHaveCSS("position", "fixed");
   await expect(page.locator(".site-header-slot")).toHaveCSS("height", "0px");
-  await expect(noteHeader).toHaveCSS("width", "48px");
+  expect((await noteHeader.boundingBox())!.width).toBeGreaterThan(120);
   await expect(noteHeader.locator(".search-icon")).toBeVisible();
   const controlPositions = await noteHeader.evaluate((header) => {
     const graph = header.querySelector(".graph-trigger")!.getBoundingClientRect();
@@ -522,17 +511,17 @@ test("mobile navigation stays within the deployment base", async ({ page }, test
     const menu = header.querySelector("summary")!.getBoundingClientRect();
     const rail = header.getBoundingClientRect();
     return {
-      vertical: search.top >= graph.bottom && menu.top >= search.bottom,
+      horizontal: search.left >= graph.right && menu.left >= search.right,
       rightMargin: window.innerWidth - rail.right,
     };
   });
-  expect(controlPositions.vertical).toBe(true);
+  expect(controlPositions.horizontal).toBe(true);
   expect(controlPositions.rightMargin).toBeGreaterThanOrEqual(7);
   expect(controlPositions.rightMargin).toBeLessThanOrEqual(9);
   await noteHeader.locator(".nav-menu > summary").click();
   await page.locator(".nav-menu-panel").getByRole("link", { name: "Recent" }).click();
   await expect(page).toHaveURL(new RegExp(`${base}/recent/?$`));
-  await expect(page.locator(".site-header")).toHaveCSS("width", "48px");
+  expect((await page.locator(".site-header").boundingBox())!.width).toBeGreaterThan(120);
   expect(await initialListContentClearsNavigation(page)).toBe(true);
 });
 
@@ -551,9 +540,9 @@ test("touch layouts keep the local graph interactive", async ({ browser }, testI
     }),
   ).toBe(true);
   await expect(page.locator(".site-header-slot")).toHaveCSS("position", "fixed");
-  await expect(page.locator(".site-header")).toHaveCSS("width", "48px");
+  expect((await page.locator(".site-header").boundingBox())!.width).toBeGreaterThan(120);
   await page.goto(`${origin}${base}/tags`);
-  await expect(page.locator(".site-header")).toHaveCSS("width", "48px");
+  expect((await page.locator(".site-header").boundingBox())!.width).toBeGreaterThan(120);
   expect(await initialListContentClearsNavigation(page)).toBe(true);
 
   await page.goto(`${origin}${base}/notes/welcome`);

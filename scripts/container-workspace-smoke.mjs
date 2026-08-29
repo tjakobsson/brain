@@ -114,6 +114,16 @@ try {
   if (!fs.existsSync(path.join(output, "site", "index.html"))) {
     throw new Error("Workspace container build did not produce index.html.");
   }
+  if (!fs.existsSync(path.join(output, "site", "search-index.json"))) {
+    throw new Error("Workspace container build did not produce the quick-switcher index.");
+  }
+  if (
+    fs.existsSync(path.join(output, "site", "search", "index.html")) ||
+    fs.existsSync(path.join(output, "site", "brains", "engineering", "search", "index.html")) ||
+    fs.existsSync(path.join(output, "site", "pagefind"))
+  ) {
+    throw new Error("Workspace container build produced a removed Search or Pagefind output.");
+  }
   if (JSON.stringify(snapshot(fixture)) !== JSON.stringify(originalFixture)) {
     throw new Error("Workspace container build modified an input.");
   }

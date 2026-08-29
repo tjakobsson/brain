@@ -54,14 +54,8 @@ const url = (route: import("../lib/routes").LogicalRoute) =>
 ---
 
 <BaseLayout title={title} activeBrainId={snapshot.mode === "workspace" ? note.brainId : undefined}>
-  <article
-    data-pagefind-body
-    data-brain-id={note.brainId}
-    data-brain-title={brain.title}
-    data-pagefind-filter={snapshot.mode === "workspace" ? "brain[data-brain-id]" : undefined}
-    data-pagefind-meta="brainId[data-brain-id], brainTitle[data-brain-title]"
-  >
-    <h1 data-pagefind-meta="title">{title}</h1>
+  <article data-brain-id={note.brainId} data-brain-title={brain.title}>
+    <h1>{title}</h1>
     <NoteMeta
       brainId={note.brainId}
       type={entry.data.type}

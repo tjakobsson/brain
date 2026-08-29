@@ -10,7 +10,6 @@ export interface ContextualRoutes {
   readonly tag: (tag: string) => LogicalRoute;
   readonly recent: LogicalRoute;
   readonly orphans: LogicalRoute;
-  readonly search: LogicalRoute;
   readonly note: (slug: string) => LogicalRoute;
   readonly asset: (path: string) => LogicalRoute;
 }
@@ -37,7 +36,6 @@ export type CombinedRoutes =
       readonly valid: true;
       readonly brainIds: readonly string[];
       readonly graph: LogicalRoute;
-      readonly search: LogicalRoute;
     }
   | {
       readonly valid: false;
@@ -57,15 +55,11 @@ export const routes = {
   tag: (tag: string): LogicalRoute => `/tags/${segment(tag)}`,
   recent: "/recent",
   orphans: "/orphans",
-  search: "/search",
   note: (slug: string): LogicalRoute => `/notes/${segment(slug)}`,
   vaultAsset: (vaultPath: string): LogicalRoute =>
     `/vault-assets/${vaultPath.split("/").map(segment).join("/")}`,
   faviconSvg: "/favicon.svg",
   faviconIco: "/favicon.ico",
-  pagefind: "/pagefind/",
-  pagefindUiCss: "/pagefind/pagefind-ui.css",
-  pagefindUiJs: "/pagefind/pagefind-ui.js",
 } as const satisfies Record<string, LogicalRoute | ((value: string) => LogicalRoute)>;
 
 export function routesFor(scope: RouteScope): ContextualRoutes {
@@ -76,7 +70,6 @@ export function routesFor(scope: RouteScope): ContextualRoutes {
       tag: routes.tag,
       recent: routes.recent,
       orphans: routes.orphans,
-      search: routes.search,
       note: routes.note,
       asset: routes.vaultAsset,
     };
@@ -89,7 +82,6 @@ export function routesFor(scope: RouteScope): ContextualRoutes {
     tag: (tag: string): LogicalRoute => `${brain}/tags/${segment(tag)}`,
     recent: `${brain}/recent`,
     orphans: `${brain}/orphans`,
-    search: `${brain}/search`,
     note: (slug: string): LogicalRoute => `${brain}/notes/${segment(slug)}`,
     asset: (path: string): LogicalRoute =>
       `${brain}/assets/${path.split("/").map(segment).join("/")}`,
@@ -135,7 +127,6 @@ export function combinedRoutes(
     valid: true,
     brainIds: canonical.brainIds,
     graph: `/graph?brains=${canonical.value}`,
-    search: `/search?brains=${canonical.value}`,
   };
 }
 

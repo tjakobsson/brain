@@ -145,14 +145,13 @@ jobs:
           site: https://example.com
           base-path: /notes
 
-      - name: Verify output parity and normalized result
+      - name: Verify output parity
         env:
           ACTION_OUTPUT: ${{ steps.action-build.outputs.output-path }}
         run: |
           expected="$(realpath -m .generated/parity-action)"
           [[ "$ACTION_OUTPUT" == "$expected" ]]
           node scripts/compare-output-trees.mjs \
-            --normalize-pagefind \
             .generated/parity-command \
             .generated/parity-image/site \
             .generated/parity-action

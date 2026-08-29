@@ -21,14 +21,10 @@ describe("routes", () => {
     expect(routes.tag("pkm")).toBe("/tags/pkm");
     expect(routes.recent).toBe("/recent");
     expect(routes.orphans).toBe("/orphans");
-    expect(routes.search).toBe("/search");
     expect(routes.note("graphs-of-thought")).toBe("/notes/graphs-of-thought");
     expect(routes.vaultAsset("Media/image.png")).toBe("/vault-assets/Media/image.png");
     expect(routes.faviconSvg).toBe("/favicon.svg");
     expect(routes.faviconIco).toBe("/favicon.ico");
-    expect(routes.pagefind).toBe("/pagefind/");
-    expect(routes.pagefindUiCss).toBe("/pagefind/pagefind-ui.css");
-    expect(routes.pagefindUiJs).toBe("/pagefind/pagefind-ui.js");
   });
 
   it("encodes dynamic single-vault route segments", () => {
@@ -54,7 +50,6 @@ describe("routesFor", () => {
     expect(scoped.tag("pkm")).toBe("/tags/pkm");
     expect(scoped.recent).toBe("/recent");
     expect(scoped.orphans).toBe("/orphans");
-    expect(scoped.search).toBe("/search");
     expect(scoped.note("note-a")).toBe("/notes/note-a");
     expect(scoped.asset("Media/image.png")).toBe("/vault-assets/Media/image.png");
   });
@@ -67,7 +62,6 @@ describe("routesFor", () => {
     expect(scoped.tag("pkm")).toBe("/brains/engineering/tags/pkm");
     expect(scoped.recent).toBe("/brains/engineering/recent");
     expect(scoped.orphans).toBe("/brains/engineering/orphans");
-    expect(scoped.search).toBe("/brains/engineering/search");
     expect(scoped.note("note-a")).toBe("/brains/engineering/notes/note-a");
     expect(scoped.asset("Media/image.png")).toBe(
       "/brains/engineering/assets/Media/image.png",
@@ -107,12 +101,11 @@ describe("combined brain selections", () => {
     });
   });
 
-  it("constructs canonical graph and search routes", () => {
+  it("constructs a canonical graph route", () => {
     expect(combinedRoutes(registry, ["design", "research", "design"])).toEqual({
       valid: true,
       brainIds: ["research", "design"],
       graph: "/graph?brains=research,design",
-      search: "/search?brains=research,design",
     });
   });
 
@@ -123,7 +116,6 @@ describe("combined brain selections", () => {
       valid: true,
       brainIds: ["brain one", "research/design"],
       graph: "/graph?brains=brain%20one,research%2Fdesign",
-      search: "/search?brains=brain%20one,research%2Fdesign",
     });
   });
 
@@ -163,24 +155,18 @@ describe("joinBase", () => {
     routes.tag("pkm"),
     routes.recent,
     routes.orphans,
-    routes.search,
     routes.note("note-a"),
     routes.vaultAsset("Media/image.png"),
     routes.faviconSvg,
     routes.faviconIco,
-    routes.pagefind,
-    routes.pagefindUiCss,
-    routes.pagefindUiJs,
     workspace.graph,
     workspace.tags,
     workspace.tag("pkm/web"),
     workspace.recent,
     workspace.orphans,
-    workspace.search,
     workspace.note("note-a"),
     workspace.asset("Media/image.png"),
     combined.graph,
-    combined.search,
   ];
 
   it("preserves root-relative routes at a domain root", () => {
@@ -211,9 +197,6 @@ describe("joinBase", () => {
     );
     expect(joinBase("/brain-site/", combined.graph)).toBe(
       "/brain-site/graph?brains=research,design",
-    );
-    expect(joinBase("/brain-site", combined.search)).toBe(
-      "/brain-site/search?brains=research,design",
     );
   });
 

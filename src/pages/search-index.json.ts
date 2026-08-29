@@ -5,7 +5,7 @@ import { getWorkspaceSnapshot } from "../lib/vault-state";
 
 /**
  * Small title/tag index for the quick switcher — deliberately separate from
- * Pagefind's full-text index: this one answers "jump to X" in keystrokes.
+ * This compact index answers "jump to X" in keystrokes without indexing note bodies.
  */
 export const GET: APIRoute = () => {
   const index = getLinkIndex();

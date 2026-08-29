@@ -160,7 +160,6 @@ jobs:
       - name: Verify workspace source, image, and Action parity
         run: >-
           node scripts/compare-output-trees.mjs
-          --normalize-pagefind
           .generated/workspace-source-command
           .generated/workspace-source-image/site
           .generated/workspace-source-action
