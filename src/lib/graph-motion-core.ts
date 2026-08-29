@@ -44,6 +44,7 @@ export interface LayoutResponse {
 export interface PositionStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
+  removeItem?(key: string): void;
 }
 
 export interface GraphViewState {
@@ -213,11 +214,13 @@ export function loadPositions(
   }
 }
 
-export function savePositions(storage: PositionStorage, key: string, positions: GraphPositions): void {
+export function savePositions(storage: PositionStorage, key: string, positions: GraphPositions): boolean {
   try {
     storage.setItem(key, JSON.stringify({ version: CACHE_VERSION, positions }));
+    return true;
   } catch {
     // Storage can be unavailable in private browsing or restricted embeds.
+    return false;
   }
 }
 
@@ -255,11 +258,13 @@ export function loadGraphView(storage: PositionStorage, key: string): GraphViewS
   }
 }
 
-export function saveGraphView(storage: PositionStorage, key: string, view: GraphViewState): void {
+export function saveGraphView(storage: PositionStorage, key: string, view: GraphViewState): boolean {
   try {
     storage.setItem(key, JSON.stringify({ version: CACHE_VERSION, view }));
+    return true;
   } catch {
     // Storage can be unavailable in private browsing or restricted embeds.
+    return false;
   }
 }
 

@@ -42,6 +42,7 @@ export class GraphMotionController {
     private readonly graph: Graph,
     private readonly data: GraphMotionData,
     private readonly onSettled: () => void = () => {},
+    private sessionScope = "",
   ) {
     this.baseline = this.capturePositions();
     this.signature = graphSignature(data.nodes, data.edges);
@@ -58,12 +59,12 @@ export class GraphMotionController {
     const viewClass = viewportClass(width, height);
     const positions = loadPositions(
       this.storage,
-      positionCacheKey(this.signature, viewClass),
+      positionCacheKey(this.cacheSignature(), viewClass),
       this.graph.nodes(),
     );
     if (!positions) return { positions: false, view: false };
     this.applyPositions(positions);
-    const view = loadGraphView(this.storage, graphViewCacheKey(this.signature, viewClass));
+    const view = loadGraphView(this.storage, graphViewCacheKey(this.cacheSignature(), viewClass));
     if (!view) return { positions: true, view: false };
     this.renderer.setCustomBBox(view.bbox);
     this.renderer.refresh();
@@ -71,19 +72,45 @@ export class GraphMotionController {
     return { positions: true, view: true };
   }
 
-  commitSession(): void {
-    if (!this.storage) return;
+  commitSession(): boolean {
+    if (!this.storage) return true;
     const { width, height } = this.renderer.getDimensions();
     const viewClass = viewportClass(width, height);
-    savePositions(
+    const signature = this.cacheSignature();
+    const positionsSaved = savePositions(
       this.storage,
-      positionCacheKey(this.signature, viewClass),
+      positionCacheKey(signature, viewClass),
       this.capturePositions(),
     );
-    saveGraphView(this.storage, graphViewCacheKey(this.signature, viewClass), {
-      camera: this.renderer.getCamera().getState(),
-      bbox: this.renderer.getCustomBBox() ?? this.renderer.getBBox(),
-    });
+    const viewSaved = positionsSaved && saveGraphView(
+      this.storage,
+      graphViewCacheKey(signature, viewClass),
+      {
+        camera: this.renderer.getCamera().getState(),
+        bbox: this.renderer.getCustomBBox() ?? this.renderer.getBBox(),
+      },
+    );
+    return positionsSaved && viewSaved ? true : this.invalidateSession();
+  }
+
+  invalidateSession(): boolean {
+    if (!this.storage) return true;
+    if (!this.storage.removeItem) return false;
+    const { width, height } = this.renderer.getDimensions();
+    const viewClass = viewportClass(width, height);
+    const signature = this.cacheSignature();
+    try {
+      this.storage.removeItem(positionCacheKey(signature, viewClass));
+      this.storage.removeItem(graphViewCacheKey(signature, viewClass));
+      return true;
+    } catch {
+      // Session storage can be unavailable in restricted browsing contexts.
+      return false;
+    }
+  }
+
+  setSessionScope(scope: string): void {
+    this.sessionScope = scope;
   }
 
   fitView(ids: Iterable<string>): void {
@@ -281,8 +308,11 @@ export class GraphMotionController {
 
   private finish(generation: number): void {
     if (!this.generations.isCurrent(generation)) return;
-    this.commitSession();
-    this.onSettled();
+    if (this.commitSession()) this.onSettled();
+  }
+
+  private cacheSignature(): string {
+    return this.sessionScope ? `${this.signature}:${this.sessionScope}` : this.signature;
   }
 
   private capturePositions(ids: Iterable<string> = this.graph.nodes()): GraphPositions {

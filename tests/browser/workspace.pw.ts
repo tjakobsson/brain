@@ -151,10 +151,6 @@ test("graph payload and scoped views keep ownership boundaries and canonical bra
   );
   await relatedBrains.click();
   await page.reload();
-  await expect(relatedBrains).toHaveAttribute("aria-pressed", "false");
-  await expect(graph).toHaveAttribute("data-foreign-nodes", "0");
-
-  await relatedBrains.click();
   await expect(relatedBrains).toHaveAttribute("aria-pressed", "true");
   await expect(graph).toHaveAttribute("data-visible-nodes", "4");
   await expect(graph).toHaveAttribute("data-visible-brain-ids", "engineering,design,research");
@@ -162,7 +158,9 @@ test("graph payload and scoped views keep ownership boundaries and canonical bra
   await expect(graph).toHaveAttribute("data-cross-edges", "4");
   await expect(graph).toHaveAttribute("data-related-brains-visible", "true");
   await page.waitForFunction(() =>
-    sessionStorage.getItem(`graph-related-brains:${location.pathname}`) === "true"
+    Object.keys(sessionStorage).some((key) =>
+      key.startsWith("graph-motion:") && key.includes(":brain:engineering:true:")
+    )
   );
   await page.reload();
   await expect(relatedBrains).toHaveAttribute("aria-pressed", "true");
@@ -179,6 +177,22 @@ test("graph payload and scoped views keep ownership boundaries and canonical bra
   await expect(matches).toHaveCount(2);
   await expect(matches.filter({ hasText: "@engineering" })).toHaveCount(1);
   await expect(matches.filter({ hasText: "@design" })).toHaveCount(1);
+
+  await page.evaluate(() => {
+    document.querySelector<HTMLButtonElement>("#graph-related-toggle")!.click();
+    document.querySelector<HTMLButtonElement>("#graph-search-results button")!.click();
+  });
+  await page.waitForFunction(() =>
+    sessionStorage.getItem(`graph-related-brains:${location.pathname}`) === "false"
+  );
+  expect(await page.evaluate(() =>
+    Object.keys(sessionStorage).filter((key) =>
+      /graph-(motion|view):/.test(key) && key.includes(":brain:engineering:false:")
+    ).length
+  )).toBe(0);
+  await page.reload();
+  await expect(relatedBrains).toHaveAttribute("aria-pressed", "false");
+  await expect(graph).toHaveAttribute("data-foreign-nodes", "0");
 
   await page.goto(`${workspace}/graph?brains=engineering,design,research`);
   await expect(graph).toHaveAttribute("data-visible-nodes", "5");

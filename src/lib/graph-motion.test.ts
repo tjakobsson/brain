@@ -18,6 +18,9 @@ class MemoryStorage {
   setItem(key: string, value: string): void {
     this.values.set(key, value);
   }
+  removeItem(key: string): void {
+    this.values.delete(key);
+  }
 }
 
 class FakeWorker {
@@ -275,6 +278,52 @@ describe("GraphMotionController", () => {
 
     expect(storage.values.size).toBe(2);
     expect(onSettled).toHaveBeenCalledOnce();
+    controller.destroy();
+  });
+
+  it("invalidates an incomplete graph session", () => {
+    const { storage, renderer, graph, data } = fixture();
+    const controller = new GraphMotionController(renderer as never, graph, data);
+    controller.commitSession();
+    expect(storage.values.size).toBe(2);
+
+    expect(controller.invalidateSession()).toBe(true);
+
+    expect(storage.values.size).toBe(0);
+    controller.destroy();
+  });
+
+  it("isolates sessions by graph scope", () => {
+    const { storage, renderer, graph, data } = fixture();
+    const controller = new GraphMotionController(renderer as never, graph, data, undefined, "brain:a");
+    controller.commitSession();
+
+    controller.setSessionScope("brain:b");
+    expect(controller.restoreSession()).toEqual({ positions: false, view: false });
+    controller.commitSession();
+    expect(storage.values.size).toBe(4);
+
+    controller.setSessionScope("brain:a");
+    expect(controller.restoreSession()).toEqual({ positions: true, view: true });
+    controller.destroy();
+  });
+
+  it("does not report settlement when stale cache entries cannot be removed", () => {
+    const { storage, renderer, graph, data } = fixture();
+    const onSettled = vi.fn();
+    storage.values.set("stale", "entry");
+    vi.spyOn(storage, "setItem").mockImplementation(() => {
+      throw new Error("quota exceeded");
+    });
+    vi.spyOn(storage, "removeItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    const controller = new GraphMotionController(renderer as never, graph, data, onSettled);
+
+    controller.settle("filter", []);
+
+    expect(onSettled).not.toHaveBeenCalled();
+    expect(storage.values.get("stale")).toBe("entry");
     controller.destroy();
   });
 
