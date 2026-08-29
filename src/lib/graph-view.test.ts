@@ -52,21 +52,25 @@ describe("brain-aware graph rendering data", () => {
     const context = { mode: "brain", brainId: "engineering" } as const;
     const local = graphNodeAttributes(data.nodes[0], context);
     const foreign = graphNodeAttributes(data.nodes[1], context);
-    const edge = graphEdgeAttributes(data.edges[0]);
+    const edge = graphEdgeAttributes(data.edges[0], context);
 
     expect(foreign.label).toBe("○ ↗ @design · Principles");
     expect(foreign.foreign).toBe(true);
     expect(foreign.forceLabel).toBe(true);
-    expect(foreign.size).toBeGreaterThan(local.size);
-    expect(edge).toMatchObject({ crossBrain: true, size: 2.4 });
+    expect(foreign.color).toBe("#8f8b94");
+    expect(foreign.size).toBeLessThan(local.size);
+    expect(foreign.zIndex).toBe(0);
+    expect(edge).toMatchObject({ crossBrain: true, mutedForeign: true, color: "#8f8b94", size: 0.75 });
   });
 
   it("labels duplicate titles by owner and status in combined views", () => {
     const context = { mode: "combined", brainIds: ["engineering", "design"] } as const;
     const engineering = graphNodeAttributes(data.nodes[0], context);
     const design = graphNodeAttributes(data.nodes[1], context);
+    const edge = graphEdgeAttributes(data.edges[0], context);
     expect(engineering.label).toBe("◆ @engineering · Principles");
     expect(design.label).toBe("○ @design · Principles");
     expect(engineering.route).toBe("/brains/engineering/notes/principles");
+    expect(edge).toMatchObject({ crossBrain: true, mutedForeign: false, color: "#d97706", size: 2.4 });
   });
 });

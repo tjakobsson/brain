@@ -74,7 +74,7 @@ export function buildGraph(data: GraphData, context: GraphContext = { mode: "all
         `edge-${index}`,
         edge.source,
         edge.target,
-        graphEdgeAttributes(edge),
+        graphEdgeAttributes(edge, context),
       );
     }
   });
@@ -303,12 +303,14 @@ export interface GlobalGraphUI {
   tagFilter: HTMLSelectElement;
   count: HTMLElement;
   fitViewButton: HTMLButtonElement;
+  relatedBrainsToggle?: HTMLButtonElement | null;
 }
 
 export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   const data = await fetchGraphData();
   const activeBrainId = ui.host.dataset.activeBrainId;
   const combined = ui.host.dataset.graphMode === "combined";
+  let showRelatedBrains = false;
   let selectedBrainIds = combined
     ? (new URLSearchParams(window.location.search).get("brains") ?? "").split(",").filter(Boolean)
     : [];
@@ -360,7 +362,9 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     );
 
   function currentContext(): GraphContext {
-    if (activeBrainId) return { mode: "brain", brainId: activeBrainId };
+    if (activeBrainId) {
+      return { mode: "brain", brainId: activeBrainId, includeForeign: showRelatedBrains };
+    }
     if (combined) return { mode: "combined", brainIds: selectedBrainIds };
     return { mode: "all" };
   }
@@ -401,6 +405,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       activeBrainId ? visibleNodes.filter((node) => node.brainId !== activeBrainId).length : 0,
     );
     ui.host.dataset.crossEdges = String(visibleCrossEdges.length);
+    ui.host.dataset.relatedBrainsVisible = String(Boolean(activeBrainId && showRelatedBrains));
   }
 
   function applyReducers(): void {
@@ -448,6 +453,17 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     box.addEventListener("change", () => refresh());
   }
   ui.tagFilter.addEventListener("change", () => refresh());
+
+  const onRelatedBrainsToggle = () => {
+    showRelatedBrains = !showRelatedBrains;
+    ui.relatedBrainsToggle?.setAttribute("aria-pressed", String(showRelatedBrains));
+    if (ui.relatedBrainsToggle) {
+      ui.relatedBrainsToggle.textContent = showRelatedBrains ? "Hide related brains" : "Show related brains";
+    }
+    refresh();
+    renderSearchResults();
+  };
+  ui.relatedBrainsToggle?.addEventListener("click", onRelatedBrainsToggle);
 
   if (combined) {
     for (const control of ui.brainFilters) {
@@ -581,6 +597,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     renderer.getCamera().off("updated", saveSession);
     window.removeEventListener("pagehide", flushSession);
     ui.fitViewButton.removeEventListener("click", onFitView);
+    ui.relatedBrainsToggle?.removeEventListener("click", onRelatedBrainsToggle);
     document.removeEventListener("visibilitychange", onVisibilityChange);
     motion.destroy();
   });

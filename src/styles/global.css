@@ -812,6 +812,11 @@ div[data-callout] > .callout-title {
   border-color: var(--accent);
 }
 
+.graph-related-toggle[aria-pressed="true"] {
+  border-color: var(--text-muted);
+  background: var(--bg-soft);
+}
+
 .graph-sidebar {
   border-right: 1px solid var(--border);
   padding: 1rem;
@@ -1260,6 +1265,11 @@ div[data-callout] > .callout-title {
   vertical-align: middle;
 }
 
+.cross-edge-key--muted {
+  border-top-width: 1px;
+  border-top-color: #8f8b94;
+}
+
 .graph-count {
   color: var(--text-muted);
   font-size: 0.82rem;
@@ -1310,6 +1320,14 @@ div[data-callout] > .callout-title {
 
   .graph-controls {
     left: 0.75rem;
+  }
+
+  .graph-shell.has-related-brains .graph-controls {
+    top: 4.25rem;
+  }
+
+  .graph-shell.has-related-brains .graph-sidebar {
+    padding-top: 7.75rem;
   }
 
   .graph-sidebar {
