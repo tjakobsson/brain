@@ -35,6 +35,79 @@ test("desktop chooser follows hierarchy and keeps brain context in navigation", 
   await expect(page).toHaveURL(`${workspace}/`);
 });
 
+test("Brain identity reuses one mark and reserves accent boundaries for selection", async ({ page }) => {
+  await page.goto(`${workspace}/`);
+
+  const cards = page.locator(".brain-card");
+  const chooserMarks = cards.locator("[data-brain-mark]");
+  await expect(cards).toHaveCount(3);
+  await expect(chooserMarks).toHaveCount(3);
+  await expect(page.getByRole("heading", { name: "Engineering" })).toBeVisible();
+  await expect(cards.filter({ hasText: "@engineering" })).toHaveCount(1);
+
+  const markGeometry = await chooserMarks.first().locator("path").getAttribute("d");
+  expect(markGeometry).toBeTruthy();
+  for (const mark of await chooserMarks.all()) {
+    await expect(mark).toHaveAttribute("aria-hidden", "true");
+    await expect(mark).toHaveAttribute("focusable", "false");
+    await expect(mark).toHaveCSS("width", "20px");
+    await expect(mark.locator("path")).toHaveAttribute("d", markGeometry!);
+  }
+
+  const engineering = cards.filter({ hasText: "@engineering" });
+  const design = cards.filter({ hasText: "@design" });
+  const boundary = async (card: typeof engineering) => card.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      widths: [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth],
+      colors: [style.borderTopColor, style.borderRightColor, style.borderBottomColor, style.borderLeftColor],
+      background: style.backgroundColor,
+    };
+  });
+  const engineeringBefore = await boundary(engineering);
+  const designBefore = await boundary(design);
+  expect(engineeringBefore.widths).toEqual(["1px", "1px", "1px", "1px"]);
+  expect(new Set(engineeringBefore.colors).size).toBe(1);
+
+  const checkbox = page.getByRole("checkbox", { name: "Select Engineering" });
+  await checkbox.check();
+  await expect(checkbox).toBeChecked();
+  const engineeringAfter = await boundary(engineering);
+  expect(engineeringAfter.widths).toEqual(["1px", "1px", "1px", "1px"]);
+  expect(new Set(engineeringAfter.colors).size).toBe(1);
+  expect(engineeringAfter.colors[0]).not.toBe(engineeringBefore.colors[0]);
+  expect(engineeringAfter.background).not.toBe(engineeringBefore.background);
+  expect(await boundary(design)).toEqual(designBefore);
+
+  await page.getByRole("link", { name: "Open Engineering" }).click();
+  const currentMark = page.locator(".context-switcher > summary [data-brain-mark]");
+  await expect(page.locator(".context-switcher > summary")).toContainText("@engineering");
+  await expect(currentMark).toHaveCSS("width", "16px");
+  await expect(currentMark.locator("path")).toHaveAttribute("d", markGeometry!);
+  await page.locator(".context-switcher > summary").click();
+  for (const id of ["engineering", "design", "research"]) {
+    const entry = page.locator(".context-switcher__panel").getByRole("link", { name: `@${id}` });
+    await expect(entry).toBeVisible();
+    await expect(entry.locator("[data-brain-mark] path")).toHaveAttribute("d", markGeometry!);
+  }
+
+  const faviconHref = await page.locator('link[rel="icon"][type="image/svg+xml"]').getAttribute("href");
+  expect(faviconHref).toBe("/workspace-demo/favicon.svg");
+  const favicon = await page.evaluate(async (href) => {
+    const source = await (await fetch(href!)).text();
+    const document = new DOMParser().parseFromString(source, "image/svg+xml");
+    return {
+      source,
+      viewBox: document.documentElement.getAttribute("viewBox"),
+      path: document.querySelector("path")?.getAttribute("d"),
+    };
+  }, faviconHref);
+  expect(favicon.viewBox).toBe("0 0 24 24");
+  expect(favicon.path).toBe(markGeometry);
+  expect(favicon.source).toContain("prefers-color-scheme: dark");
+  expect(favicon.source).not.toContain("M50.4 78.5");
+});
+
 test("combined selection is canonical, shareable, reloadable, and rejects unknown brains", async ({ page }) => {
   await page.goto(`${workspace}/`);
   await page.getByRole("checkbox", { name: "Select Engineering" }).check();

@@ -1,5 +1,6 @@
 ---
 import "../styles/global.css";
+import BrainMark from "../components/BrainMark.astro";
 import QuickSwitcher from "../components/QuickSwitcher.astro";
 import { joinBase, routes, routesFor } from "../lib/routes";
 import { getWorkspaceSnapshot } from "../lib/vault-state";
@@ -46,7 +47,7 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
           {isWorkspace && (
             <details class="context-switcher">
               <summary style={activeBrain ? `--brain-accent: ${activeBrain.accent}` : undefined}>
-                <span class="brain-marker" aria-hidden="true"></span>
+                <BrainMark />
                 <span>{contextLabel}</span>
               </summary>
               <div class="context-switcher__panel">
@@ -57,7 +58,7 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
                     aria-current={brain.id === activeBrainId ? "page" : undefined}
                     style={`--brain-accent: ${brain.accent}`}
                   >
-                    <span class="brain-marker" aria-hidden="true"></span>
+                    <BrainMark />
                     <span>@{brain.id}</span>
                   </a>
                 ))}
