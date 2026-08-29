@@ -1,6 +1,7 @@
 ---
 import type { WorkspaceDefinition, WorkspaceGroup } from "../lib/workspace.mjs";
 import { joinBase, routesFor } from "../lib/routes";
+import BrainMark from "./BrainMark.astro";
 
 interface Props { registry: WorkspaceDefinition }
 const { registry } = Astro.props;
@@ -45,7 +46,7 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
                     <span>Select <span class="visually-hidden">{brain.title}</span></span>
                   </label>
                   <div class="brain-card__identity">
-                    <span class="brain-marker" aria-hidden="true"></span>
+                    <BrainMark />
                     <span>@{brain.id}</span>
                   </div>
                   <h3>{brain.title}</h3>
@@ -70,7 +71,7 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
                   <span>Select <span class="visually-hidden">{brain.title}</span></span>
                 </label>
                 <div class="brain-card__identity">
-                  <span class="brain-marker" aria-hidden="true"></span>
+                  <BrainMark />
                   <span>@{brain.id}</span>
                 </div>
                 <h3>{brain.title}</h3>

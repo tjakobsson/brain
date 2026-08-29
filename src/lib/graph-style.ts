@@ -71,6 +71,7 @@ export function graphNodeAttributes(node: GraphNodeDatum, context: GraphContext)
     tags: node.tags,
     brainId: node.brainId,
     brainTitle: node.brainTitle,
+    brainAccent: node.brainAccent,
     foreign,
     forceLabel: foreign,
     zIndex: foreign ? 0 : 1,

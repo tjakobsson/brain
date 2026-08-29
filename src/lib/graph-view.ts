@@ -1,6 +1,8 @@
 import Graph from "graphology";
 import Sigma from "sigma";
+import { drawDiscNodeHover, drawDiscNodeLabel } from "sigma/rendering";
 import type { MouseCoords, TouchCoords, WheelCoords } from "sigma/types";
+import { BRAIN_MARK_PATH } from "./brain-mark";
 import {
   createHoverReducers,
   stopCameraAnimation,
@@ -32,6 +34,109 @@ interface GraphTheme {
   fadedNode: string;
   label: string;
 }
+
+type NodeLabelData = Parameters<typeof drawDiscNodeLabel>[1] & {
+  brainAccent?: string;
+  foreign?: boolean;
+};
+
+let brainMarkPath: Path2D | undefined;
+
+function nodeLabelColor(
+  data: NodeLabelData,
+  settings: Parameters<typeof drawDiscNodeLabel>[2],
+): string {
+  if (!settings.labelColor.attribute) return settings.labelColor.color;
+  const value = (data as NodeLabelData & Record<string, unknown>)[settings.labelColor.attribute];
+  return typeof value === "string" ? value : settings.labelColor.color ?? "#000";
+}
+
+function drawBrainMark(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  size: number,
+  color: string,
+): void {
+  brainMarkPath ??= new Path2D(BRAIN_MARK_PATH);
+  context.save();
+  context.translate(x, y);
+  context.scale(size / 24, size / 24);
+  context.strokeStyle = color;
+  context.lineWidth = 2;
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  context.stroke(brainMarkPath);
+  context.restore();
+}
+
+const drawGraphNodeLabel: typeof drawDiscNodeLabel = (context, data, settings) => {
+  const graphData = data as NodeLabelData;
+  if (!graphData.foreign || !data.label) {
+    drawDiscNodeLabel(context, data, settings);
+    return;
+  }
+
+  const parts = /^([○◇◆]\s+)(.*)$/u.exec(data.label);
+  if (!parts) {
+    drawDiscNodeLabel(context, data, settings);
+    return;
+  }
+
+  const color = nodeLabelColor(graphData, settings);
+  const labelX = data.x + data.size + 3;
+  const baseline = data.y + settings.labelSize / 3;
+  context.fillStyle = color;
+  context.font = `${settings.labelWeight} ${settings.labelSize}px ${settings.labelFont}`;
+  context.fillText(parts[1], labelX, baseline);
+
+  const prefixWidth = context.measureText(parts[1]).width;
+  const markSize = settings.labelSize + 1;
+  const markX = labelX + prefixWidth;
+  drawBrainMark(
+    context,
+    markX,
+    data.y - markSize / 2,
+    markSize,
+    graphData.brainAccent ?? color,
+  );
+  context.fillStyle = color;
+  context.fillText(parts[2], markX + markSize + 3, baseline);
+};
+
+const drawGraphNodeHover: typeof drawDiscNodeHover = (context, data, settings) => {
+  const graphData = data as NodeLabelData;
+  if (!graphData.foreign || typeof data.label !== "string") {
+    drawDiscNodeHover(context, data, settings);
+    return;
+  }
+
+  context.font = `${settings.labelWeight} ${settings.labelSize}px ${settings.labelFont}`;
+  context.fillStyle = "#FFF";
+  context.shadowOffsetX = 0;
+  context.shadowOffsetY = 0;
+  context.shadowBlur = 8;
+  context.shadowColor = "#000";
+  const padding = 2;
+  const textWidth = context.measureText(data.label).width + settings.labelSize + 4;
+  const boxWidth = Math.round(textWidth + 5);
+  const boxHeight = Math.round(settings.labelSize + 2 * padding);
+  const radius = Math.max(data.size, settings.labelSize / 2) + padding;
+  const angle = Math.asin(Math.min(1, boxHeight / 2 / radius));
+  const xOffset = Math.sqrt(Math.abs(radius ** 2 - (boxHeight / 2) ** 2));
+  context.beginPath();
+  context.moveTo(data.x + xOffset, data.y + boxHeight / 2);
+  context.lineTo(data.x + radius + boxWidth, data.y + boxHeight / 2);
+  context.lineTo(data.x + radius + boxWidth, data.y - boxHeight / 2);
+  context.lineTo(data.x + xOffset, data.y - boxHeight / 2);
+  context.arc(data.x, data.y, radius, angle, -angle);
+  context.closePath();
+  context.fill();
+  context.shadowOffsetX = 0;
+  context.shadowOffsetY = 0;
+  context.shadowBlur = 0;
+  drawGraphNodeLabel(context, data, settings);
+};
 
 function graphTheme(): GraphTheme {
   return window.matchMedia("(prefers-color-scheme: light)").matches
@@ -91,6 +196,8 @@ function baseSettings(theme: GraphTheme, nodeCount: number) {
     labelRenderedSizeThreshold: largeGraph ? 14 : 4,
     labelDensity: largeGraph ? 0.08 : 1,
     labelGridCellSize: largeGraph ? 180 : 100,
+    defaultDrawNodeLabel: drawGraphNodeLabel,
+    defaultDrawNodeHover: drawGraphNodeHover,
     defaultEdgeColor: theme.edge,
     minCameraRatio: 0.05,
     maxCameraRatio: 10,
@@ -127,7 +234,8 @@ function touchTargetNode(renderer: Sigma, graph: Graph, point: { x: number; y: n
 
     if (!labelContext || !data.label || !displayedLabels.has(node)) return;
     const labelLeft = center.x + visualRadius + 3;
-    const labelWidth = labelContext.measureText(data.label).width;
+    const labelWidth = labelContext.measureText(data.label).width +
+      ((data as NodeLabelData).foreign ? settings.labelSize + 4 : 0);
     if (
       point.x >= labelLeft - 8 &&
       point.x <= labelLeft + labelWidth + 8 &&

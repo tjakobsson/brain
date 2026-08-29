@@ -106,6 +106,44 @@ const url = (route: import("../lib/routes").LogicalRoute) =>
 <script>
   import { mountLocalGraphs } from "../lib/graph-view";
 
+  for (const block of document.querySelectorAll<HTMLElement>("article pre")) {
+    const code = block.querySelector("code");
+    if (!code) continue;
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "code-block";
+    block.before(wrapper);
+    wrapper.append(block);
+
+    const button = document.createElement("button");
+    button.className = "code-block-copy";
+    button.type = "button";
+    button.setAttribute("aria-label", "Copy code");
+    button.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="11" rx="2"></rect><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path></svg><span class="code-copy-feedback" aria-hidden="true"></span>`;
+    wrapper.append(button);
+
+    let resetTimer: number | undefined;
+    button.addEventListener("click", async () => {
+      window.clearTimeout(resetTimer);
+      const feedback = button.querySelector<HTMLElement>(".code-copy-feedback");
+      try {
+        await navigator.clipboard.writeText(code.textContent ?? "");
+        button.dataset.copyState = "copied";
+        button.setAttribute("aria-label", "Copied");
+        if (feedback) feedback.textContent = "Copied";
+      } catch {
+        button.dataset.copyState = "failed";
+        button.setAttribute("aria-label", "Copy failed");
+        if (feedback) feedback.textContent = "Copy failed";
+      }
+      resetTimer = window.setTimeout(() => {
+        delete button.dataset.copyState;
+        button.setAttribute("aria-label", "Copy code");
+        if (feedback) feedback.textContent = "";
+      }, 2000);
+    });
+  }
+
   if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
     for (const panel of document.querySelectorAll<HTMLElement>(".local-graph-panel")) {
       panel.addEventListener("pointerenter", () => panel.setAttribute("data-spotlight", ""));

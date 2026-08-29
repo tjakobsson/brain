@@ -58,6 +58,7 @@ describe("brain-aware graph rendering data", () => {
     expect(foreign.foreign).toBe(true);
     expect(foreign.forceLabel).toBe(true);
     expect(foreign.color).toBe("#8f8b94");
+    expect(foreign.brainAccent).toBe("#b56cff");
     expect(foreign.size).toBeLessThan(local.size);
     expect(foreign.zIndex).toBe(0);
     expect(edge).toMatchObject({ crossBrain: true, mutedForeign: true, color: "#8f8b94", size: 0.75 });
