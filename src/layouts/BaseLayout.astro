@@ -65,7 +65,12 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
               </div>
             </details>
           )}
-          <a class="nav-action graph-trigger" href={url(graphRoute)} aria-label="Graph">
+          <a
+            class="nav-action graph-trigger"
+            href={url(graphRoute)}
+            aria-label="Graph"
+            data-combined-route={combined ? "" : undefined}
+          >
             <svg class="nav-icon graph-icon" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M7.5 7.5 12 5l4.5 2.5v5L12 15l-4.5-2.5z"></path>
               <path d="M7.5 12.5 5 17m11.5-4.5L19 17M12 15v4"></path>
@@ -99,7 +104,7 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
               {(!isWorkspace || activeBrain) && <a href={url(contextualRoutes.orphans)}>Orphans</a>}
               <a
                 href={url(activeBrain ? contextualRoutes.search : routes.search)}
-                data-combined-search={combined ? "" : undefined}
+                data-combined-route={combined ? "" : undefined}
               >Search</a>
             </div>
           </details>
@@ -112,13 +117,19 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
     <QuickSwitcher activeBrainId={activeBrainId} combined={combined} workspace={isWorkspace} />
     {combined && (
       <script>
-        const search = document.querySelector<HTMLAnchorElement>("[data-combined-search]");
+        const links = document.querySelectorAll<HTMLAnchorElement>("[data-combined-route]");
+        const updateCombinedRoutes = (brains: string) => {
+          for (const link of links) {
+            const target = new URL(link.href);
+            target.searchParams.set("brains", brains);
+            link.href = target.href;
+          }
+        };
         const brains = new URLSearchParams(window.location.search).get("brains");
-        if (search && brains) {
-          const target = new URL(search.href);
-          target.searchParams.set("brains", brains);
-          search.href = target.href;
-        }
+        if (brains) updateCombinedRoutes(brains);
+        document.addEventListener("brain-selection-change", (event) => {
+          updateCombinedRoutes((event as CustomEvent<{ brainIds: string[] }>).detail.brainIds.join(","));
+        });
       </script>
     )}
   </body>
