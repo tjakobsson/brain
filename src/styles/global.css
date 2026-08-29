@@ -222,6 +222,10 @@ a:hover {
   cursor: pointer;
 }
 
+.nav-action[hidden] {
+  display: none;
+}
+
 .nav-action:hover,
 .nav-menu[open] > summary {
   color: var(--text);
