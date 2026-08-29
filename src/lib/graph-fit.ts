@@ -234,6 +234,7 @@ export function fitRenderedGraph(
     // Replacing an active animation prevents its next frame from restoring a stale camera state.
     void renderer.getCamera().animate(target, { duration: 1 });
     renderer.getCamera().setState(target);
+    options.onAnimationComplete?.();
     return;
   }
   renderer.getCamera().setState(source);

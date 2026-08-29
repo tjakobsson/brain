@@ -246,6 +246,26 @@ describe("GraphMotionController", () => {
     controller.destroy();
   });
 
+  it("commits a fitted view only after its camera animation completes", () => {
+    const { storage, camera, renderer, graph, data } = fixture(false);
+    const onSettled = vi.fn();
+    let completeAnimation: (() => void) | undefined;
+    camera.animate.mockImplementation((state, _options, callback) => {
+      camera.setState(state);
+      completeAnimation = callback;
+    });
+    const controller = new GraphMotionController(renderer as never, graph, data, onSettled);
+
+    controller.fitView(graph.nodes());
+    expect(storage.values.size).toBe(0);
+    expect(onSettled).not.toHaveBeenCalled();
+
+    completeAnimation?.();
+    expect(storage.values.size).toBe(2);
+    expect(onSettled).toHaveBeenCalledOnce();
+    controller.destroy();
+  });
+
   it("restores only a compatible graph and viewport cache entry", () => {
     const { storage, renderer, graph, data } = fixture();
     const signature = graphSignature(data.nodes, data.edges);

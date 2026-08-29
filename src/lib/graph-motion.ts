@@ -41,6 +41,7 @@ export class GraphMotionController {
     private readonly renderer: Sigma,
     private readonly graph: Graph,
     private readonly data: GraphMotionData,
+    private readonly onSettled: () => void = () => {},
   ) {
     this.baseline = this.capturePositions();
     this.signature = graphSignature(data.nodes, data.edges);
@@ -89,7 +90,8 @@ export class GraphMotionController {
     this.cancel();
     const visibleIds = [...new Set(ids)].filter((id) => this.graph.hasNode(id)).sort();
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    this.fitVisible(visibleIds, !reducedMotion, this.generations.next());
+    const generation = this.generations.next();
+    this.fitVisible(visibleIds, !reducedMotion, generation, () => this.finish(generation));
   }
 
   settle(
@@ -249,11 +251,19 @@ export class GraphMotionController {
     fitCamera: boolean,
   ): void {
     if (!this.generations.isCurrent(generation)) return;
-    if (fitCamera) this.fitVisible(visibleIds, animateCamera, generation);
-    this.commitSession();
+    if (fitCamera) {
+      this.fitVisible(visibleIds, animateCamera, generation, () => this.finish(generation));
+    } else {
+      this.finish(generation);
+    }
   }
 
-  private fitVisible(ids: string[], animate: boolean, generation: number): void {
+  private fitVisible(
+    ids: string[],
+    animate: boolean,
+    generation: number,
+    onComplete: () => void = () => {},
+  ): void {
     if (!this.generations.isCurrent(generation)) return;
     fitRenderedGraph(this.renderer, ids, {
       animate,
@@ -261,9 +271,17 @@ export class GraphMotionController {
         this.cameraAnimating = true;
       },
       onAnimationComplete: () => {
-        if (this.generations.isCurrent(generation)) this.cameraAnimating = false;
+        if (!this.generations.isCurrent(generation)) return;
+        this.cameraAnimating = false;
+        onComplete();
       },
     });
+  }
+
+  private finish(generation: number): void {
+    if (!this.generations.isCurrent(generation)) return;
+    this.commitSession();
+    this.onSettled();
   }
 
   private capturePositions(ids: Iterable<string> = this.graph.nodes()): GraphPositions {

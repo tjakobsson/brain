@@ -315,12 +315,14 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     : null;
   let showRelatedBrains = false;
   let relatedBrainsStateRecorded = false;
+  let relatedBrainsStatePending = Boolean(relatedBrainsStorageKey);
   if (relatedBrainsStorageKey) {
     try {
       const stored = window.sessionStorage.getItem(relatedBrainsStorageKey);
       if (stored === "true" || stored === "false") {
         showRelatedBrains = stored === "true";
         relatedBrainsStateRecorded = true;
+        relatedBrainsStatePending = false;
       }
     } catch {
       // Session storage can be unavailable in restricted browsing contexts.
@@ -341,26 +343,29 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   const graph = buildGraph(data, visualContext);
   const theme = graphTheme();
   const renderer = new Sigma(graph, ui.host, baseSettings(theme, graph.order));
-  const motion = new GraphMotionController(renderer, graph, data);
+  const motion = new GraphMotionController(renderer, graph, data, () => {
+    if (relatedBrainsStatePending) saveRelatedBrainsState();
+  });
   const restored = relatedBrainsStorageKey === null || relatedBrainsStateRecorded
     ? motion.restoreSession()
     : { positions: false, view: false };
+  if (relatedBrainsStorageKey && !restored.positions) relatedBrainsStatePending = true;
   if (!restored.view) fitRenderedGraph(renderer, graph.nodes());
 
-  const saveRelatedBrainsState = () => {
+  function saveRelatedBrainsState(): void {
     if (!relatedBrainsStorageKey) return;
     try {
       window.sessionStorage.setItem(relatedBrainsStorageKey, String(showRelatedBrains));
+      relatedBrainsStatePending = false;
     } catch {
       // Session storage can be unavailable in restricted browsing contexts.
     }
-  };
+  }
   const commitSession = () => {
+    if (relatedBrainsStatePending) return;
     motion.commitSession();
     saveRelatedBrainsState();
   };
-  saveRelatedBrainsState();
-
   let sessionTimer: number | null = null;
   const saveSession = () => {
     if (sessionTimer !== null) window.clearTimeout(sessionTimer);
@@ -372,6 +377,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   const flushSession = () => {
     if (sessionTimer !== null) window.clearTimeout(sessionTimer);
     sessionTimer = null;
+    if (relatedBrainsStatePending) return;
     commitSession();
   };
   renderer.getCamera().on("updated", saveSession);
@@ -491,11 +497,11 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
 
   const onRelatedBrainsToggle = () => {
     showRelatedBrains = !showRelatedBrains;
+    relatedBrainsStatePending = Boolean(relatedBrainsStorageKey);
     ui.relatedBrainsToggle?.setAttribute("aria-pressed", String(showRelatedBrains));
     if (ui.relatedBrainsToggle) {
       ui.relatedBrainsToggle.textContent = showRelatedBrains ? "Hide related brains" : "Show related brains";
     }
-    saveRelatedBrainsState();
     refresh();
     renderSearchResults();
   };
