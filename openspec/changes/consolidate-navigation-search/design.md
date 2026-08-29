@@ -8,7 +8,7 @@ Removing the Search pages therefore crosses UI, route, generator, dependency, de
 
 **Goals:**
 
-- Represent the navigation and brain context as one responsive component with matching visual, DOM, and keyboard order.
+- Represent the navigation and brain context as one vertical component with matching visual, DOM, and keyboard order.
 - Preserve the context switcher's current destinations, active identity, accent, and accessible interaction.
 - Remove Pagefind and all build/output assumptions that exist only for dedicated full-text Search pages.
 - Keep quick-switcher title and tag search, scope selection, and keyboard operation unchanged.
@@ -22,11 +22,11 @@ Removing the Search pages therefore crosses UI, route, generator, dependency, de
 
 ## Decisions
 
-### Make the existing header container size itself to unified content
+### Keep the existing vertical rail and integrate a glyph-only context control
 
-Retain the current semantic order in `BaseLayout.astro`, but remove the absolute positioning and independent border, background, and shadow from the context summary. Let the header/pill contain the context switcher and icon actions as direct visual segments. Use responsive sizing and label truncation so the complete pill fits the viewport, with the context panel positioned relative to its integrated control and kept within viewport bounds.
+Retain the current semantic order in `BaseLayout.astro`, but render the brain mark as the first icon-sized control inside the fixed-width vertical navigation rail. Remove the always-visible context label from the pill. Give the glyph control a tooltip and accessible name that include the current context, and visibly mark the active brain in the opened chooser so identity does not depend on accent color. Position the chooser from the rail's available right edge and constrain its entries so long brain IDs cannot push links outside the viewport.
 
-This is preferred over moving the context switcher elsewhere in the DOM because the markup already has the required order and semantics. It is also preferred over merely offsetting page content because that would preserve two competing floating surfaces and remain fragile for long brain IDs.
+This is preferred over a horizontal content-sized pill because the established vertical rail is compact and keeps the graph controls clear at every viewport. It is also preferred over an adjacent always-visible label because that would recreate a detached floating surface. Pointer users can inspect the tooltip, keyboard and assistive-technology users receive the current context in the control name, and touch users see it immediately after opening the chooser.
 
 ### Keep one direct Search action and remove the menu link
 
@@ -55,13 +55,14 @@ After the Playwright checks pass, capture desktop and mobile screenshots showing
 ## Risks / Trade-offs
 
 - [Quick switcher does not search note bodies] -> Make title-and-tag behavior explicit in the updated contract and retain clear placeholder/result labeling.
-- [Long brain identifiers can make the unified pill too wide] -> Constrain and truncate the visible label while keeping the full identity available to assistive technology and in the context panel.
+- [A glyph alone does not visibly spell the current brain] -> Include the current context in the tooltip and accessible name and visibly mark the active entry in the chooser.
+- [Long brain identifiers can push the chooser outside the viewport] -> Anchor the panel from the rail's right edge and constrain and truncate entry labels while preserving their full accessible names.
 - [Removing Pagefind affects build determinism and container smoke coverage] -> Replace Pagefind-specific assertions and normalization with direct output checks, then run unit, build, and browser suites.
 - [Removed Search bookmarks return not found] -> Treat route removal as an intentional breaking change and document the Search button and keyboard shortcut as migration paths.
 
 ## Migration Plan
 
-1. Integrate and verify the context control in the navigation pill while retaining the existing quick switcher.
+1. Integrate and verify the brain-glyph context control as the first action in the vertical navigation pill while retaining the existing quick switcher.
 2. Remove Search links, pages, and route contracts.
 3. Remove Pagefind generation, dependency, annotations, normalization, and associated assumptions from automation and tests.
 4. Build the demo site and run unit and browser coverage at desktop, mobile, and configured-base-path viewports.

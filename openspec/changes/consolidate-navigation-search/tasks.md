@@ -1,8 +1,8 @@
 ## 1. Unified Navigation Pill
 
-- [x] 1.1 Update the shared header and navigation styles so the brain context control is visually contained before Graph, Search, and expand actions in one pill; verify DOM and focus order matches visual order.
-- [x] 1.2 Constrain and truncate long context labels and position both context and navigation panels within the viewport; verify the pill and panels do not cover note content or hide controls at desktop and narrow mobile widths.
-- [x] 1.3 Preserve the brain mark, active label, accents, chooser link, and brain-switch links in the integrated context control; verify pointer and keyboard context switching still reaches the expected routes.
+- [x] 1.1 Restore the fixed-width vertical navigation pill and contain the brain-glyph context control above Graph, Search, and expand actions; verify DOM and focus order matches the vertical visual order.
+- [x] 1.2 Anchor context and navigation panels from the rail's right edge, constrain and truncate long chooser entries, and verify the pill and panels do not cover note content or hide controls at desktop and narrow mobile widths.
+- [x] 1.3 Preserve the brain mark, accents, chooser link, and brain-switch links; identify the current context in the glyph control's tooltip and accessible name, visibly mark it in the chooser, and verify pointer and keyboard switching reaches expected routes.
 
 ## 2. Single Search Experience
 
@@ -19,6 +19,6 @@
 
 ## 4. Integration Verification
 
-- [x] 4.1 Add or update browser tests for one-pill geometry, non-overlap, action order, menu contents, context panels, visible focus, and quick-switcher behavior at desktop and mobile viewports; run the affected Playwright projects and verify they pass.
+- [x] 4.1 Update browser tests for vertical one-pill geometry, non-overlap, action order, menu contents, tooltip and accessible context identity, viewport-contained panels with long IDs, visible focus, and quick-switcher behavior at desktop and mobile viewports; run the affected Playwright projects and verify they pass.
 - [x] 4.2 Run `npm test`, `npx astro build`, and the full required browser suite; verify the OpenSpec contract checks, production build, navigation, configured subpath behavior, and search behavior all pass.
-- [x] 4.3 Use Playwright to capture desktop and mobile screenshots of an active-brain page showing the unified pill and the open quick switcher, save them outside the repository under `/var/folders/2_/ftxsgry50r37hws_2rg86zhr0000gn/T/opencode/consolidate-navigation-search-screenshots/`, visually inspect the images, and report their paths for later pull-request attachment without committing them.
+- [x] 4.3 Use Playwright to recapture desktop and mobile screenshots of an active-brain page showing the vertical unified pill and the open quick switcher, replace the PR screenshots from `/var/folders/2_/ftxsgry50r37hws_2rg86zhr0000gn/T/opencode/consolidate-navigation-search-screenshots/`, visually inspect them, and keep them out of the implementation branch.

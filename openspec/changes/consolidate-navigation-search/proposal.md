@@ -4,8 +4,8 @@ The workspace brain selector currently renders as a separate floating pill besid
 
 ## What Changes
 
-- Place the current brain context control inside the primary navigation pill, before Graph, Search, and the expandable menu, at every viewport size.
-- Keep the active brain mark and label visible in the integrated context control and preserve access to the brain chooser and other brains.
+- Place a brain-glyph context control inside the primary vertical navigation pill, above Graph, Search, and the expandable menu, at every viewport size.
+- Identify the active brain in the context control's tooltip and accessible name, visibly mark it in the opened chooser, and preserve access to the root chooser and other brains.
 - Make the pill's quick switcher the only general site-search interface and retain its keyboard shortcut and context-aware scope options.
 - Remove Search from the expanded navigation menu.
 - **BREAKING** Remove the dedicated `/search` and `/brains/:brainId/search` pages and their Pagefind full-text search implementation; those URLs are no longer generated.

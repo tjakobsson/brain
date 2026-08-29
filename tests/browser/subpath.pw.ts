@@ -264,7 +264,7 @@ test("all site features stay within the deployment base", async ({ page }, testI
   const noteHeader = page.locator(".site-header");
   await page.evaluate(() => window.scrollTo(0, 0));
   const pillBeforeScroll = await noteHeader.boundingBox();
-  expect(pillBeforeScroll!.width).toBeGreaterThan(120);
+  await expect(noteHeader).toHaveCSS("width", "48px");
   await expect(noteHeader.getByRole("link", { name: "Graph" })).toBeVisible();
   await expect(noteHeader.getByRole("button", { name: "Search" })).toBeVisible();
   const compactMenu = noteHeader.locator(".nav-menu > summary");
@@ -276,6 +276,7 @@ test("all site features stay within the deployment base", async ({ page }, testI
   await compactMenu.focus();
   await page.keyboard.press("Enter");
   await expect(noteHeader.locator(".nav-menu")).toHaveJSProperty("open", true);
+  await expect(compactMenu).toHaveAttribute("aria-expanded", "true");
   await expect(noteHeader.locator(".nav-menu-panel").getByRole("link", { name: "Search" })).toHaveCount(0);
   await page.setViewportSize({ width: 900, height: 200 });
   const compactMenuPanel = noteHeader.locator(".nav-menu-panel");
@@ -430,7 +431,7 @@ test("mobile navigation stays within the deployment base", async ({ page }, test
   await page.goto(`${base}/`);
   const graphHeader = page.locator(".site-header");
   await expect(page.locator(".site-header-slot")).toHaveCSS("position", "fixed");
-  expect((await graphHeader.boundingBox())!.width).toBeGreaterThan(120);
+  await expect(graphHeader).toHaveCSS("width", "48px");
   await expect(graphHeader.getByRole("link", { name: "Graph" })).toBeVisible();
   await expect(graphHeader.locator(".search-icon")).toBeVisible();
   expect(
@@ -503,7 +504,7 @@ test("mobile navigation stays within the deployment base", async ({ page }, test
   const noteHeader = page.locator(".site-header");
   await expect(page.locator(".site-header-slot")).toHaveCSS("position", "fixed");
   await expect(page.locator(".site-header-slot")).toHaveCSS("height", "0px");
-  expect((await noteHeader.boundingBox())!.width).toBeGreaterThan(120);
+  await expect(noteHeader).toHaveCSS("width", "48px");
   await expect(noteHeader.locator(".search-icon")).toBeVisible();
   const controlPositions = await noteHeader.evaluate((header) => {
     const graph = header.querySelector(".graph-trigger")!.getBoundingClientRect();
@@ -511,17 +512,17 @@ test("mobile navigation stays within the deployment base", async ({ page }, test
     const menu = header.querySelector("summary")!.getBoundingClientRect();
     const rail = header.getBoundingClientRect();
     return {
-      horizontal: search.left >= graph.right && menu.left >= search.right,
+      vertical: search.top >= graph.bottom && menu.top >= search.bottom,
       rightMargin: window.innerWidth - rail.right,
     };
   });
-  expect(controlPositions.horizontal).toBe(true);
+  expect(controlPositions.vertical).toBe(true);
   expect(controlPositions.rightMargin).toBeGreaterThanOrEqual(7);
   expect(controlPositions.rightMargin).toBeLessThanOrEqual(9);
   await noteHeader.locator(".nav-menu > summary").click();
   await page.locator(".nav-menu-panel").getByRole("link", { name: "Recent" }).click();
   await expect(page).toHaveURL(new RegExp(`${base}/recent/?$`));
-  expect((await page.locator(".site-header").boundingBox())!.width).toBeGreaterThan(120);
+  await expect(page.locator(".site-header")).toHaveCSS("width", "48px");
   expect(await initialListContentClearsNavigation(page)).toBe(true);
 });
 
@@ -540,9 +541,9 @@ test("touch layouts keep the local graph interactive", async ({ browser }, testI
     }),
   ).toBe(true);
   await expect(page.locator(".site-header-slot")).toHaveCSS("position", "fixed");
-  expect((await page.locator(".site-header").boundingBox())!.width).toBeGreaterThan(120);
+  await expect(page.locator(".site-header")).toHaveCSS("width", "48px");
   await page.goto(`${origin}${base}/tags`);
-  expect((await page.locator(".site-header").boundingBox())!.width).toBeGreaterThan(120);
+  await expect(page.locator(".site-header")).toHaveCSS("width", "48px");
   expect(await initialListContentClearsNavigation(page)).toBe(true);
 
   await page.goto(`${origin}${base}/notes/welcome`);
