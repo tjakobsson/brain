@@ -36,7 +36,7 @@ export interface GraphData {
 
 export type GraphContext =
   | { mode: "all" }
-  | { mode: "brain"; brainId: string }
+  | { mode: "brain"; brainId: string; includeForeign?: boolean }
   | { mode: "combined"; brainIds: readonly string[] };
 
 interface LegacyGraphData {
@@ -146,10 +146,12 @@ export function deriveGraphData(data: GraphData, context: GraphContext): GraphDa
       data.nodes.filter((node) => node.brainId === context.brainId).map((node) => node.id),
     );
     for (const id of local) included.add(id);
-    for (const edge of data.edges) {
-      if (!edge.crossBrain || (!local.has(edge.source) && !local.has(edge.target))) continue;
-      included.add(edge.source);
-      included.add(edge.target);
+    if (context.includeForeign !== false) {
+      for (const edge of data.edges) {
+        if (!edge.crossBrain || (!local.has(edge.source) && !local.has(edge.target))) continue;
+        included.add(edge.source);
+        included.add(edge.target);
+      }
     }
   }
 

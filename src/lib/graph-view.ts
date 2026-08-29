@@ -74,7 +74,7 @@ export function buildGraph(data: GraphData, context: GraphContext = { mode: "all
         `edge-${index}`,
         edge.source,
         edge.target,
-        graphEdgeAttributes(edge),
+        graphEdgeAttributes(edge, context),
       );
     }
   });
@@ -303,15 +303,44 @@ export interface GlobalGraphUI {
   tagFilter: HTMLSelectElement;
   count: HTMLElement;
   fitViewButton: HTMLButtonElement;
+  relatedBrainsToggle?: HTMLButtonElement | null;
 }
 
 export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   const data = await fetchGraphData();
   const activeBrainId = ui.host.dataset.activeBrainId;
   const combined = ui.host.dataset.graphMode === "combined";
+  const relatedBrainsStorageKey = activeBrainId && ui.relatedBrainsToggle
+    ? `graph-related-brains:${window.location.pathname}`
+    : null;
+  let showRelatedBrains = false;
+  let relatedBrainsStateRecorded = false;
+  let relatedBrainsStatePending = Boolean(relatedBrainsStorageKey);
+  let relatedBrainsSessionInvalid = false;
+  if (relatedBrainsStorageKey) {
+    try {
+      const stored = window.sessionStorage.getItem(relatedBrainsStorageKey);
+      if (stored === "true" || stored === "false") {
+        showRelatedBrains = stored === "true";
+        relatedBrainsStateRecorded = true;
+        relatedBrainsStatePending = false;
+      }
+    } catch {
+      // Session storage can be unavailable in restricted browsing contexts.
+    }
+    ui.relatedBrainsToggle?.setAttribute("aria-pressed", String(showRelatedBrains));
+    if (ui.relatedBrainsToggle) {
+      ui.relatedBrainsToggle.textContent = showRelatedBrains ? "Hide related brains" : "Show related brains";
+    }
+  }
   let selectedBrainIds = combined
     ? (new URLSearchParams(window.location.search).get("brains") ?? "").split(",").filter(Boolean)
     : [];
+  const motionScope = () => {
+    if (activeBrainId) return `brain:${activeBrainId}:${showRelatedBrains}`;
+    if (combined) return `combined:${[...selectedBrainIds].sort().join(",")}`;
+    return "all";
+  };
   const visualContext: GraphContext = activeBrainId
     ? { mode: "brain", brainId: activeBrainId }
     : combined
@@ -320,22 +349,52 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   const graph = buildGraph(data, visualContext);
   const theme = graphTheme();
   const renderer = new Sigma(graph, ui.host, baseSettings(theme, graph.order));
-  const motion = new GraphMotionController(renderer, graph, data);
-  const restored = motion.restoreSession();
+  const motion = new GraphMotionController(renderer, graph, data, () => {
+    relatedBrainsSessionInvalid = false;
+    if (relatedBrainsStatePending) saveRelatedBrainsState();
+  }, motionScope());
+  const restored = relatedBrainsStorageKey === null || relatedBrainsStateRecorded
+    ? motion.restoreSession()
+    : { positions: false, view: false };
+  if (relatedBrainsStorageKey && !restored.positions) relatedBrainsStatePending = true;
   if (!restored.view) fitRenderedGraph(renderer, graph.nodes());
 
+  function saveRelatedBrainsState(): void {
+    if (!relatedBrainsStorageKey) return;
+    try {
+      window.sessionStorage.setItem(relatedBrainsStorageKey, String(showRelatedBrains));
+      relatedBrainsStatePending = false;
+    } catch {
+      // Session storage can be unavailable in restricted browsing contexts.
+    }
+  }
+  const commitSession = () => {
+    if (relatedBrainsStatePending || relatedBrainsSessionInvalid) return;
+    if (motion.commitSession()) saveRelatedBrainsState();
+  };
+  const resolveCanceledRelatedBrainsState = () => {
+    if (!relatedBrainsStatePending) return;
+    if (!motion.invalidateSession()) return;
+    relatedBrainsSessionInvalid = true;
+    saveRelatedBrainsState();
+  };
   let sessionTimer: number | null = null;
   const saveSession = () => {
     if (sessionTimer !== null) window.clearTimeout(sessionTimer);
     sessionTimer = window.setTimeout(() => {
       sessionTimer = null;
-      motion.commitSession();
+      commitSession();
     }, 120);
   };
   const flushSession = () => {
     if (sessionTimer !== null) window.clearTimeout(sessionTimer);
     sessionTimer = null;
-    motion.commitSession();
+    if (relatedBrainsStatePending) {
+      motion.cancel();
+      resolveCanceledRelatedBrainsState();
+      return;
+    }
+    commitSession();
   };
   renderer.getCamera().on("updated", saveSession);
   window.addEventListener("pagehide", flushSession);
@@ -360,7 +419,9 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     );
 
   function currentContext(): GraphContext {
-    if (activeBrainId) return { mode: "brain", brainId: activeBrainId };
+    if (activeBrainId) {
+      return { mode: "brain", brainId: activeBrainId, includeForeign: showRelatedBrains };
+    }
     if (combined) return { mode: "combined", brainIds: selectedBrainIds };
     return { mode: "all" };
   }
@@ -401,6 +462,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       activeBrainId ? visibleNodes.filter((node) => node.brainId !== activeBrainId).length : 0,
     );
     ui.host.dataset.crossEdges = String(visibleCrossEdges.length);
+    ui.host.dataset.relatedBrainsVisible = String(Boolean(activeBrainId && showRelatedBrains));
   }
 
   function applyReducers(): void {
@@ -449,6 +511,19 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   }
   ui.tagFilter.addEventListener("change", () => refresh());
 
+  const onRelatedBrainsToggle = () => {
+    showRelatedBrains = !showRelatedBrains;
+    relatedBrainsStatePending = Boolean(relatedBrainsStorageKey);
+    motion.setSessionScope(motionScope());
+    ui.relatedBrainsToggle?.setAttribute("aria-pressed", String(showRelatedBrains));
+    if (ui.relatedBrainsToggle) {
+      ui.relatedBrainsToggle.textContent = showRelatedBrains ? "Hide related brains" : "Show related brains";
+    }
+    refresh();
+    renderSearchResults();
+  };
+  ui.relatedBrainsToggle?.addEventListener("click", onRelatedBrainsToggle);
+
   if (combined) {
     for (const control of ui.brainFilters) {
       control.checked = selectedBrainIds.includes(control.value);
@@ -476,6 +551,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
             detail: { brainIds: selectedBrainIds },
           }));
         }
+        motion.setSessionScope(motionScope());
         refresh();
         renderSearchResults();
       });
@@ -512,6 +588,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
 
   function focusNode(id: string): void {
     motion.cancel();
+    resolveCanceledRelatedBrainsState();
     const displayData = renderer.getNodeDisplayData(id);
     if (displayData) {
       renderer
@@ -556,21 +633,30 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   });
   resizeObserver.observe(ui.host);
   const interruptAutomaticMotion = () => {
-    stopCamera();
     resizeSettler.reset(ui.host.clientWidth, ui.host.clientHeight);
     motion.cancel();
+    stopCamera();
+    resolveCanceledRelatedBrainsState();
   };
   wireHoverAndClick(renderer, graph, state, interruptAutomaticMotion);
   const commitDrag = (_node: string, _neighborhood: string[], moved: boolean) => {
     stopCamera();
     motion.cancel();
     resizeSettler.reset(ui.host.clientWidth, ui.host.clientHeight);
-    if (moved) motion.commitSession();
+    if (moved) {
+      relatedBrainsSessionInvalid = false;
+      commitSession();
+    }
   };
   wireNodeDragging(renderer, graph, state, commitDrag, interruptAutomaticMotion);
 
   const onVisibilityChange = () => {
-    if (document.hidden) motion.cancel();
+    if (document.hidden) {
+      motion.cancel();
+      resolveCanceledRelatedBrainsState();
+    } else if (relatedBrainsStatePending || relatedBrainsSessionInvalid) {
+      motion.settle("filter", visibleIds());
+    }
   };
   document.addEventListener("visibilitychange", onVisibilityChange);
   renderer.on("kill", () => {
@@ -581,6 +667,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     renderer.getCamera().off("updated", saveSession);
     window.removeEventListener("pagehide", flushSession);
     ui.fitViewButton.removeEventListener("click", onFitView);
+    ui.relatedBrainsToggle?.removeEventListener("click", onRelatedBrainsToggle);
     document.removeEventListener("visibilitychange", onVisibilityChange);
     motion.destroy();
   });

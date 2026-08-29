@@ -87,6 +87,20 @@ describe("workspace graph data", () => {
     expect(view.edges).toHaveLength(2);
   });
 
+  it("can keep a brain graph local until related brains are enabled", () => {
+    const view = deriveGraphData(buildGraphData(index, registry, "workspace"), {
+      mode: "brain",
+      brainId: "engineering",
+      includeForeign: false,
+    });
+    expect(view.nodes.map(({ id }) => id)).toEqual([
+      "engineering:delivery",
+      "engineering:principles",
+    ]);
+    expect(view.edges).toHaveLength(1);
+    expect(view.edges[0].crossBrain).toBe(false);
+  });
+
   it("includes exactly selected brains and drops every incident edge for hidden brains", () => {
     const view = deriveGraphData(buildGraphData(index, registry, "workspace"), {
       mode: "combined",

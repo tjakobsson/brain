@@ -59,10 +59,12 @@ export function graphNodeAttributes(node: GraphNodeDatum, context: GraphContext)
     label: `${STATUS_MARKER[node.status] ?? "○"} ${brainEncoded ? `${owner} · ` : ""}${node.title}`,
     x: node.x,
     y: node.y,
-    size: nodeSize(node.degree) + (foreign ? 2 : 0),
-    color: brainEncoded
-      ? accentColor(node.brainAccent, node.status)
-      : nodeColor(node.type, node.status),
+    size: foreign ? Math.max(3, nodeSize(node.degree) * 0.7) : nodeSize(node.degree),
+    color: foreign
+      ? "#8f8b94"
+      : brainEncoded
+        ? accentColor(node.brainAccent, node.status)
+        : nodeColor(node.type, node.status),
     route: node.route,
     noteType: node.type,
     status: node.status,
@@ -71,14 +73,16 @@ export function graphNodeAttributes(node: GraphNodeDatum, context: GraphContext)
     brainTitle: node.brainTitle,
     foreign,
     forceLabel: foreign,
-    zIndex: foreign ? 2 : 1,
+    zIndex: foreign ? 0 : 1,
   };
 }
 
-export function graphEdgeAttributes(edge: GraphEdgeDatum) {
+export function graphEdgeAttributes(edge: GraphEdgeDatum, context: GraphContext = { mode: "all" }) {
+  const mutedForeign = edge.crossBrain && context.mode === "brain";
   return {
     crossBrain: edge.crossBrain,
-    color: edge.crossBrain ? "#d97706" : undefined,
-    size: edge.crossBrain ? 2.4 : 1,
+    color: mutedForeign ? "#8f8b94" : edge.crossBrain ? "#d97706" : undefined,
+    size: mutedForeign ? 0.75 : edge.crossBrain ? 2.4 : 1,
+    mutedForeign,
   };
 }

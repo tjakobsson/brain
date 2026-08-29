@@ -28,6 +28,7 @@
 - [x] 4.3 Implement brain-aware graph rendering with local metadata colors, foreign markers and labels, combined-view accents, cross-brain edge treatment, and accessible legends; verify browser screenshots and DOM assertions demonstrate brain identity without relying on color on desktop and mobile.
 - [x] 4.4 Add brain metadata to Pagefind pages and the quick-switch index, scope full-text and fuzzy search to the active brain by default, and add explicit selected-workspace and all-brains scopes; verify search tests distinguish duplicate titles, preserve namespaced routes, and search all brains from the chooser.
 - [x] 4.5 Generate contextual tags, recent notes, orphans, nearby-note lists, and local graphs using the active brain while including resolved foreign relationships where specified; verify page tests cover a note connected only by a cross-brain inbound link and tags shared by several brains.
+- [x] 4.6 Add a local-first related-brains toggle to per-brain graphs and visually subordinate enabled foreign boundary nodes and cross-brain edges; verify local nodes remain unchanged, combined graphs retain full emphasis, and desktop/mobile browser tests cover both toggle states.
 
 ## 5. Live serving and distributed generation
 

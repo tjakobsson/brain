@@ -138,20 +138,61 @@ test("graph payload and scoped views keep ownership boundaries and canonical bra
   expect(payload.nodes.every((node: { x: number; y: number }) => Number.isFinite(node.x) && Number.isFinite(node.y))).toBe(true);
 
   const graph = page.locator("#global-graph");
+  await expect(graph).toHaveAttribute("data-visible-nodes", "2");
+  await expect(graph).toHaveAttribute("data-visible-brain-ids", "engineering");
+  await expect(graph).toHaveAttribute("data-foreign-nodes", "0");
+  await expect(graph).toHaveAttribute("data-cross-edges", "0");
+  await expect(graph).toHaveAttribute("data-related-brains-visible", "false");
+
+  const relatedBrains = page.locator("#graph-related-toggle");
+  await expect(relatedBrains).toHaveAttribute("aria-pressed", "false");
+  await page.waitForFunction(() =>
+    sessionStorage.getItem(`graph-related-brains:${location.pathname}`) === "false"
+  );
+  await relatedBrains.click();
+  await page.reload();
+  await expect(relatedBrains).toHaveAttribute("aria-pressed", "true");
   await expect(graph).toHaveAttribute("data-visible-nodes", "4");
   await expect(graph).toHaveAttribute("data-visible-brain-ids", "engineering,design,research");
   await expect(graph).toHaveAttribute("data-foreign-nodes", "2");
   await expect(graph).toHaveAttribute("data-cross-edges", "4");
+  await expect(graph).toHaveAttribute("data-related-brains-visible", "true");
+  await page.waitForFunction(() =>
+    Object.keys(sessionStorage).some((key) =>
+      key.startsWith("graph-motion:") && key.includes(":brain:engineering:true:")
+    )
+  );
+  await page.reload();
+  await expect(relatedBrains).toHaveAttribute("aria-pressed", "true");
+  await expect(relatedBrains).toHaveText("Hide related brains");
+  await expect(graph).toHaveAttribute("data-foreign-nodes", "2");
+  await expect(graph).toHaveAttribute("data-related-brains-visible", "true");
 
   await page.getByRole("button", { name: "Filters" }).click();
   await expect(page.locator("[data-brain-key=engineering]")).toContainText("@engineering: Engineering");
   await expect(page.locator("[data-brain-key=design]")).toContainText("foreign ↗");
-  await expect(page.locator(".cross-edge-key")).toHaveCSS("border-top-width", "3px");
+  await expect(page.locator(".cross-edge-key")).toHaveCSS("border-top-width", "1px");
   await page.locator("#graph-search").fill("Principles");
   const matches = page.locator("#graph-search-results button");
   await expect(matches).toHaveCount(2);
   await expect(matches.filter({ hasText: "@engineering" })).toHaveCount(1);
   await expect(matches.filter({ hasText: "@design" })).toHaveCount(1);
+
+  await page.evaluate(() => {
+    document.querySelector<HTMLButtonElement>("#graph-related-toggle")!.click();
+    document.querySelector<HTMLButtonElement>("#graph-search-results button")!.click();
+  });
+  await page.waitForFunction(() =>
+    sessionStorage.getItem(`graph-related-brains:${location.pathname}`) === "false"
+  );
+  expect(await page.evaluate(() =>
+    Object.keys(sessionStorage).filter((key) =>
+      /graph-(motion|view):/.test(key) && key.includes(":brain:engineering:false:")
+    ).length
+  )).toBe(0);
+  await page.reload();
+  await expect(relatedBrains).toHaveAttribute("aria-pressed", "false");
+  await expect(graph).toHaveAttribute("data-foreign-nodes", "0");
 
   await page.goto(`${workspace}/graph?brains=engineering,design,research`);
   await expect(graph).toHaveAttribute("data-visible-nodes", "5");
@@ -166,6 +207,16 @@ test("graph payload and scoped views keep ownership boundaries and canonical bra
 
 test("graph ownership legend remains non-color-readable on mobile", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${workspace}/brains/engineering`);
+  const graph = page.locator("#global-graph");
+  const relatedBrains = page.locator("#graph-related-toggle");
+  await expect(graph).toHaveAttribute("data-foreign-nodes", "0");
+  await relatedBrains.click();
+  await expect(graph).toHaveAttribute("data-foreign-nodes", "2");
+  await expect(relatedBrains).toHaveText("Hide related brains");
+  await relatedBrains.click();
+  await expect(graph).toHaveAttribute("data-foreign-nodes", "0");
+
   await page.goto(`${workspace}/graph?brains=engineering,design`);
   await page.getByRole("button", { name: "Filters" }).click();
 

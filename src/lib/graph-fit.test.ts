@@ -129,9 +129,11 @@ describe("rendered graph fitting", () => {
 
   it("uses a safe default view for an empty included set", () => {
     const { renderer, camera, getBBox } = fakeRenderer();
-    fitRenderedGraph(renderer as never, []);
+    const onAnimationComplete = vi.fn();
+    fitRenderedGraph(renderer as never, [], { onAnimationComplete });
     expect(getBBox()).toEqual({ x: [0, 1], y: [0, 1] });
     expect(camera.getState()).toEqual({ x: 0.5, y: 0.5, angle: 0, ratio: 1.12 });
+    expect(onAnimationComplete).toHaveBeenCalledOnce();
   });
 
   it("fits inside asymmetric insets and expands a restrictive camera limit", () => {

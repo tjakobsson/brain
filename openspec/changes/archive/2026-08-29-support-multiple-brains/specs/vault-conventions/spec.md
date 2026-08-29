@@ -1,11 +1,15 @@
-## REMOVED Requirements
-
-### Requirement: Plain markdown vault
-**Reason**: The requirement makes native Obsidian compatibility mandatory, which conflicts with Brain's new namespaced link grammar and independent multi-brain sources.
-
-**Migration**: Continue using plain Markdown under the replacement Plain Markdown brain sources requirement; native Obsidian link resolution is no longer guaranteed.
-
 ## MODIFIED Requirements
+
+### Requirement: Plain Markdown Brain directory
+Each brain source SHALL be a directory of plain `.md` files readable by general Markdown tools. Brain-specific frontmatter and link syntax MUST remain legible as plain text, but native compatibility with Obsidian or any other knowledge-management application is NOT required.
+
+#### Scenario: Read source without Brain
+- **WHEN** a brain directory is opened in a text editor or general Markdown reader
+- **THEN** its note prose and link targets remain readable without generated files or proprietary binary data
+
+#### Scenario: Folder organization is free-form
+- **WHEN** a note is placed in any subfolder of its brain directory or at its root
+- **THEN** it is published and its location does not affect note identity or link resolution
 
 ### Requirement: Title-slug note identity
 A note's identity within its brain SHALL be its filename without the `.md` extension. Titles MUST be unique case-insensitively within one brain but MAY repeat across different brains. A multi-brain note's canonical identity and URL SHALL combine the stable brain ID with a URL-friendly slug of its title.
@@ -52,16 +56,3 @@ Brain SHALL resolve `[[Note Title]]`, `[[Note Title|display text]]`, and `[[Note
 #### Scenario: Note moves folders, links survive
 - **WHEN** a note moves between folders within its brain without being renamed
 - **THEN** local and cross-brain links targeting its title still resolve after rebuild
-
-## ADDED Requirements
-
-### Requirement: Plain Markdown brain sources
-Each brain source SHALL be a directory of plain `.md` files readable by general Markdown tools. Brain-specific frontmatter and link syntax MUST remain legible as plain text, but native compatibility with Obsidian or any other knowledge-management application is NOT required.
-
-#### Scenario: Read source without Brain
-- **WHEN** a brain directory is opened in a text editor or general Markdown reader
-- **THEN** its note prose and link targets remain readable without generated files or proprietary binary data
-
-#### Scenario: Folder organization is free-form
-- **WHEN** a note is placed in any subfolder of its brain directory or at its root
-- **THEN** it is published and its location does not affect note identity or link resolution

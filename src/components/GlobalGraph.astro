@@ -28,7 +28,7 @@ const legendBrains = snapshot.registry.brains.filter((brain) =>
 ---
 
 <div class="graph-page">
-  <div class="graph-shell filters-closed">
+  <div class:list={["graph-shell", "filters-closed", { "has-related-brains": activeBrainId && boundaryBrainIds.size > 0 }]}>
     <div class="graph-controls">
       <button
         id="graph-filter-toggle"
@@ -38,6 +38,14 @@ const legendBrains = snapshot.registry.brains.filter((brain) =>
         aria-expanded="false"
       >Filters</button>
       <button id="graph-fit-view" class="graph-control" type="button">Fit view</button>
+      {activeBrainId && boundaryBrainIds.size > 0 && (
+        <button
+          id="graph-related-toggle"
+          class="graph-control graph-related-toggle"
+          type="button"
+          aria-pressed="false"
+        >Show related brains</button>
+      )}
     </div>
     <aside id="graph-sidebar" class="graph-sidebar" inert>
       <h2>Search</h2>
@@ -85,7 +93,7 @@ const legendBrains = snapshot.registry.brains.filter((brain) =>
         <p>
           {combined
             ? "Brain accents and @brain labels identify ownership."
-            : "Local node color is note type. Foreign nodes use ↗, an @brain label, and a larger marker."}
+            : "Local node color is note type. Related foreign nodes are smaller and gray, with ↗ and an @brain label."}
         </p>
         <ul class="graph-brain-key" aria-label="Brain identity legend">
           {legendBrains.map((brain, index) => (
@@ -97,7 +105,10 @@ const legendBrains = snapshot.registry.brains.filter((brain) =>
           ))}
         </ul>
         <p><span aria-hidden="true">○</span> draft, <span aria-hidden="true">◇</span> developing, <span aria-hidden="true">◆</span> established</p>
-        <p><span class="cross-edge-key" aria-hidden="true"></span> thick line: cross-brain link</p>
+        <p>
+          <span class:list={["cross-edge-key", { "cross-edge-key--muted": !combined }]} aria-hidden="true"></span>
+          {combined ? "thick line: cross-brain link" : "muted line: cross-brain link"}
+        </p>
         <p>Node size shows connections. Hover to inspect a neighborhood; drag to rearrange; click to open.</p>
       </div>
 
@@ -214,5 +225,6 @@ const legendBrains = snapshot.registry.brains.filter((brain) =>
     tagFilter,
     count: q("#graph-count"),
     fitViewButton: q<HTMLButtonElement>("#graph-fit-view"),
+    relatedBrainsToggle: document.querySelector<HTMLButtonElement>("#graph-related-toggle"),
   }).catch((error) => console.error("[graph] failed to mount", error));
 </script>

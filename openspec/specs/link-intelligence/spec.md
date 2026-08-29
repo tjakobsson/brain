@@ -7,41 +7,61 @@ Computes the vault's connection structure at build time — backlinks with conte
 ## Requirements
 
 ### Requirement: Linked mentions (backlinks)
-Every note page SHALL include a "Linked mentions" section listing all notes that link to it. Each entry MUST include the surrounding sentence or line of context in which the link appears, not just the linking note's title. Notes with no inbound links MUST NOT render an empty section.
+Every note page SHALL list all notes in the workspace that link to it, including notes owned by other brains. Each entry MUST include the source brain, source note title, and surrounding context. Notes with no inbound links MUST NOT render an empty section.
+
+#### Scenario: Show a cross-brain backlink
+- **WHEN** Engineering links to a Design note
+- **THEN** the Design note's linked mentions identify Engineering, the source note, and the link context
 
 #### Scenario: Backlink with context
-- **WHEN** note A contains the sentence "This builds on [[Note B]] in practice" and a reader opens note B
-- **THEN** note B's Linked mentions section shows note A with the sentence "This builds on Note B in practice" as context
+- **WHEN** note A contains the sentence `This builds on [[Note B]] in practice`
+- **THEN** note B's linked mentions show note A with the surrounding sentence and its owning brain
 
 #### Scenario: No inbound links
-- **WHEN** a note has no inbound links
-- **THEN** no empty "Linked mentions" section is rendered on its page
+- **WHEN** a note has no inbound links from any configured brain
+- **THEN** no empty linked-mentions section is rendered on its page
 
 ### Requirement: Unlinked mentions
-Every note page SHALL surface "Unlinked mentions": notes whose body text contains this note's title as plain text without a wiki-link to it. Unlinked mentions MUST be computed at build time and shown separately from linked mentions.
+Every note page SHALL surface unlinked mentions from other notes in the same brain whose prose contains the note's title without a local link. Brain MUST NOT infer unlinked mentions across brains because titles are not globally unique. Unlinked mentions MUST remain separate from linked mentions.
 
-#### Scenario: Plain-text mention detected
-- **WHEN** note A's prose mentions "the Zettelkasten method" and a note titled "Zettelkasten method" exists, but A never links to it
-- **THEN** "Zettelkasten method" shows note A under Unlinked mentions
+#### Scenario: Detect an unlinked local mention
+- **WHEN** one Engineering note mentions another Engineering note's title without linking it
+- **THEN** the target note reports the source under unlinked mentions
+
+#### Scenario: Ignore equal foreign titles
+- **WHEN** Design prose contains a title also used by an Engineering note without an explicit cross-brain link
+- **THEN** Brain does not report the Design prose as an unlinked mention of the Engineering note
 
 #### Scenario: Linked notes are not double-reported
-- **WHEN** note A both links to and mentions note B by title
-- **THEN** note A appears under note B's Linked mentions only, not under Unlinked mentions
+- **WHEN** one note both links to and mentions another note in the same brain
+- **THEN** the source appears under linked mentions only
 
 ### Requirement: Orphan report
-The site SHALL provide an orphans report page listing all notes with zero inbound links, to support Zettelkasten vault hygiene.
+Each brain's orphan report SHALL list notes with zero resolved inbound links from any configured brain. A resolved cross-brain inbound link MUST prevent a note from being classified as an orphan.
+
+#### Scenario: Foreign link connects a note
+- **WHEN** a Research note is linked only from Engineering
+- **THEN** the Research note does not appear in Research's orphan report
 
 #### Scenario: Orphan identified
-- **WHEN** a note exists that no other note links to
-- **THEN** it appears on the orphans report page
+- **WHEN** a note has no inbound links from any configured brain
+- **THEN** it appears on its owning brain's orphan report
 
 ### Requirement: Build-time graph dataset
-The build SHALL emit a graph dataset (served as static JSON) containing one node per note — with its title, URL, type, status, tags, and link degree — and one edge per resolved wiki-link. Edges MUST only be created for links that resolve to an existing note; unresolved links MUST NOT appear as edges or phantom nodes.
+The build SHALL emit graph data with a globally unique composite node ID for each note, including its brain ID, title, namespaced URL, type, status, tags, and link degree. It SHALL emit one edge per resolved local or cross-brain link and identify cross-brain edges. Unresolved links MUST NOT produce edges or phantom nodes.
+
+#### Scenario: Emit a cross-brain edge
+- **WHEN** Engineering note A links to Design note B
+- **THEN** graph data contains both namespaced nodes and one edge marked as crossing from Engineering to Design
+
+#### Scenario: Keep duplicate titles distinct
+- **WHEN** two brains contain notes with the same title
+- **THEN** graph data assigns distinct composite IDs and routes to both nodes
 
 #### Scenario: Dataset reflects vault
-- **WHEN** the vault contains notes A and B with A linking to B
-- **THEN** the graph dataset contains nodes for A and B with correct metadata, and one edge from A to B
+- **WHEN** note A links to note B within one brain
+- **THEN** graph data contains both namespaced nodes with correct metadata and one resolved edge
 
 #### Scenario: Unresolved links excluded
-- **WHEN** note A links to a nonexistent note "Future idea"
-- **THEN** the graph dataset contains no node and no edge for "Future idea"
+- **WHEN** a note links to a nonexistent local or foreign note
+- **THEN** graph data contains no edge or phantom node for the unresolved target

@@ -144,7 +144,7 @@ describe("session position cache", () => {
       },
     };
     expect(loadPositions(unavailable, "key", ["a"])).toBeNull();
-    expect(() => savePositions(unavailable, "key", POSITIONS)).not.toThrow();
+    expect(savePositions(unavailable, "key", POSITIONS)).toBe(false);
   });
 
   it("round-trips a finite camera and matching graph bounds", () => {

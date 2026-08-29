@@ -22,9 +22,11 @@ Each brain SHALL have an interactive graph containing its notes plus directly co
 ### Requirement: Meaningful visual encoding
 Graph nodes and edges SHALL visibly encode brain membership and cross-brain relationships without relying on color alone. A per-brain graph MUST distinguish foreign boundary nodes from local nodes while retaining discernible type, status, and connectivity encoding. A combined graph MUST assign each brain a consistent accent and provide a legend mapping accents and non-color markers to brain identity.
 
+In a per-brain graph, foreign boundary nodes and cross-brain edges MUST use a neutral, lower-emphasis treatment than local content while retaining an explicit `@brain` label and foreign marker. Combined graphs SHALL continue to render every selected brain at full emphasis.
+
 #### Scenario: Recognize a foreign node
 - **WHEN** a reader views a per-brain graph containing a linked note from another brain
-- **THEN** the foreign note has the target brain's label or marker and a treatment distinct from local notes
+- **THEN** the foreign note has the target brain's label or marker and a muted treatment visually subordinate to local notes
 
 #### Scenario: Recognize brains in a combined graph
 - **WHEN** a reader views notes from several selected brains
@@ -40,6 +42,16 @@ Graph nodes and edges SHALL visibly encode brain membership and cross-brain rela
 
 ### Requirement: Graph filtering
 Graph controls SHALL filter visible nodes by brain, note type, status, and tag when those dimensions apply to the current view. Removing a brain from a combined view MUST remove its nodes and edges and update the shareable selected-brain URL; foreign boundary nodes in a per-brain graph MUST remain governed by their connection to the active brain.
+
+A per-brain graph SHALL hide foreign boundary nodes by default and provide an explicit toggle that shows or hides all directly related foreign notes and their cross-brain edges without affecting local nodes.
+
+#### Scenario: Show related brains
+- **WHEN** a reader enables related brains from a per-brain graph
+- **THEN** directly connected foreign notes and cross-brain edges appear with muted foreign styling while unrelated foreign notes remain hidden
+
+#### Scenario: Return to local focus
+- **WHEN** a reader disables related brains
+- **THEN** every foreign node and cross-brain edge is hidden while the active brain's local graph remains visible
 
 #### Scenario: Remove a brain from a combined graph
 - **WHEN** a reader deselects Research
