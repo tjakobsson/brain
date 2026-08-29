@@ -340,6 +340,9 @@ test("Pagefind and contextual reports retain brain scope and foreign relationshi
   await expect(page.getByRole("link", { name: "Principles · @design", exact: true }))
     .toHaveAttribute("href", /\/workspace-demo\/brains\/design\/notes\/principles\/?$/);
 
+  await page.goto(`${workspace}/search`);
+  await expect(page.getByRole("link", { name: "Graph", exact: true })).toHaveCount(0);
+
   await page.goto(`${workspace}/search?brains=engineering,design`);
   await expect(page.getByLabel("Search scope")).toHaveValue("selected");
   const graph = page.getByRole("link", { name: "Graph", exact: true });
