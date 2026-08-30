@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.3 - 2026-08-30
+
+- Place fenced-code copy controls alongside the first line without reducing their target size or hiding horizontally scrollable code.
+
 ## 1.2.2 - 2026-08-30
 
 - Reveal every eligible visible graph title after substantial mobile zoom while preserving selective labels in the fitted overview.
