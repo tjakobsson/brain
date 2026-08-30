@@ -515,6 +515,21 @@ test("graph ownership legend remains non-color-readable on mobile", async ({ pag
   await expect(conciseLegend).toContainText("Larger nodes have more connections");
   await expect(conciseLegend).toContainText("@design: Design (related)");
   await expect(conciseLegend).toContainText("Muted line links different brains");
+  const legendOverflow = await conciseLegend.evaluate((panel) => {
+    const brainList = panel.querySelector(".graph-legend-brains")!;
+    const identity = brainList.querySelector("li")!;
+    for (let index = 0; index < 30; index += 1) brainList.append(identity.cloneNode(true));
+    const bounds = panel.getBoundingClientRect();
+    return {
+      bottom: bounds.bottom,
+      viewportHeight: innerHeight,
+      scrolls: panel.scrollHeight > panel.clientHeight,
+      overflowY: getComputedStyle(panel).overflowY,
+    };
+  });
+  expect(legendOverflow.scrolls).toBe(true);
+  expect(legendOverflow.overflowY).toBe("auto");
+  expect(legendOverflow.bottom).toBeLessThanOrEqual(legendOverflow.viewportHeight);
   await page.keyboard.press("Escape");
   await expect(conciseLegend).toBeHidden();
   await expect(legendTrigger).toBeFocused();
