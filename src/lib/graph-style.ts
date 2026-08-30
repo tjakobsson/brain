@@ -42,6 +42,21 @@ export function foreignLabelMarkWidth(labelSize: number): number {
   return labelSize + 4;
 }
 
+export function responsiveLabelSettings(
+  narrow: boolean,
+  desktopThreshold: number,
+  desktopGridCellSize: number,
+) {
+  return {
+    labelRenderedSizeThreshold: narrow ? 0 : desktopThreshold,
+    labelGridCellSize: narrow ? 180 : desktopGridCellSize,
+  };
+}
+
+export function forceLabelsOnNarrowZoom(narrow: boolean, cameraRatio: number): boolean {
+  return narrow && cameraRatio <= 0.75;
+}
+
 function accentColor(accent: string, status: string): string {
   const match = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(accent);
   if (!match) return accent;

@@ -21,9 +21,11 @@ import {
 } from "./graph-data";
 import {
   forceForeignLabel,
+  forceLabelsOnNarrowZoom,
   foreignLabelMarkWidth,
   graphEdgeAttributes,
   graphNodeAttributes,
+  responsiveLabelSettings,
 } from "./graph-style";
 import { combinedRoutes, joinBase, routes, routesFor, type LogicalRoute } from "./routes";
 
@@ -486,10 +488,9 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     return width <= maximumWidth;
   };
   const applyResponsiveLabelThreshold = () => {
-    renderer.setSettings({
-      labelRenderedSizeThreshold: narrowGraphQuery.matches ? 0 : desktopLabelThreshold,
-      labelGridCellSize: narrowGraphQuery.matches ? 400 : desktopLabelGridCellSize,
-    });
+    renderer.setSettings(
+      responsiveLabelSettings(narrowGraphQuery.matches, desktopLabelThreshold, desktopLabelGridCellSize),
+    );
   };
   applyResponsiveLabelThreshold();
   const motion = new GraphMotionController(renderer, graph, data, () => {
@@ -606,6 +607,10 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     ui.host.dataset.relatedBrainsVisible = String(Boolean(activeBrainId && showRelatedBrains));
   }
 
+  let revealNarrowLabels = forceLabelsOnNarrowZoom(
+    narrowGraphQuery.matches,
+    renderer.getCamera().getState().ratio,
+  );
   function applyReducers(): void {
     renderer.setSetting("nodeReducer", (node, attrs) => {
       const res = { ...attrs } as Record<string, unknown>;
@@ -619,12 +624,14 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       const label = (attrs.label as string).toLowerCase();
       if (
         narrowGraphQuery.matches &&
+        !revealNarrowLabels &&
         node !== state.hovered &&
         !labelFitsNarrowViewport(attrs as Record<string, unknown>)
       ) {
         res.label = "";
         res.forceLabel = false;
       }
+      if (revealNarrowLabels && res.label) res.forceLabel = true;
       if (state.hovered) {
         return hoverReducers.nodeReducer(node, res as typeof attrs);
       } else if (query && !label.includes(query)) {
@@ -654,6 +661,16 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     );
   };
   renderer.on("afterRender", updateRenderedLabelStats);
+  const onCameraLabelReveal = () => {
+    const reveal = forceLabelsOnNarrowZoom(
+      narrowGraphQuery.matches,
+      renderer.getCamera().getState().ratio,
+    );
+    if (reveal === revealNarrowLabels) return;
+    revealNarrowLabels = reveal;
+    applyReducers();
+  };
+  renderer.getCamera().on("updated", onCameraLabelReveal);
 
   const visibleIds = () => graph.nodes().filter((id) => !hidden.has(id));
   let filterSettleTimer: number | null = null;
@@ -713,6 +730,10 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   ui.relatedBrainsToggle?.addEventListener("click", onRelatedBrainsToggle);
   const onNarrowGraphChange = () => {
     applyResponsiveLabelThreshold();
+    revealNarrowLabels = forceLabelsOnNarrowZoom(
+      narrowGraphQuery.matches,
+      renderer.getCamera().getState().ratio,
+    );
     applyReducers();
     renderer.resize();
     resizeSettler.reset(ui.host.clientWidth, ui.host.clientHeight);
@@ -863,6 +884,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     resizeObserver.disconnect();
     resizeSettler.cancel();
     renderer.getCamera().off("updated", saveSession);
+    renderer.getCamera().off("updated", onCameraLabelReveal);
     window.removeEventListener("pagehide", flushSession);
     ui.fitViewButton.removeEventListener("click", onFitView);
     ui.relatedBrainsToggle?.removeEventListener("click", onRelatedBrainsToggle);
@@ -904,10 +926,7 @@ export async function mountLocalGraphs(): Promise<void> {
     });
     const narrowGraphQuery = window.matchMedia("(max-width: 700px)");
     const applyResponsiveLabelThreshold = () => {
-      renderer.setSettings({
-        labelRenderedSizeThreshold: narrowGraphQuery.matches ? 0 : 3,
-        labelGridCellSize: narrowGraphQuery.matches ? 180 : 100,
-      });
+      renderer.setSettings(responsiveLabelSettings(narrowGraphQuery.matches, 3, 100));
     };
     applyResponsiveLabelThreshold();
     const fitButton = host
@@ -921,18 +940,35 @@ export async function mountLocalGraphs(): Promise<void> {
       theme,
     };
     const hoverReducers = createHoverReducers(graph, state);
+    let revealNarrowLabels = forceLabelsOnNarrowZoom(
+      narrowGraphQuery.matches,
+      renderer.getCamera().getState().ratio,
+    );
     const applyLocalReducers = () => {
       renderer.setSettings({
         nodeReducer: (node, attrs) => {
           const reduced = hoverReducers.nodeReducer(node, attrs);
-          return reduced.foreign
+          const brainAware = reduced.foreign
             ? { ...reduced, forceLabel: forceForeignLabel(true, narrowGraphQuery.matches) }
             : reduced;
+          return revealNarrowLabels && brainAware.label
+            ? { ...brainAware, forceLabel: true }
+            : brainAware;
         },
         edgeReducer: hoverReducers.edgeReducer,
       });
     };
     applyLocalReducers();
+    const onCameraLabelReveal = () => {
+      const reveal = forceLabelsOnNarrowZoom(
+        narrowGraphQuery.matches,
+        renderer.getCamera().getState().ratio,
+      );
+      if (reveal === revealNarrowLabels) return;
+      revealNarrowLabels = reveal;
+      applyLocalReducers();
+    };
+    renderer.getCamera().on("updated", onCameraLabelReveal);
     const fitView = (animate: boolean) => {
       if (animate) stopCameraAnimation(renderer);
       fitRenderedGraph(renderer, graph.nodes(), {
@@ -946,6 +982,10 @@ export async function mountLocalGraphs(): Promise<void> {
     const onFitView = () => fitView(true);
     const onNarrowGraphChange = () => {
       applyResponsiveLabelThreshold();
+      revealNarrowLabels = forceLabelsOnNarrowZoom(
+        narrowGraphQuery.matches,
+        renderer.getCamera().getState().ratio,
+      );
       applyLocalReducers();
       fitView(false);
     };
@@ -954,6 +994,7 @@ export async function mountLocalGraphs(): Promise<void> {
     renderer.on("kill", () => {
       fitButton?.removeEventListener("click", onFitView);
       narrowGraphQuery.removeEventListener("change", onNarrowGraphChange);
+      renderer.getCamera().off("updated", onCameraLabelReveal);
     });
     if (import.meta.env.DEV) {
       (window as unknown as Record<string, unknown>).__localGraphDebug = { renderer, graph };

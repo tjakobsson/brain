@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { GraphData } from "./graph-data";
-import { forceForeignLabel, graphEdgeAttributes, graphNodeAttributes } from "./graph-style";
+import {
+  forceForeignLabel,
+  forceLabelsOnNarrowZoom,
+  graphEdgeAttributes,
+  graphNodeAttributes,
+  responsiveLabelSettings,
+} from "./graph-style";
 
 const data: GraphData = {
   mode: "workspace",
@@ -48,6 +54,20 @@ const data: GraphData = {
 };
 
 describe("brain-aware graph rendering data", () => {
+  it("uses a phone label grid that can reveal more titles while zooming", () => {
+    expect(responsiveLabelSettings(true, 14, 180)).toEqual({
+      labelRenderedSizeThreshold: 0,
+      labelGridCellSize: 180,
+    });
+    expect(responsiveLabelSettings(false, 14, 180)).toEqual({
+      labelRenderedSizeThreshold: 14,
+      labelGridCellSize: 180,
+    });
+    expect(forceLabelsOnNarrowZoom(true, 0.75)).toBe(true);
+    expect(forceLabelsOnNarrowZoom(true, 0.76)).toBe(false);
+    expect(forceLabelsOnNarrowZoom(false, 0.5)).toBe(false);
+  });
+
   it("marks foreign nodes and cross-brain edges without color alone", () => {
     const context = { mode: "brain", brainId: "engineering" } as const;
     const local = graphNodeAttributes(data.nodes[0], context);
