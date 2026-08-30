@@ -1,7 +1,8 @@
 import { forceLocalLabelsOnNarrowZoom } from "./graph-style";
 
 export interface LocalGraphLabelReveal {
-  recordFit(): void;
+  resetForFit(): void;
+  recordFit(): number;
   refresh(): void;
   destroy(): void;
 }
@@ -24,9 +25,16 @@ export function wireLocalGraphLabelReveal(
   const unsubscribe = subscribe(refresh);
 
   return {
+    resetForFit() {
+      fittedRatio = null;
+      if (!reveal) return;
+      reveal = false;
+      onChange(false);
+    },
     recordFit() {
       fittedRatio = getCameraRatio();
       refresh();
+      return fittedRatio;
     },
     refresh,
     destroy: unsubscribe,

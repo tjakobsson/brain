@@ -16,7 +16,7 @@ describe("local graph label reveal", () => {
       },
     );
 
-    reveal.recordFit();
+    expect(reveal.recordFit()).toBe(2);
     ratio = 1.5;
     cameraUpdated();
     cameraUpdated();
@@ -29,7 +29,9 @@ describe("local graph label reveal", () => {
     ratio = 1;
     cameraUpdated();
     expect(changes).toEqual([true, false, true]);
-    reveal.recordFit();
+    reveal.resetForFit();
+    expect(changes).toEqual([true, false, true, false]);
+    expect(reveal.recordFit()).toBe(1);
     expect(changes).toEqual([true, false, true, false]);
   });
 

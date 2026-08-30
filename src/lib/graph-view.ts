@@ -976,9 +976,12 @@ export async function mountLocalGraphs(): Promise<void> {
     );
     const fitView = (animate: boolean) => {
       if (animate) stopCameraAnimation(renderer);
+      labelReveal.resetForFit();
       fitRenderedGraph(renderer, graph.nodes(), {
         animate: animate && !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-        onAnimationComplete: () => labelReveal.recordFit(),
+        onAnimationComplete: () => {
+          host.dataset.fittedRatio = String(labelReveal.recordFit());
+        },
       });
     };
     fitView(false);
