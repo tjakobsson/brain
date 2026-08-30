@@ -210,7 +210,10 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
       document.addEventListener("pointerdown", (event) => {
         if (mobileExpanded && event.target instanceof Node && !header.contains(event.target)) {
           collapseMobile(false);
-          window.setTimeout(() => launcher.focus(), 0);
+          const interactiveTarget = event.target instanceof Element && event.target.closest(
+            'a[href], button, input, select, textarea, summary, [contenteditable="true"], [tabindex]:not([tabindex="-1"])',
+          );
+          if (!interactiveTarget) window.setTimeout(() => launcher.focus(), 0);
         }
       });
       document.addEventListener("keydown", (event) => {

@@ -467,6 +467,7 @@ test("graph ownership legend remains non-color-readable on mobile", async ({ pag
   const graph = page.locator("#global-graph");
   const relatedBrains = page.locator("#graph-related-toggle");
   const controls = page.locator(".graph-controls");
+  const filterToggle = controls.getByRole("button", { name: "Filters" });
   const actions = controls.getByRole("button");
   await expect(actions).toHaveCount(4);
   await expect(controls.getByRole("button", { name: "Filters" })).toBeVisible();
@@ -493,6 +494,11 @@ test("graph ownership legend remains non-color-readable on mobile", async ({ pag
   expect(initialGeometry.actions.every(({ width, height }) => width >= 44 && height >= 44)).toBe(true);
   expect(initialGeometry).toMatchObject({ oneRow: true, alignedWithNavigation: true, sameHeightAsNavigation: true, inViewport: true, overlapsNavigation: false, noOverflow: true });
   expect(Math.abs(initialGeometry.controlsLeftInset - initialGeometry.navigationRightInset)).toBeLessThan(1);
+  await page.getByRole("button", { name: "Navigation" }).click();
+  await filterToggle.click();
+  await expect(page.getByRole("button", { name: "Navigation" })).toHaveAttribute("aria-expanded", "false");
+  await expect(filterToggle).toBeFocused();
+  await filterToggle.click();
   await expect(graph).toHaveAttribute("data-foreign-nodes", "0");
   await relatedBrains.click();
   await expect(graph).toHaveAttribute("data-foreign-nodes", "2");
@@ -505,7 +511,6 @@ test("graph ownership legend remains non-color-readable on mobile", async ({ pag
   await relatedBrains.click();
   await expect(graph).toHaveAttribute("data-foreign-nodes", "0");
 
-  const filterToggle = controls.getByRole("button", { name: "Filters" });
   const sidebar = page.locator("#graph-sidebar");
   await filterToggle.click();
   await expect(filterToggle).toHaveAttribute("aria-expanded", "true");
@@ -538,6 +543,11 @@ test("graph ownership legend remains non-color-readable on mobile", async ({ pag
   await page.keyboard.press("Escape");
   await expect(conciseLegend).toBeHidden();
   await expect(legendTrigger).toBeFocused();
+  await legendTrigger.click();
+  await filterToggle.click();
+  await expect(conciseLegend).toBeHidden();
+  await expect(filterToggle).toBeFocused();
+  await filterToggle.click();
   await legendTrigger.click();
   await page.mouse.click(380, 820);
   await expect(conciseLegend).toBeHidden();

@@ -109,7 +109,10 @@ const brainAware = context === "brain" || context === "combined" || context === 
         !disclosure.contains(event.target)
       ) {
         setOpen(false);
-        window.setTimeout(() => trigger.focus(), 0);
+        const interactiveTarget = event.target instanceof Element && event.target.closest(
+          'a[href], button, input, select, textarea, summary, [contenteditable="true"], [tabindex]:not([tabindex="-1"])',
+        );
+        if (!interactiveTarget) window.setTimeout(() => trigger.focus(), 0);
       }
     });
     document.addEventListener("keydown", (event) => {
