@@ -1,12 +1,13 @@
 # Changelog
 
-## 1.2.0 - Unreleased
+## 1.2.0 - 2026-08-30
 
 - Add versioned workspace inputs to the source command, container, composite Action, and reusable Pages workflow.
 - Extend the maintained v1 Action and reusable-workflow interfaces with mutually exclusive workspace inputs.
 - Add a per-brain graph toggle for directly related notes from other brains.
 - Fit rendered graph markers and labels within global and local graph viewports.
-- Replace the desktop header variants with one persistent navigation pill across viewport sizes.
+- Consolidate navigation into a persistent rail with the workspace chooser and quick switcher across viewport sizes.
+- Replace dedicated search pages and Pagefind indexing with the keyboard-accessible Fuse quick switcher.
 - Render Markdown tables and callouts with compact, responsive light and dark treatments.
 - Add line numbers and accessible copy controls to fenced code blocks.
 - Use the Brain mark for the favicon, workspace chooser, contextual navigation, and foreign graph labels.
