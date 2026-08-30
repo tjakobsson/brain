@@ -3,6 +3,7 @@ import type { GraphData } from "./graph-data";
 import {
   forceForeignLabel,
   forceLabelsOnNarrowZoom,
+  forceLocalLabelsOnNarrowZoom,
   graphEdgeAttributes,
   graphNodeAttributes,
   responsiveLabelSettings,
@@ -66,6 +67,23 @@ describe("brain-aware graph rendering data", () => {
     expect(forceLabelsOnNarrowZoom(true, 0.75)).toBe(true);
     expect(forceLabelsOnNarrowZoom(true, 0.76)).toBe(false);
     expect(forceLabelsOnNarrowZoom(false, 0.5)).toBe(false);
+  });
+
+  it("reveals local labels relative to each graph's fitted view", () => {
+    expect(forceLocalLabelsOnNarrowZoom(true, 0.75, 1)).toBe(true);
+    expect(forceLocalLabelsOnNarrowZoom(true, 0.76, 1)).toBe(false);
+    expect(forceLocalLabelsOnNarrowZoom(true, 1.5, 2)).toBe(true);
+    expect(forceLocalLabelsOnNarrowZoom(true, 1.51, 2)).toBe(false);
+    expect(forceLocalLabelsOnNarrowZoom(true, 0.9, 1)).toBe(false);
+    expect(forceLocalLabelsOnNarrowZoom(false, 0.5, 1)).toBe(false);
+  });
+
+  it("keeps local labels selective without valid camera ratios", () => {
+    expect(forceLocalLabelsOnNarrowZoom(true, 0.5, null)).toBe(false);
+    expect(forceLocalLabelsOnNarrowZoom(true, 0.5, 0)).toBe(false);
+    expect(forceLocalLabelsOnNarrowZoom(true, 0.5, Number.NaN)).toBe(false);
+    expect(forceLocalLabelsOnNarrowZoom(true, 0, 1)).toBe(false);
+    expect(forceLocalLabelsOnNarrowZoom(true, Number.POSITIVE_INFINITY, 1)).toBe(false);
   });
 
   it("marks foreign nodes and cross-brain edges without color alone", () => {

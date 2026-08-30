@@ -57,6 +57,20 @@ export function forceLabelsOnNarrowZoom(narrow: boolean, cameraRatio: number): b
   return narrow && cameraRatio <= 0.75;
 }
 
+export function forceLocalLabelsOnNarrowZoom(
+  narrow: boolean,
+  cameraRatio: number,
+  fittedRatio: number | null,
+): boolean {
+  return narrow &&
+    Number.isFinite(cameraRatio) &&
+    cameraRatio > 0 &&
+    fittedRatio !== null &&
+    Number.isFinite(fittedRatio) &&
+    fittedRatio > 0 &&
+    cameraRatio <= fittedRatio * 0.75;
+}
+
 function accentColor(accent: string, status: string): string {
   const match = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(accent);
   if (!match) return accent;

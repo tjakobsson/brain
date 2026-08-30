@@ -32,6 +32,10 @@ async function graphInkBounds(host: Locator) {
     let top = Number.POSITIVE_INFINITY;
     let right = Number.NEGATIVE_INFINITY;
     let bottom = Number.NEGATIVE_INFINITY;
+    let nodeLeft = Number.POSITIVE_INFINITY;
+    let nodeTop = Number.POSITIVE_INFINITY;
+    let nodeRight = Number.NEGATIVE_INFINITY;
+    let nodeBottom = Number.NEGATIVE_INFINITY;
     let nodePixels = 0;
     let labelPixels = 0;
 
@@ -46,6 +50,7 @@ async function graphInkBounds(host: Locator) {
     };
 
     const nodeCanvas = element.querySelector<HTMLCanvasElement>("canvas.sigma-nodes");
+    const nodeCanvasBounds = nodeCanvas?.getBoundingClientRect();
     const gl =
       (nodeCanvas?.getContext("webgl2") as WebGL2RenderingContext | null) ??
       (nodeCanvas?.getContext("webgl") as WebGLRenderingContext | null);
@@ -57,7 +62,16 @@ async function graphInkBounds(host: Locator) {
         for (let x = 0; x < nodeCanvas.width; x += 1) {
           if (pixels[(y * nodeCanvas.width + x) * 4 + 3] === 0) continue;
           nodePixels += 1;
-          include(nodeCanvas, x, nodeCanvas.height - 1 - y);
+          const flippedY = nodeCanvas.height - 1 - y;
+          include(nodeCanvas, x, flippedY);
+          const pageX = nodeCanvasBounds!.left - hostBounds.left +
+            (x / nodeCanvas.width) * nodeCanvasBounds!.width;
+          const pageY = nodeCanvasBounds!.top - hostBounds.top +
+            (flippedY / nodeCanvas.height) * nodeCanvasBounds!.height;
+          nodeLeft = Math.min(nodeLeft, pageX);
+          nodeTop = Math.min(nodeTop, pageY);
+          nodeRight = Math.max(nodeRight, pageX);
+          nodeBottom = Math.max(nodeBottom, pageY);
         }
       }
     }
@@ -76,7 +90,20 @@ async function graphInkBounds(host: Locator) {
     }
 
     if (!Number.isFinite(left)) throw new Error("Graph rendered no node or label pixels");
-    return { left, top, right, bottom, nodePixels, labelPixels, width: hostBounds.width, height: hostBounds.height };
+    return {
+      left,
+      top,
+      right,
+      bottom,
+      nodeLeft,
+      nodeTop,
+      nodeRight,
+      nodeBottom,
+      nodePixels,
+      labelPixels,
+      width: hostBounds.width,
+      height: hostBounds.height,
+    };
   });
 }
 
@@ -545,6 +572,74 @@ test("mobile navigation stays within the deployment base", async ({ page }, test
   await expect(page.locator(".site-header")).toHaveCSS("width", "48px");
   await expect(page.getByRole("button", { name: "Navigation" })).toHaveAttribute("aria-expanded", "false");
   expect(await initialListContentClearsNavigation(page)).toBe(true);
+});
+
+test("mobile local graphs reveal titles relative to their fitted view", async ({ page }, testInfo) => {
+  const { base } = deployment(testInfo);
+  await preserveGraphPixels(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const neighbors = Array.from({ length: 12 }, (_, index) => {
+    const anchor = [0, 1, 3, 9].includes(index);
+    return {
+      id: `nearby-${index + 1}`,
+      title: anchor
+        ? `Nearby graph note with an unusually long descriptive mobile title ${index + 1}`
+        : `An omitted nearby graph note with an exceptionally long title that should affect fitting only after labels are forced ${index + 1}`,
+      route: `/notes/nearby-${index + 1}`,
+      type: index % 2 === 0 ? "permanent" : "literature",
+      status: index % 3 === 0 ? "established" : "developing",
+      tags: [],
+      degree: anchor ? 100 : 1,
+      x: Math.cos(index * Math.PI / 6),
+      y: Math.sin(index * Math.PI / 6),
+    };
+  });
+  await page.route("**/graph-data.json", (route) => route.fulfill({
+    json: {
+      nodes: [{
+        id: "welcome",
+        title: "Welcome",
+        route: "/notes/welcome",
+        type: "permanent",
+        status: "established",
+        tags: [],
+        degree: neighbors.length,
+        x: 0,
+        y: 0,
+      }, ...neighbors],
+      edges: neighbors.map((node) => ({ source: "welcome", target: node.id })),
+    },
+  }));
+  await page.goto(`${base}/notes/welcome`);
+
+  const graph = page.locator(".local-graph");
+  const canvas = graph.locator("canvas.sigma-mouse");
+  await expect(canvas).toBeVisible();
+  await canvas.scrollIntoViewIfNeeded();
+  await expect.poll(async () => Number(await graph.getAttribute("data-rendered-labels"))).toBeGreaterThan(0);
+  const fittedLabels = Number(await graph.getAttribute("data-rendered-labels"));
+  expect(fittedLabels).toBeLessThan(neighbors.length + 1);
+  await page.getByRole("button", { name: "Fit view" }).click();
+  await page.waitForTimeout(400);
+  const fittedRatio = Number(await graph.getAttribute("data-fitted-ratio"));
+  expect(fittedRatio).toBeGreaterThan(1.49);
+  const fittedInk = await graphInkBounds(graph);
+
+  await canvas.hover();
+  await page.mouse.wheel(0, -100);
+  await expect.poll(async () => Number(await graph.getAttribute("data-rendered-labels"))).toBe(neighbors.length + 1);
+
+  await page.getByRole("button", { name: "Fit view" }).click();
+  await expect.poll(async () => Number(await graph.getAttribute("data-rendered-labels"))).toBe(fittedLabels);
+  await page.waitForTimeout(400);
+  expect(Math.abs(Number(await graph.getAttribute("data-fitted-ratio")) - fittedRatio)).toBeLessThan(0.01);
+  const resetInk = await graphInkBounds(graph);
+  expect(
+    Math.abs((resetInk.nodeRight - resetInk.nodeLeft) - (fittedInk.nodeRight - fittedInk.nodeLeft)),
+  ).toBeLessThan(3);
+  expect(
+    Math.abs((resetInk.nodeBottom - resetInk.nodeTop) - (fittedInk.nodeBottom - fittedInk.nodeTop)),
+  ).toBeLessThan(3);
 });
 
 test("touch layouts keep the local graph interactive", async ({ browser }, testInfo) => {
