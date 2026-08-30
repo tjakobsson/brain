@@ -405,11 +405,22 @@ test("graph ownership legend remains non-color-readable on mobile", async ({ pag
 test("quick switcher defaults to active, selected, and all-brain scopes", async ({ page }) => {
   await page.goto(`${workspace}/brains/engineering/notes/principles`);
   await page.getByRole("button", { name: "Search" }).click();
-  await expect(page.getByLabel("Quick switcher scope")).toHaveValue("active");
-  await page.getByLabel("Search notes and tags").fill("Principles");
+  const activeScope = page.getByLabel("Quick switcher scope");
+  const activeSearch = page.getByLabel("Search notes and tags");
+  await expect(activeScope).toHaveValue("active");
+  await expect(activeSearch).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(activeScope).toBeFocused();
+  await page.keyboard.press("a");
+  await expect(activeScope).toHaveValue("all");
+  await page.keyboard.press("Tab");
+  await expect(activeSearch).toBeFocused();
+  await activeSearch.fill("Principles");
+  await expect(page.locator("#switcher-results li", { hasText: "@design" })).toBeVisible();
+  await activeScope.selectOption("active");
   await expect(page.locator("#switcher-results li")).toHaveCount(1);
   await expect(page.locator("#switcher-results li")).toContainText("@engineering");
-  await page.getByLabel("Search notes and tags").fill("decisions");
+  await activeSearch.fill("decisions");
   await expect(page.locator("#switcher-results li", { hasText: "#decisions" })).toContainText("tag · @engineering");
   await page.keyboard.press("Escape");
 
