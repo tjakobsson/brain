@@ -500,8 +500,15 @@ test("graph ownership legend remains non-color-readable on mobile", async ({ pag
   await relatedBrains.click();
   await expect(graph).toHaveAttribute("data-foreign-nodes", "0");
 
+  const filterToggle = controls.getByRole("button", { name: "Filters" });
+  const sidebar = page.locator("#graph-sidebar");
+  await filterToggle.click();
+  await expect(filterToggle).toHaveAttribute("aria-expanded", "true");
+  await expect(sidebar).toHaveJSProperty("inert", false);
   const legendTrigger = controls.getByRole("button", { name: "Legend" });
   await legendTrigger.click();
+  await expect(filterToggle).toHaveAttribute("aria-expanded", "false");
+  await expect(sidebar).toHaveJSProperty("inert", true);
   await expect(legendTrigger).toHaveAttribute("aria-expanded", "true");
   const conciseLegend = page.getByRole("region", { name: "Graph legend" });
   await expect(conciseLegend).toContainText("Draft, developing, established");
@@ -527,6 +534,30 @@ test("graph ownership legend remains non-color-readable on mobile", async ({ pag
   await expect(legend).toContainText("◆ established");
   await expect(legend).toContainText("thick line: cross-brain link");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test("coarse-pointer tablet keeps graph controls clear of mobile navigation", async ({ browser }) => {
+  const context = await browser.newContext({ hasTouch: true, viewport: { width: 701, height: 900 } });
+  const page = await context.newPage();
+  await page.goto(`${workspace}/brains/engineering`);
+
+  const geometry = await page.evaluate(() => {
+    const controls = document.querySelector(".graph-controls")!.getBoundingClientRect();
+    const navigation = document.querySelector(".site-header")!.getBoundingClientRect();
+    const actions = [...document.querySelectorAll<HTMLElement>(".graph-controls button")]
+      .map((button) => button.getBoundingClientRect());
+    return {
+      compact: actions.every(({ width, height }) => width === 44 && height === 44),
+      overlapsNavigation: !(
+        controls.right <= navigation.left ||
+        controls.left >= navigation.right ||
+        controls.bottom <= navigation.top ||
+        controls.top >= navigation.bottom
+      ),
+    };
+  });
+  expect(geometry).toEqual({ compact: true, overlapsNavigation: false });
+  await context.close();
 });
 
 test("dense related notes use collision-selected labels in phone fits", async ({ page }) => {

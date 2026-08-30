@@ -233,6 +233,9 @@ const legendBrains = snapshot.registry.brains.filter((brain) =>
   filterToggle.addEventListener("click", () => {
     setFiltersOpen(filterToggle.getAttribute("aria-expanded") !== "true");
   });
+  document.addEventListener("graph-legend-open", () => {
+    if (filterToggle.getAttribute("aria-expanded") === "true") setFiltersOpen(false);
+  });
   document.addEventListener("keydown", (event) => {
     if (document.querySelector("#quick-switcher:not([hidden])")) return;
     if (event.key === "Escape" && filterToggle.getAttribute("aria-expanded") === "true") {
