@@ -1,0 +1,122 @@
+---
+interface BrainKey {
+  id: string;
+  title: string;
+  accent: string;
+}
+
+interface Props {
+  id: string;
+  context: "global" | "brain" | "combined" | "local";
+  brains?: BrainKey[];
+  activeBrainId?: string;
+  globalControl?: boolean;
+}
+
+const {
+  id,
+  context,
+  brains = [],
+  activeBrainId,
+  globalControl = false,
+} = Astro.props;
+const brainAware = context === "brain" || context === "combined" || context === "local";
+---
+
+<div class:list={["graph-legend-disclosure", { "graph-legend-disclosure--global": globalControl }]} data-graph-legend-disclosure>
+  <button
+    class:list={["graph-control", { "graph-legend-trigger": globalControl }]}
+    type="button"
+    aria-label="Legend"
+    aria-controls={`${id}-panel`}
+    aria-expanded="false"
+    data-graph-legend-trigger
+  >
+    {globalControl && (
+      <svg class="graph-control-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="8.5"></circle>
+        <path d="M12 10.5v6"></path>
+        <circle cx="12" cy="7.5" r="0.75" class="graph-control-icon__fill"></circle>
+      </svg>
+    )}
+    <span class={globalControl ? "graph-control-label" : undefined}>Legend</span>
+  </button>
+  <div
+    id={`${id}-panel`}
+    class="graph-legend-popover"
+    role="region"
+    aria-label="Graph legend"
+    tabindex="-1"
+    hidden
+    data-graph-legend-panel
+  >
+    <ul>
+      <li><span class="graph-legend-symbols" aria-hidden="true">○ ◇ ◆</span><span>Draft, developing, established</span></li>
+      <li><span class="graph-legend-size" aria-hidden="true"><i></i><i></i></span><span>Larger nodes have more connections</span></li>
+      {context === "combined" && (
+        <li><span class="cross-edge-key" aria-hidden="true"></span><span>Thick line links different brains</span></li>
+      )}
+      {(context === "brain" || context === "local") && (
+        <li><span class="graph-legend-foreign" aria-hidden="true">↗</span><span>Muted node with brain mark and @brain is from another brain</span></li>
+      )}
+      {(context === "brain" || context === "local") && (
+        <li><span class="cross-edge-key cross-edge-key--muted" aria-hidden="true"></span><span>Muted line links different brains</span></li>
+      )}
+      {context === "local" && (
+        <li><span class="graph-legend-related" aria-hidden="true">•••</span><span>Other nodes are notes up to two links away</span></li>
+      )}
+    </ul>
+    {brainAware && brains.length > 0 && (
+      <ul class="graph-legend-brains" aria-label="Brain identities">
+        {brains.map((brain, index) => (
+          <li style={`--brain-accent: ${brain.accent}`}>
+            <span class={`brain-shape brain-shape--${index % 4}`} aria-hidden="true"></span>
+            <span>@{brain.id}: {brain.title}{context === "brain" && brain.id !== activeBrainId ? " (related)" : ""}</span>
+          </li>
+        ))}
+      </ul>
+    )}
+  </div>
+</div>
+
+<script>
+  for (const disclosure of document.querySelectorAll<HTMLElement>("[data-graph-legend-disclosure]")) {
+    if (disclosure.dataset.graphLegendReady === "true") continue;
+    disclosure.dataset.graphLegendReady = "true";
+    const trigger = disclosure.querySelector<HTMLButtonElement>("[data-graph-legend-trigger]")!;
+    const panel = disclosure.querySelector<HTMLElement>("[data-graph-legend-panel]")!;
+
+    const setOpen = (open: boolean, restoreFocus = false) => {
+      trigger.setAttribute("aria-expanded", String(open));
+      panel.hidden = !open;
+      disclosure.toggleAttribute("data-open", open);
+      if (restoreFocus) trigger.focus();
+    };
+
+    trigger.addEventListener("click", () => {
+      const open = trigger.getAttribute("aria-expanded") !== "true";
+      document.dispatchEvent(new CustomEvent("graph-legend-open", { detail: disclosure }));
+      setOpen(open);
+    });
+    document.addEventListener("graph-legend-open", (event) => {
+      if ((event as CustomEvent).detail !== disclosure) setOpen(false);
+    });
+    document.addEventListener("graph-legend-close", () => setOpen(false));
+    document.addEventListener("pointerdown", (event) => {
+      if (
+        trigger.getAttribute("aria-expanded") === "true" &&
+        event.target instanceof Node &&
+        !disclosure.contains(event.target)
+      ) {
+        setOpen(false);
+        window.setTimeout(() => trigger.focus(), 0);
+      }
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && trigger.getAttribute("aria-expanded") === "true") {
+        event.stopImmediatePropagation();
+        setOpen(false, true);
+      }
+    });
+  }
+</script>

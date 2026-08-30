@@ -1,9 +1,14 @@
 import Graph from "graphology";
 import { describe, expect, it, vi } from "vitest";
 import {
+  applyRenderedGraphFit,
+  convertCameraToBoundingBox,
   fitCorrection,
   fitRenderedGraph,
   measureRenderedBounds,
+  planRenderedGraphFit,
+  type GraphBoundingBox,
+  type GraphCameraState,
   type ViewportBounds,
 } from "./graph-fit";
 
@@ -15,12 +20,14 @@ function fakeRenderer(initialMaximumRatio = 10) {
     y: 0,
     size: 8,
     label: "A deliberately long rendered node title",
+    foreign: true,
   });
   graph.addNode("excluded", { x: 100, y: 100, size: 80, label: "Excluded" });
   const dimensions = { width: 320, height: 180 };
   let bbox = { x: [-1.5, 1.5] as [number, number], y: [-0.5, 0.5] as [number, number] };
   let cameraState = { x: 0.5, y: 0.5, angle: 0, ratio: 1 };
   let maximumRatio = initialMaximumRatio;
+  let displayedLabels = new Set(graph.nodes());
   const camera = {
     getState: vi.fn(() => ({ ...cameraState })),
     setState: vi.fn((state: Partial<typeof cameraState>) => {
@@ -43,11 +50,13 @@ function fakeRenderer(initialMaximumRatio = 10) {
     getGraph: vi.fn(() => graph),
     getDimensions: vi.fn(() => dimensions),
     getCamera: vi.fn(() => camera),
+    getCustomBBox: vi.fn(() => bbox),
+    getBBox: vi.fn(() => bbox),
     setCustomBBox: vi.fn((next: typeof bbox) => {
       bbox = next;
     }),
     refresh: vi.fn(),
-    getNodeDisplayedLabels: vi.fn(() => new Set(graph.nodes())),
+    getNodeDisplayedLabels: vi.fn(() => displayedLabels),
     getSettings: vi.fn(() => ({ labelWeight: "500", labelSize: 13, labelFont: "sans-serif" })),
     getSetting: vi.fn(() => maximumRatio),
     setSetting: vi.fn((_key: string, value: number) => {
@@ -69,6 +78,7 @@ function fakeRenderer(initialMaximumRatio = 10) {
       ...framedPosition(id),
       size: graph.getNodeAttribute(id, "size") as number,
       label: graph.getNodeAttribute(id, "label") as string,
+      foreign: graph.getNodeAttribute(id, "foreign") as boolean | undefined,
       hidden: false,
     })),
     framedGraphToViewport: vi.fn((point: { x: number; y: number }) => {
@@ -87,10 +97,49 @@ function fakeRenderer(initialMaximumRatio = 10) {
     }),
     scaleSize: vi.fn((size: number) => size / Math.sqrt(cameraState.ratio)),
   };
-  return { graph, renderer, dimensions, camera, getBBox: () => bbox, getMaximumRatio: () => maximumRatio };
+  return {
+    graph,
+    renderer,
+    dimensions,
+    camera,
+    getBBox: () => bbox,
+    getMaximumRatio: () => maximumRatio,
+    setDisplayedLabels: (ids: string[]) => {
+      displayedLabels = new Set(ids);
+    },
+  };
 }
 
 describe("rendered graph fitting", () => {
+  it("converts a camera between bounding boxes without moving graph points in the viewport", () => {
+    const source: GraphBoundingBox = { x: [-2, 2], y: [-1, 3] };
+    const target: GraphBoundingBox = { x: [-10, 10], y: [-4, 8] };
+    const camera: GraphCameraState = { x: 0.65, y: 0.4, angle: 0, ratio: 0.8 };
+    const converted = convertCameraToBoundingBox(camera, source, target);
+    const viewportPosition = (
+      point: { x: number; y: number },
+      bbox: GraphBoundingBox,
+      state: GraphCameraState,
+    ) => {
+      const scale = Math.max(bbox.x[1] - bbox.x[0], bbox.y[1] - bbox.y[0]);
+      const framed = {
+        x: 0.5 + (point.x - (bbox.x[0] + bbox.x[1]) / 2) / scale,
+        y: 0.5 + (point.y - (bbox.y[0] + bbox.y[1]) / 2) / scale,
+      };
+      return {
+        x: 160 + (framed.x - state.x) * 180 / state.ratio,
+        y: 90 + (framed.y - state.y) * 180 / state.ratio,
+      };
+    };
+
+    for (const point of [{ x: -1, y: 0 }, { x: 1.5, y: 2 }]) {
+      const before = viewportPosition(point, source, camera);
+      const after = viewportPosition(point, target, converted);
+      expect(after.x).toBeCloseTo(before.x);
+      expect(after.y).toBeCloseTo(before.y);
+    }
+  });
+
   it("calculates the zoom and visual center needed for an inset viewport", () => {
     const bounds: ViewportBounds = { left: -20, top: 10, right: 340, bottom: 170 };
     expect(fitCorrection(bounds, { width: 320, height: 180 }, 20)).toEqual({
@@ -125,6 +174,31 @@ describe("rendered graph fitting", () => {
     expect(bounds!.bottom).toBeLessThanOrEqual(dimensions.height - 19);
     expect(getBBox().x[1]).toBeLessThan(3);
     expect(renderer.refresh.mock.calls.length).toBeLessThanOrEqual(10);
+  });
+
+  it("measures only selected rendered labels and includes the foreign brain mark", () => {
+    const { graph, renderer, setDisplayedLabels } = fakeRenderer();
+    setDisplayedLabels(["left"]);
+    const withoutForeignLabel = measureRenderedBounds(renderer as never, ["left", "right"])!;
+
+    setDisplayedLabels(["left", "right"]);
+    const withForeignLabel = measureRenderedBounds(renderer as never, ["left", "right"])!;
+    graph.setNodeAttribute("right", "foreign", false);
+    const withoutBrainMark = measureRenderedBounds(renderer as never, ["left", "right"])!;
+
+    expect(withForeignLabel.right).toBeGreaterThan(withoutForeignLabel.right);
+    expect(withForeignLabel.right - withoutBrainMark.right).toBe(17);
+  });
+
+  it("derives a reusable bounding-box and camera plan", () => {
+    const { renderer, camera } = fakeRenderer();
+    const plan = planRenderedGraphFit(renderer as never, ["left", "right"], 20);
+    camera.setState({ x: 0, y: 0, ratio: 0.2 });
+
+    applyRenderedGraphFit(renderer as never, plan);
+
+    expect(renderer.setCustomBBox).toHaveBeenLastCalledWith(plan.bbox);
+    expect(camera.getState()).toEqual(plan.camera);
   });
 
   it("uses a safe default view for an empty included set", () => {

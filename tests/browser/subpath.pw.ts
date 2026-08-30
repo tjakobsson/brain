@@ -430,10 +430,11 @@ test("mobile navigation stays within the deployment base", async ({ page }, test
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${base}/`);
   const graphHeader = page.locator(".site-header");
+  const launcher = page.getByRole("button", { name: "Navigation" });
   await expect(page.locator(".site-header-slot")).toHaveCSS("position", "fixed");
   await expect(graphHeader).toHaveCSS("width", "48px");
-  await expect(graphHeader.getByRole("link", { name: "Graph" })).toBeVisible();
-  await expect(graphHeader.locator(".search-icon")).toBeVisible();
+  await expect(launcher).toHaveAttribute("aria-expanded", "false");
+  await expect(graphHeader.locator(".graph-trigger")).toHaveCSS("opacity", "0");
   expect(
     await page.locator(".graph-shell").evaluate((shell) => {
       const controls = shell.querySelector(".graph-controls")!.getBoundingClientRect();
@@ -476,6 +477,21 @@ test("mobile navigation stays within the deployment base", async ({ page }, test
     }),
   ).toBe(true);
   const localGraph = page.locator(".local-graph");
+  const localLegendTrigger = page.locator(".local-graph-panel").getByRole("button", { name: "Legend" });
+  await localLegendTrigger.click();
+  const localLegend = page.getByRole("region", { name: "Graph legend" });
+  await expect(localLegendTrigger).toHaveAttribute("aria-expanded", "true");
+  await expect(localLegend).toContainText("Draft, developing, established");
+  await expect(localLegend).toContainText("Larger nodes have more connections");
+  await expect(localLegend).toContainText("Other nodes are notes up to two links away");
+  await expect(localLegend).toContainText("Muted line links different brains");
+  await page.keyboard.press("Escape");
+  await expect(localLegend).toBeHidden();
+  await expect(localLegendTrigger).toBeFocused();
+  await localLegendTrigger.click();
+  await page.locator("article h1").click();
+  await expect(localLegend).toBeHidden();
+  await expect(localLegendTrigger).toBeFocused();
   await localGraphCanvas.hover();
   const beforeZoom = await localGraph.screenshot();
   const scrollBeforeZoom = await page.evaluate(() => scrollY);
@@ -505,24 +521,29 @@ test("mobile navigation stays within the deployment base", async ({ page }, test
   await expect(page.locator(".site-header-slot")).toHaveCSS("position", "fixed");
   await expect(page.locator(".site-header-slot")).toHaveCSS("height", "0px");
   await expect(noteHeader).toHaveCSS("width", "48px");
-  await expect(noteHeader.locator(".search-icon")).toBeVisible();
+  await launcher.click();
+  await expect(noteHeader.locator(".nav-menu")).toBeHidden();
+  await expect(noteHeader.getByRole("link", { name: "Graph" })).toHaveAttribute("href", `${base}/`);
+  await expect(noteHeader.getByRole("link", { name: "Tags" })).toHaveAttribute("href", `${base}/tags`);
+  await expect(noteHeader.getByRole("link", { name: "Recent" })).toHaveAttribute("href", `${base}/recent`);
+  await expect(noteHeader.getByRole("link", { name: "Orphans" })).toHaveAttribute("href", `${base}/orphans`);
   const controlPositions = await noteHeader.evaluate((header) => {
-    const graph = header.querySelector(".graph-trigger")!.getBoundingClientRect();
-    const search = header.querySelector(".search-trigger")!.getBoundingClientRect();
-    const menu = header.querySelector("summary")!.getBoundingClientRect();
+    const controls = [...header.querySelectorAll(".mobile-nav-actions > .nav-action")]
+      .filter((control) => !(control as HTMLElement).hidden)
+      .map((control) => control.getBoundingClientRect());
     const rail = header.getBoundingClientRect();
     return {
-      vertical: search.top >= graph.bottom && menu.top >= search.bottom,
+      vertical: controls.every((control, index) => index === 0 || control.top >= controls[index - 1].bottom),
       rightMargin: window.innerWidth - rail.right,
     };
   });
   expect(controlPositions.vertical).toBe(true);
-  expect(controlPositions.rightMargin).toBeGreaterThanOrEqual(7);
-  expect(controlPositions.rightMargin).toBeLessThanOrEqual(9);
-  await noteHeader.locator(".nav-menu > summary").click();
-  await page.locator(".nav-menu-panel").getByRole("link", { name: "Recent" }).click();
+  expect(controlPositions.rightMargin).toBeGreaterThanOrEqual(11);
+  expect(controlPositions.rightMargin).toBeLessThanOrEqual(13);
+  await noteHeader.getByRole("link", { name: "Recent" }).click();
   await expect(page).toHaveURL(new RegExp(`${base}/recent/?$`));
   await expect(page.locator(".site-header")).toHaveCSS("width", "48px");
+  await expect(page.getByRole("button", { name: "Navigation" })).toHaveAttribute("aria-expanded", "false");
   expect(await initialListContentClearsNavigation(page)).toBe(true);
 });
 
@@ -542,8 +563,11 @@ test("touch layouts keep the local graph interactive", async ({ browser }, testI
   ).toBe(true);
   await expect(page.locator(".site-header-slot")).toHaveCSS("position", "fixed");
   await expect(page.locator(".site-header")).toHaveCSS("width", "48px");
+  await expect(page.getByRole("button", { name: "Navigation" })).toBeVisible();
+  await expect(page.locator(".mobile-nav-actions")).toHaveJSProperty("inert", true);
   await page.goto(`${origin}${base}/tags`);
   await expect(page.locator(".site-header")).toHaveCSS("width", "48px");
+  await expect(page.getByRole("button", { name: "Navigation" })).toBeVisible();
   expect(await initialListContentClearsNavigation(page)).toBe(true);
 
   await page.goto(`${origin}${base}/notes/welcome`);

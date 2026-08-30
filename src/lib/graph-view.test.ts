@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GraphData } from "./graph-data";
-import { graphEdgeAttributes, graphNodeAttributes } from "./graph-style";
+import { forceForeignLabel, graphEdgeAttributes, graphNodeAttributes } from "./graph-style";
 
 const data: GraphData = {
   mode: "workspace",
@@ -57,6 +57,8 @@ describe("brain-aware graph rendering data", () => {
     expect(foreign.label).toBe("○ ↗ @design · Principles");
     expect(foreign.foreign).toBe(true);
     expect(foreign.forceLabel).toBe(true);
+    expect(forceForeignLabel(foreign.foreign, true)).toBe(false);
+    expect(forceForeignLabel(foreign.foreign, false)).toBe(true);
     expect(foreign.color).toBe("#8f8b94");
     expect(foreign.brainAccent).toBe("#b56cff");
     expect(foreign.size).toBeLessThan(local.size);

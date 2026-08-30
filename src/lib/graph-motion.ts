@@ -1,6 +1,12 @@
 import type Graph from "graphology";
 import type Sigma from "sigma";
-import { fitRenderedGraph } from "./graph-fit";
+import {
+  convertCameraToBoundingBox,
+  fitRenderedGraph,
+  planRenderedGraphFit,
+  type GraphCameraState,
+  type RenderedGraphFitPlan,
+} from "./graph-fit";
 import {
   MotionGeneration,
   adaptPositionsToViewport,
@@ -137,7 +143,7 @@ export class GraphMotionController {
       : ids;
     if (ids.length === 0) {
       const generation = this.generations.next();
-      this.fitVisible([], false, generation, () => this.finish(generation));
+      this.animateTo(generation, {}, [], motionPlan(trigger, 0).duration, fitCamera);
       return;
     }
 
@@ -237,14 +243,35 @@ export class GraphMotionController {
       reducedMotion,
     );
     const starts = this.capturePositions(Object.keys(targets));
+    const sourceCamera = this.renderer.getCamera().getState();
+    let fitPlan: RenderedGraphFitPlan | null = null;
+    let cameraStart = sourceCamera;
+    if (fitCamera) {
+      const sourceBBox = this.renderer.getCustomBBox() ?? this.renderer.getBBox();
+      this.applyPositions(targets);
+      fitPlan = planRenderedGraphFit(this.renderer, visibleIds);
+      this.applyPositions(starts);
+      cameraStart = convertCameraToBoundingBox(sourceCamera, sourceBBox, fitPlan.bbox);
+      this.renderer.setCustomBBox(fitPlan.bbox);
+      this.renderer.refresh();
+      this.renderer.getCamera().setState(cameraStart);
+    }
     const maxMovement = Object.entries(targets).reduce((maximum, [id, target]) => {
       const start = starts[id];
       return start ? Math.max(maximum, Math.hypot(target.x - start.x, target.y - start.y)) : maximum;
     }, 0);
 
-    if (duration === 0 || maxMovement < 0.0001) {
+    const cameraMovement = fitPlan ? Math.max(
+      Math.abs(fitPlan.camera.x - cameraStart.x),
+      Math.abs(fitPlan.camera.y - cameraStart.y),
+      Math.abs(fitPlan.camera.angle - cameraStart.angle),
+      Math.abs(fitPlan.camera.ratio - cameraStart.ratio),
+    ) : 0;
+
+    if (duration === 0 || (maxMovement < 0.0001 && cameraMovement < 0.0001)) {
       this.applyPositions(targets);
-      this.complete(generation, visibleIds, false, fitCamera);
+      if (fitPlan) this.renderer.getCamera().setState(fitPlan.camera);
+      this.finish(generation);
       return;
     }
 
@@ -263,27 +290,16 @@ export class GraphMotionController {
         };
       }
       this.applyPositions(positions);
+      if (fitPlan) this.renderer.getCamera().setState(this.interpolateCamera(cameraStart, fitPlan.camera, eased));
       if (progress < 1) this.animationFrame = requestAnimationFrame(tick);
       else {
         this.animationFrame = null;
-        this.complete(generation, visibleIds, true, fitCamera);
+        this.applyPositions(targets);
+        if (fitPlan) this.renderer.getCamera().setState(fitPlan.camera);
+        this.finish(generation);
       }
     };
     this.animationFrame = requestAnimationFrame(tick);
-  }
-
-  private complete(
-    generation: number,
-    visibleIds: string[],
-    animateCamera: boolean,
-    fitCamera: boolean,
-  ): void {
-    if (!this.generations.isCurrent(generation)) return;
-    if (fitCamera) {
-      this.fitVisible(visibleIds, animateCamera, generation, () => this.finish(generation));
-    } else {
-      this.finish(generation);
-    }
   }
 
   private fitVisible(
@@ -309,6 +325,19 @@ export class GraphMotionController {
   private finish(generation: number): void {
     if (!this.generations.isCurrent(generation)) return;
     if (this.commitSession()) this.onSettled();
+  }
+
+  private interpolateCamera(
+    source: GraphCameraState,
+    target: GraphCameraState,
+    progress: number,
+  ): GraphCameraState {
+    return {
+      x: source.x + (target.x - source.x) * progress,
+      y: source.y + (target.y - source.y) * progress,
+      angle: source.angle + (target.angle - source.angle) * progress,
+      ratio: source.ratio + (target.ratio - source.ratio) * progress,
+    };
   }
 
   private cacheSignature(): string {

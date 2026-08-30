@@ -291,7 +291,7 @@ export class ResizeSettler {
   constructor(
     private width: number,
     private height: number,
-    private readonly callback: () => void,
+    private readonly callback: (width: number, height: number) => void,
     private readonly delay = 180,
     private readonly threshold = 24,
   ) {}
@@ -305,7 +305,7 @@ export class ResizeSettler {
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = setTimeout(() => {
       this.timer = null;
-      this.callback();
+      this.callback(this.width, this.height);
     }, this.delay);
     return true;
   }

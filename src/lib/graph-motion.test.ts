@@ -54,6 +54,7 @@ class FakeWorker {
 
 function fixture(reducedMotion = true) {
   const storage = new MemoryStorage();
+  let bbox = { x: [-2, 2] as [number, number], y: [-1, 2] as [number, number] };
   let cameraState = { x: 0.5, y: 0.5, angle: 0, ratio: 1 };
   const camera = {
     getState: vi.fn(() => ({ ...cameraState })),
@@ -68,8 +69,10 @@ function fixture(reducedMotion = true) {
   const renderer = {
     getDimensions: vi.fn(() => ({ width: 390, height: 844 })),
     getCamera: vi.fn(() => camera),
-    setCustomBBox: vi.fn(),
-    getCustomBBox: vi.fn(() => ({ x: [-2, 2], y: [-1, 2] })),
+    setCustomBBox: vi.fn((next: typeof bbox) => {
+      bbox = next;
+    }),
+    getCustomBBox: vi.fn(() => bbox),
     getBBox: vi.fn(() => ({ x: [-1, 1], y: [0, 1] })),
     refresh: vi.fn(),
     scheduleRefresh: vi.fn(),
@@ -79,12 +82,15 @@ function fixture(reducedMotion = true) {
     getSetting: vi.fn(() => 10),
     setSetting: vi.fn(),
     getCanvases: vi.fn(() => ({})),
-    getNodeDisplayData: vi.fn((id: string) => ({
-      x: graph.getNodeAttribute(id, "x") as number,
-      y: graph.getNodeAttribute(id, "y") as number,
-      size: graph.getNodeAttribute(id, "size") as number,
-      hidden: false,
-    })),
+    getNodeDisplayData: vi.fn((id: string) => {
+      const scale = Math.max(bbox.x[1] - bbox.x[0], bbox.y[1] - bbox.y[0]);
+      return {
+        x: 0.5 + ((graph.getNodeAttribute(id, "x") as number) - (bbox.x[0] + bbox.x[1]) / 2) / scale,
+        y: 0.5 + ((graph.getNodeAttribute(id, "y") as number) - (bbox.y[0] + bbox.y[1]) / 2) / scale,
+        size: graph.getNodeAttribute(id, "size") as number,
+        hidden: false,
+      };
+    }),
     framedGraphToViewport: vi.fn((point: { x: number; y: number }) => ({
       x: 195 + ((point.x - cameraState.x) * 120) / cameraState.ratio,
       y: 422 + ((point.y - cameraState.y) * 120) / cameraState.ratio,
@@ -152,6 +158,7 @@ describe("GraphMotionController", () => {
     expect(graph.getNodeAttributes("b")).toMatchObject({ x: 2, y: 2 });
     expect(graph.getNodeAttributes("c")).toMatchObject({ x: 0, y: 2 });
     expect(camera.setState).toHaveBeenCalled();
+    expect(camera.animate).not.toHaveBeenCalled();
     controller.destroy();
   });
 
@@ -170,7 +177,7 @@ describe("GraphMotionController", () => {
   });
 
   it("freezes the current frame on cancellation and accepts a later settle", () => {
-    const { renderer, graph, data } = fixture(false);
+    const { camera, renderer, graph, data } = fixture(false);
     const frames = new Map<number, FrameRequestCallback>();
     let nextFrame = 1;
     vi.stubGlobal(
@@ -195,11 +202,13 @@ describe("GraphMotionController", () => {
     const frozen = Object.fromEntries(
       graph.nodes().map((node) => [node, { ...graph.getNodeAttributes(node) }]),
     );
+    const frozenCamera = camera.getState();
 
     controller.cancel();
     firstFrame(performance.now() + 500);
     expect(Object.fromEntries(graph.nodes().map((node) => [node, graph.getNodeAttributes(node)])))
       .toEqual(frozen);
+    expect(camera.getState()).toEqual(frozenCamera);
 
     controller.settle("filter", graph.nodes());
     expect(FakeWorker.instances).toHaveLength(2);
@@ -234,7 +243,7 @@ describe("GraphMotionController", () => {
 
     controller.fitView(["a", "b"]);
 
-    expect(renderer.setCustomBBox).toHaveBeenCalledOnce();
+    expect(renderer.setCustomBBox).toHaveBeenCalled();
     expect(renderer.getNodeDisplayData).not.toHaveBeenCalledWith("c");
     expect(camera.animate).toHaveBeenCalledWith(
       expect.objectContaining({ angle: 0 }),
@@ -265,6 +274,37 @@ describe("GraphMotionController", () => {
 
     completeAnimation?.();
     expect(storage.values.size).toBe(2);
+    expect(onSettled).toHaveBeenCalledOnce();
+    controller.destroy();
+  });
+
+  it("completes node and camera motion on one timeline with one session commit", () => {
+    const { camera, renderer, graph, data } = fixture(false);
+    const frames = new Map<number, FrameRequestCallback>();
+    let nextFrame = 1;
+    vi.stubGlobal("requestAnimationFrame", vi.fn((callback: FrameRequestCallback) => {
+      const id = nextFrame++;
+      frames.set(id, callback);
+      return id;
+    }));
+    const onSettled = vi.fn();
+    const controller = new GraphMotionController(renderer as never, graph, data, onSettled);
+    const commit = vi.spyOn(controller, "commitSession");
+
+    controller.settle("initial", graph.nodes());
+    const worker = FakeWorker.instances[0];
+    worker.emit("message", {
+      generation: (worker.request as { generation: number }).generation,
+      positions: { a: { x: -3, y: -2 }, b: { x: 3, y: 2 }, c: { x: 0, y: 3 } },
+    });
+    const firstCamera = camera.getState();
+    frames.get(1)!(performance.now() + 450);
+    expect(camera.getState()).not.toEqual(firstCamera);
+    frames.get(2)!(performance.now() + 1000);
+
+    expect(graph.getNodeAttributes("a")).toMatchObject({ x: -3, y: -2 });
+    expect(camera.animate).not.toHaveBeenCalled();
+    expect(commit).toHaveBeenCalledOnce();
     expect(onSettled).toHaveBeenCalledOnce();
     controller.destroy();
   });
