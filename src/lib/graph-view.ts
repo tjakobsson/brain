@@ -714,6 +714,9 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   const onNarrowGraphChange = () => {
     applyResponsiveLabelThreshold();
     applyReducers();
+    renderer.resize();
+    resizeSettler.reset(ui.host.clientWidth, ui.host.clientHeight);
+    motion.settle("resize", visibleIds());
   };
   narrowGraphQuery.addEventListener("change", onNarrowGraphChange);
 

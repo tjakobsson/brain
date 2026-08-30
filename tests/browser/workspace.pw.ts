@@ -280,7 +280,12 @@ test("active-brain mobile launcher has direct actions and predictable disclosure
     return bounds.left >= 0 && bounds.right <= innerWidth && bounds.bottom <= innerHeight;
   })).toBe(true);
   await contextPanel.getByRole("link", { name: /@design/ }).click({ trial: true });
-  await context.click();
+  await launcher.click();
+  await expect(launcher).toHaveAttribute("aria-expanded", "false");
+  await expect(context).toHaveAttribute("aria-expanded", "false");
+  await launcher.click();
+  await expect(launcher).toHaveAttribute("aria-expanded", "true");
+  await expect(contextPanel).toBeHidden();
 
   await search.click();
   await expect(launcher).toHaveAttribute("aria-expanded", "false");
@@ -655,6 +660,18 @@ test("dense related notes use collision-selected labels in phone fits", async ({
   expect(hovered).toBe(true);
   await expect.poll(async () => Number(await graph.getAttribute("data-rendered-foreign-labels")))
     .toBeLessThan(24);
+
+  await page.setViewportSize({ width: 700, height: 844 });
+  await page.waitForTimeout(1_000);
+  await page.evaluate(() => {
+    for (const key of Object.keys(sessionStorage)) {
+      if (/^graph-(motion|view):/.test(key)) sessionStorage.removeItem(key);
+    }
+  });
+  await page.setViewportSize({ width: 701, height: 844 });
+  await page.waitForFunction(() =>
+    Object.keys(sessionStorage).some((key) => key.startsWith("graph-motion:"))
+  );
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 

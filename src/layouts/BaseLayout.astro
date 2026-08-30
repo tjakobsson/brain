@@ -195,7 +195,11 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
       };
 
       launcher.addEventListener("click", () => {
-        mobileExpanded = !mobileExpanded;
+        if (mobileExpanded) {
+          collapseMobile(false);
+          return;
+        }
+        mobileExpanded = true;
         applyMobileState();
       });
       mobileActions.addEventListener("click", (event) => {
