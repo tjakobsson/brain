@@ -111,21 +111,7 @@ async function generateSite(validated, destination, { signal } = {}) {
     await runNode(path.join(root, "node_modules", "astro", "bin", "astro.mjs"), ["build"], env, {
       signal,
     });
-    await runNode(
-      path.join(root, "node_modules", "pagefind", "lib", "runner", "bin.cjs"),
-      ["--site", destination],
-      env,
-      { signal },
-    );
-    for (const name of fs.readdirSync(path.join(destination, "pagefind"))) {
-      if (!/^wasm\..+\.pagefind$/u.test(name)) continue;
-      const file = path.join(destination, "pagefind", name);
-      const gzip = fs.readFileSync(file);
-      if (gzip[0] !== 0x1f || gzip[1] !== 0x8b) throw new Error(`Invalid Pagefind WASM: ${file}`);
-      gzip.fill(0, 4, 8); // Architecture packages carry different gzip timestamps.
-      fs.writeFileSync(file, gzip);
-    }
-    if (process.env.BRAIN_TEST_FAIL_AFTER_PAGEFIND === "true") {
+    if (process.env.BRAIN_TEST_FAIL_AFTER_BUILD === "true") {
       throw new Error("Forced late-stage failure.");
     }
   } catch (error) {

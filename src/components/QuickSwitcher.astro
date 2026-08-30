@@ -177,9 +177,16 @@ const { activeBrainId, combined = false, workspace = false } = Astro.props;
       e.stopImmediatePropagation();
       close();
     } else if (!overlay.hidden && e.key === "Tab") {
-      e.stopImmediatePropagation();
-      e.preventDefault();
-      input.focus();
+      const controls = [scope, input].filter((control) => control.offsetParent !== null);
+      const first = controls[0];
+      const last = controls.at(-1);
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last?.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first?.focus();
+      }
     }
   });
 

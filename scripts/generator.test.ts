@@ -69,12 +69,14 @@ describe("generator build command", () => {
       ]);
   }
 
-  it("runs generation and Pagefind before promoting output", () => {
+  it("generates the Astro site before promoting output", () => {
     const vaultBefore = hashes(vault);
     const result = run();
     expect(result.status, result.stderr).toBe(0);
     expect(fs.existsSync(path.join(output, "notes", "welcome", "index.html"))).toBe(true);
-    expect(fs.existsSync(path.join(output, "pagefind", "pagefind.js"))).toBe(true);
+    expect(fs.existsSync(path.join(output, "search-index.json"))).toBe(true);
+    expect(fs.existsSync(path.join(output, "search", "index.html"))).toBe(false);
+    expect(fs.existsSync(path.join(output, "pagefind"))).toBe(false);
     expect(fs.existsSync(path.join(output, "vault-assets", "media", "diagram.svg"))).toBe(true);
     expect(fs.existsSync(path.join(output, "vault-assets", "media", "reference.txt"))).toBe(true);
     expect(fs.existsSync(path.join(output, "vault-assets", "media", "unreferenced.txt"))).toBe(
@@ -94,7 +96,7 @@ describe("generator build command", () => {
     fs.mkdirSync(output);
     fs.writeFileSync(path.join(output, "sentinel.txt"), "previous output");
 
-    const result = run({ BRAIN_TEST_FAIL_AFTER_PAGEFIND: "true" });
+    const result = run({ BRAIN_TEST_FAIL_AFTER_BUILD: "true" });
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("Forced late-stage failure");
@@ -130,10 +132,13 @@ describe("generator build command", () => {
     expect(secondBuild.status, secondBuild.stderr).toBe(0);
     expect(fs.existsSync(path.join(first, "brains", "engineering", "notes", "principles", "index.html"))).toBe(true);
     expect(fs.existsSync(path.join(first, "brains", "design", "notes", "principles", "index.html"))).toBe(true);
+    expect(fs.existsSync(path.join(first, "brains", "engineering", "search", "index.html"))).toBe(false);
+    expect(fs.existsSync(path.join(first, "search", "index.html"))).toBe(false);
+    expect(fs.existsSync(path.join(first, "pagefind"))).toBe(false);
 
     const comparison = spawnSync(
       process.execPath,
-      [compareOutputTrees, "--normalize-pagefind", first, second],
+      [compareOutputTrees, first, second],
       { encoding: "utf8" },
     );
     expect(comparison.status, comparison.stderr).toBe(0);

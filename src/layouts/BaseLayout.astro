@@ -27,6 +27,7 @@ const contextualRoutes = activeBrain
   ? routesFor({ mode: "workspace", brainId: activeBrain.id })
   : routesFor({ mode: "vault" });
 const contextLabel = activeBrain ? `@${activeBrain.id}` : combined ? "Combined" : "Workspace";
+const contextActionLabel = `Switch brain, current: ${contextLabel}`;
 const graphRoute = activeBrain ? contextualRoutes.graph : combined ? routes.graphAlias : routes.home;
 const brainRouteRegistry = snapshot.registry.brains.map(({ id }) => ({ id }));
 const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.meta.env.BASE_URL, route);
@@ -47,12 +48,20 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
         <nav class="site-nav-pill" aria-label="Primary navigation">
           {isWorkspace && (
             <details class="context-switcher">
-              <summary style={activeBrain ? `--brain-accent: ${activeBrain.accent}` : undefined}>
+              <summary
+                role="button"
+                aria-label={contextActionLabel}
+                aria-expanded="false"
+                title={contextActionLabel}
+                style={activeBrain ? `--brain-accent: ${activeBrain.accent}` : undefined}
+              >
                 <BrainMark />
-                <span>{contextLabel}</span>
               </summary>
               <div class="context-switcher__panel">
-                <a href={url(routes.home)}>Brain chooser</a>
+                <a href={url(routes.home)} aria-current={!activeBrain && !combined ? "page" : undefined}>
+                  <span class="context-switcher__label">Brain chooser</span>
+                  {!activeBrain && !combined && <span class="context-switcher__current">Current</span>}
+                </a>
                 {snapshot.registry.brains.map((brain) => (
                   <a
                     href={url(routesFor({ mode: "workspace", brainId: brain.id }).graph)}
@@ -60,7 +69,8 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
                     style={`--brain-accent: ${brain.accent}`}
                   >
                     <BrainMark />
-                    <span>@{brain.id}</span>
+                    <span class="context-switcher__label" title={`@${brain.id}`}>@{brain.id}</span>
+                    {brain.id === activeBrainId && <span class="context-switcher__current">Current</span>}
                   </a>
                 ))}
               </div>
@@ -97,7 +107,7 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
             </svg>
           </button>
           <details class="nav-menu">
-            <summary class="nav-action" aria-label="More navigation">
+            <summary class="nav-action" role="button" aria-label="More navigation" aria-expanded="false">
               <svg class="nav-icon expand-icon" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="m14.5 6-6 6 6 6"></path>
               </svg>
@@ -106,10 +116,6 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
               {(!isWorkspace || activeBrain) && <a href={url(contextualRoutes.tags)}>Tags</a>}
               {(!isWorkspace || activeBrain) && <a href={url(contextualRoutes.recent)}>Recent</a>}
               {(!isWorkspace || activeBrain) && <a href={url(contextualRoutes.orphans)}>Orphans</a>}
-              <a
-                href={url(activeBrain ? contextualRoutes.search : routes.search)}
-                data-combined-route={combined ? "" : undefined}
-              >Search</a>
             </div>
           </details>
         </nav>
@@ -119,6 +125,14 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
       <slot />
     </main>
     <QuickSwitcher activeBrainId={activeBrainId} combined={combined} workspace={isWorkspace} />
+    <script>
+      for (const details of document.querySelectorAll<HTMLDetailsElement>(".context-switcher, .nav-menu")) {
+        const summary = details.querySelector<HTMLElement>(":scope > summary")!;
+        const updateExpanded = () => summary.setAttribute("aria-expanded", String(details.open));
+        details.addEventListener("toggle", updateExpanded);
+        updateExpanded();
+      }
+    </script>
     {combined && (
       <script>
         import { canonicalBrainSelection, type BrainSelectionInput } from "../lib/routes";

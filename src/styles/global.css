@@ -147,26 +147,25 @@ a:hover {
 }
 
 .context-switcher {
-  position: absolute;
-  top: 0;
-  right: calc(100% + 0.55rem);
+  position: relative;
 }
 
 .context-switcher summary {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  min-height: 3rem;
-  max-width: min(13rem, calc(100vw - 4.6rem));
-  padding: 0.35rem 0.85rem;
-  border: 1px solid var(--border);
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  margin: 0;
+  padding: 0;
   border-radius: 999px;
-  color: var(--text);
-  background: var(--bg-elevated);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+  color: var(--text-muted);
   cursor: pointer;
   list-style: none;
-  white-space: nowrap;
+}
+
+.context-switcher summary:hover,
+.context-switcher[open] > summary {
+  background: var(--accent-soft);
 }
 
 .context-switcher summary::-webkit-details-marker {
@@ -180,24 +179,42 @@ a:hover {
 
 .context-switcher__panel {
   position: absolute;
-  top: calc(100% + 0.45rem);
-  right: 0;
+  top: 0;
+  right: calc(100% + 0.55rem);
   display: grid;
-  min-width: 13rem;
+  width: min(13rem, calc(100vw - 4.6rem));
+  max-height: calc(100dvh - 1rem);
+  box-sizing: border-box;
   padding: 0.4rem;
   border: 1px solid var(--border);
   border-radius: 9px;
   background: var(--bg-elevated);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+  overflow-y: auto;
 }
 
 .context-switcher__panel a {
   display: flex;
   align-items: center;
   gap: 0.55rem;
+  min-width: 0;
   padding: 0.5rem 0.65rem;
   border-radius: 6px;
   color: var(--text);
+}
+
+.context-switcher__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-switcher__current {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 650;
 }
 
 .context-switcher__panel a:hover,
@@ -276,6 +293,7 @@ a:hover {
   display: grid;
   min-width: 10rem;
   max-height: calc(100dvh - 1rem);
+  box-sizing: border-box;
   padding: 0.4rem;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -313,6 +331,17 @@ main.wide {
 main.fluid {
   max-width: none;
   padding: 0;
+}
+
+.site-header-slot + main:not(.fluid)::before {
+  content: "";
+  float: right;
+  width: calc(2.5rem + max(0.5rem, env(safe-area-inset-right)));
+  height: calc(7.9rem + max(0.5rem, env(safe-area-inset-top)));
+}
+
+.site-header-slot:has(.context-switcher) + main:not(.fluid)::before {
+  height: calc(10.4rem + max(0.5rem, env(safe-area-inset-top)));
 }
 
 /* --- Workspace chooser ------------------------------------------------ */
@@ -520,13 +549,6 @@ main.fluid {
   color: var(--text-muted);
   font-size: 0.82rem;
   transform: translateX(-50%);
-}
-
-.site-header-slot + main:not(.fluid)::before {
-  content: "";
-  float: right;
-  width: calc(2.5rem + max(0.5rem, env(safe-area-inset-right)));
-  height: calc(7.9rem + max(0.5rem, env(safe-area-inset-top)));
 }
 
 /* --- Note metadata --------------------------------------------------- */
@@ -1256,8 +1278,7 @@ div[data-callout] [data-callout-body] > :last-child {
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
 }
 
-.switcher-scope,
-.search-scope {
+.switcher-scope {
   display: flex;
   align-items: center;
   gap: 0.6rem;
@@ -1276,8 +1297,7 @@ div[data-callout] [data-callout-body] > :last-child {
   display: none;
 }
 
-.switcher-scope select,
-.search-scope select {
+.switcher-scope select {
   max-width: 100%;
   padding: 0.3rem 0.5rem;
   border: 1px solid var(--border);
@@ -1345,17 +1365,6 @@ div[data-callout] [data-callout-body] > :last-child {
   padding: 0.8rem 1rem;
   color: var(--text-muted);
   font-size: 0.9rem;
-}
-
-/* --- Search page --------------------------------------------------------- */
-
-.search-page .pagefind-ui__search-input {
-  font: inherit;
-}
-
-.search-scope {
-  justify-content: flex-start;
-  margin: 0 0 1rem;
 }
 
 .graph-search-results {

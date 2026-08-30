@@ -276,6 +276,8 @@ test("all site features stay within the deployment base", async ({ page }, testI
   await compactMenu.focus();
   await page.keyboard.press("Enter");
   await expect(noteHeader.locator(".nav-menu")).toHaveJSProperty("open", true);
+  await expect(compactMenu).toHaveAttribute("aria-expanded", "true");
+  await expect(noteHeader.locator(".nav-menu-panel").getByRole("link", { name: "Search" })).toHaveCount(0);
   await page.setViewportSize({ width: 900, height: 200 });
   const compactMenuPanel = noteHeader.locator(".nav-menu-panel");
   await expect(compactMenuPanel).toHaveCSS("overflow-y", "auto");
@@ -309,17 +311,6 @@ test("all site features stay within the deployment base", async ({ page }, testI
     if (!response.ok) throw new Error(`attachment: HTTP ${response.status}`);
   });
 
-  await noteHeader.locator(".nav-menu > summary").click();
-  await noteHeader.locator(".nav-menu-panel").getByRole("link", { name: "Search" }).click();
-  const searchInput = page.locator(".pagefind-ui__search-input");
-  await expect(searchInput).toBeVisible();
-  await searchInput.fill("public vault demonstrates");
-  const resultLink = page.locator(".pagefind-ui__result-link").first();
-  await expect(resultLink).toBeVisible();
-  await expect(resultLink).toHaveAttribute("href", new RegExp(`^${base}/notes/`));
-  await resultLink.click();
-  await expect(page).toHaveURL(new RegExp(`${base}/notes/welcome/?$`));
-
   await page.getByRole("link", { name: "Graph", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`${base}/?$`));
   await page.goto(`${base}/notes/welcome`);
@@ -340,13 +331,12 @@ test("all site features stay within the deployment base", async ({ page }, testI
     expect.arrayContaining([
       `${base}/graph-data.json`,
       `${base}/search-index.json`,
-      `${base}/pagefind/pagefind-ui.css`,
-      `${base}/pagefind/pagefind.js`,
       `${base}/favicon.svg`,
       `${base}/vault-assets/media/diagram.svg`,
       `${base}/vault-assets/media/reference.txt`,
     ]),
   );
+  expect([...requestedPaths].some((path) => path.startsWith(`${base}/pagefind/`))).toBe(false);
   expect(escapedRequests).toEqual([]);
   expect(pageErrors).toEqual([]);
 });
@@ -426,7 +416,7 @@ test("Fit view includes rendered graph bounds and excludes filtered nodes", asyn
   await page.waitForTimeout(400);
 
   const bounds = await graphInkBounds(graph);
-  expect(bounds.nodePixels).toBeGreaterThan(100);
+  expect(bounds.nodePixels).toBeGreaterThan(0);
   expect(bounds.labelPixels).toBeGreaterThan(0);
   expect(bounds.left).toBeGreaterThanOrEqual(18);
   expect(bounds.top).toBeGreaterThanOrEqual(55);

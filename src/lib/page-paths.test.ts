@@ -7,6 +7,7 @@ import {
   workspaceNotePagePaths,
   workspaceTagPagePaths,
 } from "./page-paths";
+import { joinBase, routesFor } from "./routes";
 
 const outputDir = path.resolve("dist");
 
@@ -49,11 +50,20 @@ describe("static page paths", () => {
         { brainId: "engineering", slug: "principles" },
         { brainId: "design", slug: "principles" },
       ]);
-    expect(workspaceBrainPagePaths(snapshot).map(({ params }) => params.brainId)).toEqual([
+    const brainPaths = workspaceBrainPagePaths(snapshot);
+    expect(brainPaths.map(({ params }) => params.brainId)).toEqual([
       "engineering",
       "design",
       "research",
     ]);
+    for (const { params } of brainPaths) {
+      const routes = routesFor({ mode: "workspace", brainId: params.brainId });
+      for (const route of [routes.graph, routes.tags, routes.recent, routes.orphans]) {
+        expect(joinBase("/brain-site", route)).toMatch(
+          new RegExp(`^/brain-site/brains/${params.brainId}(?:/|$)`),
+        );
+      }
+    }
     expect(workspaceTagPagePaths(snapshot)).toContainEqual(expect.objectContaining({
       params: { brainId: "design", tag: "decisions" },
     }));

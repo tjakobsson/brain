@@ -87,7 +87,7 @@ node scripts/generator.mjs preview \
 
 Open `http://localhost:4322/notes/`.
 
-For live authoring, `serve` watches the Brain directory and runs the same complete production build and Pagefind indexing after changes. It keeps the last successful site available if a note is temporarily invalid and reloads the browser only after a successful replacement:
+For live authoring, `serve` watches the Brain directory and runs the same complete production build after changes. It keeps the last successful site available if a note is temporarily invalid and reloads the browser only after a successful replacement:
 
 ```sh
 node scripts/generator.mjs serve \

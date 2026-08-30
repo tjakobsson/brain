@@ -58,7 +58,9 @@ describe("stress workspace build", () => {
     expect(fs.existsSync(
       path.join(output, "brains", "brain-01", "notes", "generated-note-0001", "index.html"),
     )).toBe(true);
-    expect(fs.existsSync(path.join(output, "pagefind", "pagefind.js"))).toBe(true);
+    expect(fs.existsSync(path.join(output, "search", "index.html"))).toBe(false);
+    expect(fs.existsSync(path.join(output, "brains", "brain-01", "search", "index.html"))).toBe(false);
+    expect(fs.existsSync(path.join(output, "pagefind"))).toBe(false);
     console.info(JSON.stringify({ buildMilliseconds, graphPayloadBytes }));
   }, 120_000);
 });

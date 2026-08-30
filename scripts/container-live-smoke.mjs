@@ -87,7 +87,7 @@ try {
   const origin = `http://127.0.0.1:${port}`;
   const noteUrl = `${origin}/notes/note/`;
   const assetUrl = `${origin}/vault-assets/asset.txt`;
-  const searchUrl = `${origin}/pagefind/pagefind-entry.json`;
+  const searchUrl = `${origin}/search-index.json`;
   await waitFor(async () => {
     try {
       return (await fetch(noteUrl)).ok;
@@ -95,15 +95,20 @@ try {
       return false;
     }
   }, `Container did not start:\n${logs}`);
-  const initialSearch = await (await fetch(searchUrl)).json();
+  const searchIndex = await (await fetch(searchUrl)).json();
+  if (!searchIndex.some((entry) => entry.title === "Note")) {
+    throw new Error("Container did not publish the quick-switcher index.");
+  }
+  if ((await fetch(`${origin}/search/`)).status !== 404 || (await fetch(`${origin}/pagefind/`)).status !== 404) {
+    throw new Error("Container published a removed Search or Pagefind output.");
+  }
 
   writeVersion("Updated searchable container phrase.", "Updated asset.");
   const updatedVault = snapshot(vault);
   await waitFor(
     async () =>
       (await (await fetch(noteUrl)).text()).includes("Updated searchable container phrase.") &&
-      (await (await fetch(assetUrl)).text()) === "Updated asset.\n" &&
-      (await (await fetch(searchUrl)).json()).languages.en.hash !== initialSearch.languages.en.hash,
+      (await (await fetch(assetUrl)).text()) === "Updated asset.\n",
     `Container did not publish the changed vault and search index:\n${logs}`,
   );
   if (JSON.stringify(snapshot(vault)) !== JSON.stringify(updatedVault)) {
