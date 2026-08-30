@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.2 - 2026-08-30
+
+- Reveal every eligible visible graph title after substantial mobile zoom while preserving selective labels in the fitted overview.
+
 ## 1.2.1 - 2026-08-30
 
 - Collapse mobile navigation into a four-dot launcher with direct contextual actions, predictable focus, and reduced-motion support.

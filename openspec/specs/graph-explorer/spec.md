@@ -79,6 +79,21 @@ A per-brain graph on a narrow viewport SHALL preserve a readable node compositio
 - **WHEN** automatic or reader-triggered fitting runs after related brains become visible
 - **THEN** the fit accounts for the labels selected at the fitted state without zooming out to accommodate labels that are not rendered
 
+### Requirement: Progressive mobile graph labels
+Global and note-page local graphs on narrow viewports SHALL keep their fitted overview labels selectively rendered to preserve legibility. After a reader zooms in enough to create meaningful separation between nodes, the graph MUST render the title of every eligible visible node rather than leaving visible nodes unlabelled because of overview density selection or narrow-view title-width limits. Zooming back to the fitted overview MUST restore selective label rendering.
+
+#### Scenario: Inspect nodes by zooming on a phone
+- **WHEN** a reader zooms substantially into a global or local graph on a narrow viewport
+- **THEN** every eligible node visible in the zoomed viewport renders its title, including titles omitted from the fitted overview
+
+#### Scenario: Preserve the fitted overview
+- **WHEN** a narrow graph is initially fitted or the reader returns it to the fitted overview
+- **THEN** labels remain selectively rendered so dense graphs do not collapse into overlapping text
+
+#### Scenario: Return from detailed zoom
+- **WHEN** a reader zooms back out after inspecting titles on a narrow graph
+- **THEN** the graph resumes selective label rendering without changing node visibility or position
+
 ### Requirement: Concise contextual graph legends
 The global graph and every rendered note-page connection map SHALL provide a Legend information action that opens a concise, accessible popover without permanently covering the graph. The legend MUST explain status markers and connectivity size, and MUST add brain ownership, related-note, or cross-brain edge explanations when those encodings can appear in that graph.
 
