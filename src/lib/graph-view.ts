@@ -10,6 +10,7 @@ import {
   type GraphHoverState,
 } from "./graph-interaction";
 import { fitRenderedGraph } from "./graph-fit";
+import { wireLocalGraphLabelReveal } from "./graph-local-labels";
 import { GraphMotionController } from "./graph-motion";
 import { ResizeSettler } from "./graph-motion-core";
 import {
@@ -940,10 +941,7 @@ export async function mountLocalGraphs(): Promise<void> {
       theme,
     };
     const hoverReducers = createHoverReducers(graph, state);
-    let revealNarrowLabels = forceLabelsOnNarrowZoom(
-      narrowGraphQuery.matches,
-      renderer.getCamera().getState().ratio,
-    );
+    let revealNarrowLabels = false;
     const applyLocalReducers = () => {
       renderer.setSettings({
         nodeReducer: (node, attrs) => {
@@ -959,20 +957,28 @@ export async function mountLocalGraphs(): Promise<void> {
       });
     };
     applyLocalReducers();
-    const onCameraLabelReveal = () => {
-      const reveal = forceLabelsOnNarrowZoom(
-        narrowGraphQuery.matches,
-        renderer.getCamera().getState().ratio,
-      );
-      if (reveal === revealNarrowLabels) return;
-      revealNarrowLabels = reveal;
-      applyLocalReducers();
+    const updateRenderedLabelStats = () => {
+      host.dataset.renderedLabels = String(renderer.getNodeDisplayedLabels().size);
     };
-    renderer.getCamera().on("updated", onCameraLabelReveal);
+    renderer.on("afterRender", updateRenderedLabelStats);
+    const camera = renderer.getCamera();
+    const labelReveal = wireLocalGraphLabelReveal(
+      () => camera.getState().ratio,
+      () => narrowGraphQuery.matches,
+      (reveal) => {
+        revealNarrowLabels = reveal;
+        applyLocalReducers();
+      },
+      (listener) => {
+        camera.on("updated", listener);
+        return () => camera.off("updated", listener);
+      },
+    );
     const fitView = (animate: boolean) => {
       if (animate) stopCameraAnimation(renderer);
       fitRenderedGraph(renderer, graph.nodes(), {
         animate: animate && !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+        onAnimationComplete: () => labelReveal.recordFit(),
       });
     };
     fitView(false);
@@ -982,11 +988,6 @@ export async function mountLocalGraphs(): Promise<void> {
     const onFitView = () => fitView(true);
     const onNarrowGraphChange = () => {
       applyResponsiveLabelThreshold();
-      revealNarrowLabels = forceLabelsOnNarrowZoom(
-        narrowGraphQuery.matches,
-        renderer.getCamera().getState().ratio,
-      );
-      applyLocalReducers();
       fitView(false);
     };
     fitButton?.addEventListener("click", onFitView);
@@ -994,7 +995,8 @@ export async function mountLocalGraphs(): Promise<void> {
     renderer.on("kill", () => {
       fitButton?.removeEventListener("click", onFitView);
       narrowGraphQuery.removeEventListener("change", onNarrowGraphChange);
-      renderer.getCamera().off("updated", onCameraLabelReveal);
+      labelReveal.destroy();
+      renderer.off("afterRender", updateRenderedLabelStats);
     });
     if (import.meta.env.DEV) {
       (window as unknown as Record<string, unknown>).__localGraphDebug = { renderer, graph };

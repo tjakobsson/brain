@@ -547,6 +547,54 @@ test("mobile navigation stays within the deployment base", async ({ page }, test
   expect(await initialListContentClearsNavigation(page)).toBe(true);
 });
 
+test("mobile local graphs reveal titles relative to their fitted view", async ({ page }, testInfo) => {
+  const { base } = deployment(testInfo);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const neighbors = Array.from({ length: 12 }, (_, index) => ({
+    id: `nearby-${index + 1}`,
+    title: `Nearby graph note with a descriptive title ${index + 1}`,
+    route: `/notes/nearby-${index + 1}`,
+    type: index % 2 === 0 ? "permanent" : "literature",
+    status: index % 3 === 0 ? "established" : "developing",
+    tags: [],
+    degree: 1,
+    x: Math.cos(index * Math.PI / 6),
+    y: Math.sin(index * Math.PI / 6),
+  }));
+  await page.route("**/graph-data.json", (route) => route.fulfill({
+    json: {
+      nodes: [{
+        id: "welcome",
+        title: "Welcome",
+        route: "/notes/welcome",
+        type: "permanent",
+        status: "established",
+        tags: [],
+        degree: neighbors.length,
+        x: 0,
+        y: 0,
+      }, ...neighbors],
+      edges: neighbors.map((node) => ({ source: "welcome", target: node.id })),
+    },
+  }));
+  await page.goto(`${base}/notes/welcome`);
+
+  const graph = page.locator(".local-graph");
+  const canvas = graph.locator("canvas.sigma-mouse");
+  await expect(canvas).toBeVisible();
+  await canvas.scrollIntoViewIfNeeded();
+  await expect.poll(async () => Number(await graph.getAttribute("data-rendered-labels"))).toBeGreaterThan(0);
+  const fittedLabels = Number(await graph.getAttribute("data-rendered-labels"));
+  expect(fittedLabels).toBeLessThan(neighbors.length + 1);
+
+  await canvas.hover();
+  await page.mouse.wheel(0, -100);
+  await expect.poll(async () => Number(await graph.getAttribute("data-rendered-labels"))).toBe(neighbors.length + 1);
+
+  await page.getByRole("button", { name: "Fit view" }).click();
+  await expect.poll(async () => Number(await graph.getAttribute("data-rendered-labels"))).toBe(fittedLabels);
+});
+
 test("touch layouts keep the local graph interactive", async ({ browser }, testInfo) => {
   const { origin, base } = deployment(testInfo);
   const context = await browser.newContext({ hasTouch: true, viewport: { width: 900, height: 600 } });
