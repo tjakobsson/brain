@@ -591,6 +591,24 @@ test("dense related notes use collision-selected labels in phone fits", async ({
   const manualLabels = Number(await graph.getAttribute("data-rendered-foreign-labels"));
   expect(manualLabels).toBeGreaterThan(0);
   expect(manualLabels).toBeLessThan(24);
+
+  const bounds = await graph.boundingBox();
+  expect(bounds).not.toBeNull();
+  const centerX = bounds!.x + bounds!.width / 2;
+  const centerY = bounds!.y + bounds!.height / 2;
+  let hovered = false;
+  for (let y = centerY - 120; y <= centerY + 120 && !hovered; y += 8) {
+    for (let x = centerX - 120; x <= centerX + 120; x += 8) {
+      await page.mouse.move(x, y);
+      if ((await graph.evaluate((host) => host.style.cursor)) === "pointer") {
+        hovered = true;
+        break;
+      }
+    }
+  }
+  expect(hovered).toBe(true);
+  await expect.poll(async () => Number(await graph.getAttribute("data-rendered-foreign-labels")))
+    .toBeLessThan(24);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 

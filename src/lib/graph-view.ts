@@ -617,11 +617,16 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
         res.forceLabel = forceForeignLabel(true, narrowGraphQuery.matches);
       }
       const label = (attrs.label as string).toLowerCase();
-      if (state.hovered) {
-        return hoverReducers.nodeReducer(node, attrs);
-      } else if (narrowGraphQuery.matches && !labelFitsNarrowViewport(attrs as Record<string, unknown>)) {
+      if (
+        narrowGraphQuery.matches &&
+        node !== state.hovered &&
+        !labelFitsNarrowViewport(attrs as Record<string, unknown>)
+      ) {
         res.label = "";
         res.forceLabel = false;
+      }
+      if (state.hovered) {
+        return hoverReducers.nodeReducer(node, res as typeof attrs);
       } else if (query && !label.includes(query)) {
         res.color = state.theme.fadedNode;
         res.label = "";
@@ -673,6 +678,15 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     applyReducers();
     if (settle) settleFilter();
   }
+
+  const resizeSettler = new ResizeSettler(
+    ui.host.clientWidth,
+    ui.host.clientHeight,
+    () => {
+      renderer.resize();
+      motion.settle("resize", visibleIds());
+    },
+  );
 
   if (import.meta.env.DEV) {
     (window as unknown as Record<string, unknown>).__graphDebug = { renderer, graph, hidden };
@@ -767,6 +781,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
 
   function focusNode(id: string): void {
     cancelFilterSettle();
+    resizeSettler.reset(ui.host.clientWidth, ui.host.clientHeight);
     motion.cancel();
     resolveCanceledRelatedBrainsState();
     const displayData = renderer.getNodeDisplayData(id);
@@ -785,6 +800,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
 
   const onFitView = () => {
     cancelFilterSettle();
+    resizeSettler.reset(ui.host.clientWidth, ui.host.clientHeight);
     motion.fitView(visibleIds());
   };
   ui.fitViewButton.addEventListener("click", onFitView);
@@ -799,14 +815,6 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   mouse.on("wheel", onWheel);
   wireTheme(renderer, state);
 
-  const resizeSettler = new ResizeSettler(
-    ui.host.clientWidth,
-    ui.host.clientHeight,
-    () => {
-      renderer.resize();
-      motion.settle("resize", visibleIds());
-    },
-  );
   const resizeObserver = new ResizeObserver(() => {
     if (state.dragged) {
       resizeSettler.reset(ui.host.clientWidth, ui.host.clientHeight);
