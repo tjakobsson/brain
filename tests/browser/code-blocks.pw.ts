@@ -13,12 +13,34 @@ function deployment(testInfo: TestInfo) {
   return { origin: url.origin, base: url.pathname.replace(/\/$/u, "") };
 }
 
+function expectCompactCopyLayout(layout: {
+  paddingTop: number;
+  paddingBottom: number;
+  codeTopInset: number;
+  buttonTopInset: number;
+  buttonRightInset: number;
+  buttonBottom: number;
+  codeTop: number;
+  buttonWidth: number;
+  buttonHeight: number;
+}) {
+  expect(layout.paddingTop).toBeCloseTo(layout.paddingBottom, 1);
+  expect(layout.codeTopInset).toBeCloseTo(layout.paddingTop, 1);
+  expect(layout.buttonTopInset).toBeGreaterThanOrEqual(0);
+  expect(layout.buttonRightInset).toBeGreaterThanOrEqual(0);
+  expect(layout.codeTop).toBeLessThan(layout.buttonBottom);
+  expect(layout.buttonWidth).toBeGreaterThanOrEqual(30);
+  expect(layout.buttonHeight).toBeGreaterThanOrEqual(30);
+}
+
 test("code blocks render statically with responsive light and dark styles", async ({ page }, testInfo) => {
   const { base } = deployment(testInfo);
   await page.goto(`${base}/notes/welcome`);
 
   const highlighted = page.locator('article pre[data-language="js"]');
+  const highlightedBlock = highlighted.locator("..");
   const highlightedCode = highlighted.locator("code");
+  const highlightedButton = highlightedBlock.locator("button.code-block-copy");
   const firstToken = highlighted.locator('span[style*="--shiki-dark"]').first();
   const inlineCode = page.getByText("const portable = true", { exact: true });
   const unlabelled = page.locator("article pre", { hasText: "notes -> build -> static site" });
@@ -58,6 +80,35 @@ test("code blocks render statically with responsive light and dark styles", asyn
   await expect(highlighted).toHaveCSS("border-top-width", "0px");
   await expect(highlightedCode).toHaveCSS("border-top-width", "0px");
   await expect(highlightedCode).toHaveCSS("padding-left", "0px");
+  await expect(highlightedButton).toBeVisible();
+
+  const copyLayout = () =>
+    highlightedBlock.evaluate((block) => {
+      const pre = block.querySelector("pre");
+      const code = block.querySelector("code");
+      const button = block.querySelector("button.code-block-copy");
+      if (!(pre instanceof HTMLElement) || !(code instanceof HTMLElement) || !(button instanceof HTMLElement)) {
+        throw new Error("Expected code block copy layout");
+      }
+
+      const preRect = pre.getBoundingClientRect();
+      const codeRect = code.getBoundingClientRect();
+      const buttonRect = button.getBoundingClientRect();
+      const style = getComputedStyle(pre);
+      return {
+        paddingTop: Number.parseFloat(style.paddingTop),
+        paddingBottom: Number.parseFloat(style.paddingBottom),
+        codeTopInset: codeRect.top - preRect.top,
+        buttonTopInset: buttonRect.top - preRect.top,
+        buttonRightInset: preRect.right - buttonRect.right,
+        buttonBottom: buttonRect.bottom,
+        codeTop: codeRect.top,
+        buttonWidth: buttonRect.width,
+        buttonHeight: buttonRect.height,
+      };
+    });
+
+  expectCompactCopyLayout(await copyLayout());
 
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(highlighted).toHaveCSS("background-color", "rgb(26, 26, 32)");
@@ -68,15 +119,27 @@ test("code blocks render statically with responsive light and dark styles", asyn
   await expect(firstToken).toHaveCSS("color", "rgb(215, 58, 73)");
 
   await page.setViewportSize({ width: 390, height: 844 });
+  expectCompactCopyLayout(await copyLayout());
   await expect(highlighted).toHaveCSS("overflow-x", "auto");
   const overflow = await highlighted.evaluate((block) => {
     block.scrollLeft = block.scrollWidth;
+    const longLine = block.querySelectorAll("code > .line")[5];
+    const button = block.parentElement?.querySelector("button.code-block-copy");
+    if (!longLine || !(button instanceof HTMLElement)) {
+      throw new Error("Expected overflowing code and copy control");
+    }
+    const range = document.createRange();
+    range.selectNodeContents(longLine);
     return {
       blockScrolls: block.scrollWidth > block.clientWidth && block.scrollLeft > 0,
       pageFits: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+      lineRight: range.getBoundingClientRect().right,
+      buttonLeft: button.getBoundingClientRect().left,
     };
   });
-  expect(overflow).toEqual({ blockScrolls: true, pageFits: true });
+  expect(overflow.blockScrolls).toBe(true);
+  expect(overflow.pageFits).toBe(true);
+  expect(overflow.lineRight).toBeLessThanOrEqual(overflow.buttonLeft);
 });
 
 test("copy controls copy exact code with keyboard feedback", async ({ context, page }, testInfo) => {
