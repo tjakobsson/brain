@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.1 - 2026-08-30
+
+- Collapse mobile navigation into a four-dot launcher with direct contextual actions, predictable focus, and reduced-motion support.
+- Group mobile graph controls into a compact touch-friendly pill and add contextual legends to global and local graphs.
+- Select related-brain labels by available space on narrow viewports instead of forcing every label into the graph.
+- Coordinate graph settling and camera fitting during initial load, resizing, and filter changes to prevent follow-up camera movement.
+
 ## 1.2.0 - 2026-08-30
 
 - Add versioned workspace inputs to the source command, container, composite Action, and reusable Pages workflow.
