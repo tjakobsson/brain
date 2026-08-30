@@ -23,7 +23,7 @@ The current browser test confirms only that the local graph screenshot changes a
 
 ### Track a fitted ratio per local renderer
 
-Each local graph records the camera ratio produced by its latest completed fit. Before calculating a new fit, it clears the previous baseline and forced-label state so fitting measures the selective overview. Initial non-animated fit records its new baseline immediately. Animated Fit view records it in the fit completion callback.
+Each local graph records the camera ratio produced by its latest completed fit. While calculating a new fit, it preserves that baseline but suppresses forced-label state so fitting measures the selective overview. The previous baseline resumes as soon as synchronous planning ends, keeping zoom labels available if the camera animation is interrupted. Initial non-animated fit records its new baseline immediately. Animated Fit view replaces it in the fit completion callback.
 
 Using the renderer's configured minimum or maximum ratio was rejected because those limits do not represent the visual overview. Using the first camera state was rejected because Sigma starts at a generic state before project fitting runs.
 
@@ -39,11 +39,12 @@ The local camera listener compares the next reveal state with the previous state
 
 ### Assert displayed titles in browser coverage
 
-Local graphs expose their displayed-label count after rendering and latest fitted ratio, extending the existing global graph diagnostics. A narrow browser fixture uses a neighborhood whose fitted ratio stays above the old absolute threshold, zooms by a known fraction of the fitted view, and verifies all eligible on-screen titles are displayed. Fit view then verifies the count returns to the collision-selected overview subset at the original fitted ratio. Existing screenshot, scrolling, pan, tap, and bounds assertions remain.
+Local graphs expose their displayed-label count and latest fitted ratio, extending the existing global graph diagnostics. A narrow browser fixture uses a neighborhood whose fitted ratio stays above the old absolute threshold, zooms by a known fraction of the fitted view, and verifies all eligible on-screen titles are displayed. Fit view then verifies the count returns to the collision-selected overview subset at the original fitted ratio. Focused lifecycle coverage verifies that the previous baseline resumes when an animated fit never calls its completion callback. Existing screenshot, scrolling, pan, tap, and bounds assertions remain.
 
 ## Risks / Trade-offs
 
-- [A fit calculation includes forced detailed labels] -> Clear the previous baseline and forced-label state before planning, then record the new baseline only when fitting completes.
+- [A fit calculation includes forced detailed labels] -> Preserve the previous baseline but suppress forced-label state during synchronous planning, then record the new baseline only when fitting completes.
+- [A reader interrupts the fit animation] -> Resume the previous completed baseline immediately after planning so zoom labels do not depend on the canceled completion callback.
 - [A very dense local cluster still overlaps after relative zoom] -> Keep the 75 percent threshold and allow further zoom; the fitted overview remains selective.
 - [Displayed-label diagnostics become stale] -> Update them from Sigma's `afterRender` event and remove the listener during renderer teardown.
 - [Regression test depends on incidental demo layout] -> Use controlled graph data and assert camera-relative behavior rather than fixed pixel positions or screenshots alone.

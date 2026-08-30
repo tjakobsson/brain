@@ -976,13 +976,17 @@ export async function mountLocalGraphs(): Promise<void> {
     );
     const fitView = (animate: boolean) => {
       if (animate) stopCameraAnimation(renderer);
-      labelReveal.resetForFit();
-      fitRenderedGraph(renderer, graph.nodes(), {
-        animate: animate && !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-        onAnimationComplete: () => {
-          host.dataset.fittedRatio = String(labelReveal.recordFit());
-        },
-      });
+      labelReveal.beginFit();
+      try {
+        fitRenderedGraph(renderer, graph.nodes(), {
+          animate: animate && !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+          onAnimationComplete: () => {
+            host.dataset.fittedRatio = String(labelReveal.recordFit());
+          },
+        });
+      } finally {
+        labelReveal.finishFitPlanning();
+      }
     };
     fitView(false);
     wireHoverAndClick(renderer, graph, state);

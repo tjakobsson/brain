@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { wireLocalGraphLabelReveal } from "./graph-local-labels";
 
 describe("local graph label reveal", () => {
-  it("reveals on relative zoom and resets after a new fitted view", () => {
+  it("reveals relative zoom and preserves the completed baseline through fit planning", () => {
     let ratio = 2;
     let cameraUpdated = () => {};
     const changes: boolean[] = [];
@@ -29,10 +29,14 @@ describe("local graph label reveal", () => {
     ratio = 1;
     cameraUpdated();
     expect(changes).toEqual([true, false, true]);
-    reveal.resetForFit();
+    reveal.beginFit();
     expect(changes).toEqual([true, false, true, false]);
+    cameraUpdated();
+    expect(changes).toEqual([true, false, true, false]);
+    reveal.finishFitPlanning();
+    expect(changes).toEqual([true, false, true, false, true]);
     expect(reveal.recordFit()).toBe(1);
-    expect(changes).toEqual([true, false, true, false]);
+    expect(changes).toEqual([true, false, true, false, true, false]);
   });
 
   it("stops observing camera updates when destroyed", () => {
