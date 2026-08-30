@@ -274,10 +274,12 @@ test("active-brain mobile launcher has direct actions and predictable disclosure
   await expect(header.locator(".nav-menu")).toBeHidden();
 
   await context.click();
-  expect(await header.locator(".context-switcher__panel").evaluate((panel) => {
+  const contextPanel = header.locator(".context-switcher__panel");
+  expect(await contextPanel.evaluate((panel) => {
     const bounds = panel.getBoundingClientRect();
     return bounds.left >= 0 && bounds.right <= innerWidth && bounds.bottom <= innerHeight;
   })).toBe(true);
+  await contextPanel.getByRole("link", { name: /@design/ }).click({ trial: true });
   await context.click();
 
   await search.click();
@@ -431,6 +433,9 @@ test("graph payload and scoped views keep ownership boundaries and canonical bra
   await page.waitForFunction(() =>
     sessionStorage.getItem(`graph-related-brains:${location.pathname}`) === "false"
   );
+  await expect(graph).not.toHaveAttribute("data-filter-settle-pending");
+  await page.waitForTimeout(300);
+  await expect(graph).not.toHaveAttribute("data-filter-settle-pending");
   expect(await page.evaluate(() =>
     Object.keys(sessionStorage).filter((key) =>
       /graph-(motion|view):/.test(key) && key.includes(":brain:engineering:false:")

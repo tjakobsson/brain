@@ -1789,6 +1789,17 @@ div[data-callout] [data-callout-body] > :last-child {
     pointer-events: auto;
   }
 
+  .site-header[data-mobile-expanded] .context-switcher {
+    transform: none;
+  }
+
+  .context-switcher__panel {
+    position: fixed;
+    top: calc(max(0.75rem, env(safe-area-inset-top)) + 2.75rem);
+    right: calc(max(0.75rem, env(safe-area-inset-right)) + 3.3rem);
+    max-height: calc(100dvh - max(0.75rem, env(safe-area-inset-top)) - 3.25rem);
+  }
+
   .mobile-nav-actions > * {
     flex: 0 0 2.5rem;
     opacity: 0;

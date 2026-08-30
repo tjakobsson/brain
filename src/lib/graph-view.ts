@@ -258,13 +258,14 @@ function wireHoverAndClick(
   renderer: Sigma,
   graph: Graph,
   state: InteractionState,
-  onNodeEnter?: () => void,
+  onInteraction?: () => void,
 ): void {
   const navigateToNode = (node: string) => {
+    onInteraction?.();
     const route = graph.getNodeAttribute(node, "route") as LogicalRoute | undefined;
     if (route) window.location.assign(joinBase(import.meta.env.BASE_URL, route));
   };
-  wireGraphHover(renderer, graph, state, onNodeEnter, () => state.dragged !== null);
+  wireGraphHover(renderer, graph, state, onInteraction, () => state.dragged !== null);
   renderer.on("clickNode", ({ node }) => {
     if (state.draggedMoved) {
       state.draggedMoved = false;
@@ -651,11 +652,18 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
 
   const visibleIds = () => graph.nodes().filter((id) => !hidden.has(id));
   let filterSettleTimer: number | null = null;
+  const cancelFilterSettle = () => {
+    if (filterSettleTimer !== null) window.clearTimeout(filterSettleTimer);
+    filterSettleTimer = null;
+    ui.host.removeAttribute("data-filter-settle-pending");
+  };
 
   const settleFilter = () => {
-    if (filterSettleTimer !== null) window.clearTimeout(filterSettleTimer);
+    cancelFilterSettle();
+    ui.host.setAttribute("data-filter-settle-pending", "");
     filterSettleTimer = window.setTimeout(() => {
       filterSettleTimer = null;
+      ui.host.removeAttribute("data-filter-settle-pending");
       motion.settle("filter", visibleIds());
     }, 180);
   };
@@ -758,6 +766,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   }
 
   function focusNode(id: string): void {
+    cancelFilterSettle();
     motion.cancel();
     resolveCanceledRelatedBrainsState();
     const displayData = renderer.getNodeDisplayData(id);
@@ -774,7 +783,10 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     applyReducers();
   });
 
-  const onFitView = () => motion.fitView(visibleIds());
+  const onFitView = () => {
+    cancelFilterSettle();
+    motion.fitView(visibleIds());
+  };
   ui.fitViewButton.addEventListener("click", onFitView);
 
   const stopCamera = () => stopCameraAnimation(renderer);
@@ -804,6 +816,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   });
   resizeObserver.observe(ui.host);
   const interruptAutomaticMotion = () => {
+    cancelFilterSettle();
     resizeSettler.reset(ui.host.clientWidth, ui.host.clientHeight);
     motion.cancel();
     stopCamera();
@@ -811,6 +824,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   };
   wireHoverAndClick(renderer, graph, state, interruptAutomaticMotion);
   const commitDrag = (_node: string, _neighborhood: string[], moved: boolean) => {
+    cancelFilterSettle();
     stopCamera();
     motion.cancel();
     resizeSettler.reset(ui.host.clientWidth, ui.host.clientHeight);
@@ -823,6 +837,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
 
   const onVisibilityChange = () => {
     if (document.hidden) {
+      cancelFilterSettle();
       motion.cancel();
       resolveCanceledRelatedBrainsState();
     } else if (relatedBrainsStatePending || relatedBrainsSessionInvalid) {
@@ -833,7 +848,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   renderer.on("kill", () => {
     mouse.off("wheel", onWheel);
     if (sessionTimer !== null) window.clearTimeout(sessionTimer);
-    if (filterSettleTimer !== null) window.clearTimeout(filterSettleTimer);
+    cancelFilterSettle();
     resizeObserver.disconnect();
     resizeSettler.cancel();
     renderer.getCamera().off("updated", saveSession);
