@@ -740,7 +740,13 @@ article pre.astro-code:not([data-language="plaintext"]) code > .line::before {
 
 .code-block > pre {
   margin: 0;
-  padding-top: 2.75rem;
+  padding-top: 1rem;
+}
+
+.code-block > pre > code {
+  width: max-content;
+  min-width: 100%;
+  padding-right: 3rem;
 }
 
 .code-block-copy {
