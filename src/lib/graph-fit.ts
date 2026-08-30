@@ -1,5 +1,6 @@
 import type Sigma from "sigma";
 import { positionBounds } from "./graph-motion-core";
+import { foreignLabelMarkWidth } from "./graph-style";
 
 export interface ViewportBounds {
   left: number;
@@ -30,9 +31,50 @@ export interface RenderedGraphFitOptions {
   onAnimationComplete?: () => void;
 }
 
+export interface GraphCameraState {
+  x: number;
+  y: number;
+  angle: number;
+  ratio: number;
+}
+
+export interface GraphBoundingBox {
+  x: [number, number];
+  y: [number, number];
+}
+
+export interface RenderedGraphFitPlan {
+  bbox: GraphBoundingBox;
+  camera: GraphCameraState;
+  maximumRatio: number | null;
+}
+
 const DEFAULT_PADDING = 24;
 const MAX_CORRECTIONS = 8;
 const CAMERA_TARGET = { x: 0.5, y: 0.5, angle: 0, ratio: 1.12 };
+
+function boundingBoxScale(bbox: GraphBoundingBox): number {
+  return Math.max(bbox.x[1] - bbox.x[0], bbox.y[1] - bbox.y[0], Number.EPSILON);
+}
+
+export function convertCameraToBoundingBox(
+  camera: GraphCameraState,
+  source: GraphBoundingBox,
+  target: GraphBoundingBox,
+): GraphCameraState {
+  const sourceScale = boundingBoxScale(source);
+  const targetScale = boundingBoxScale(target);
+  const graphCenter = {
+    x: (source.x[0] + source.x[1]) / 2 + (camera.x - 0.5) * sourceScale,
+    y: (source.y[0] + source.y[1]) / 2 + (camera.y - 0.5) * sourceScale,
+  };
+  return {
+    x: 0.5 + (graphCenter.x - (target.x[0] + target.x[1]) / 2) / targetScale,
+    y: 0.5 + (graphCenter.y - (target.y[0] + target.y[1]) / 2) / targetScale,
+    angle: camera.angle,
+    ratio: camera.ratio * sourceScale / targetScale,
+  };
+}
 
 function fitInsets(padding: number | Partial<FitInsets>): FitInsets {
   if (typeof padding === "number") {
@@ -116,9 +158,10 @@ function measureRenderedGraph(renderer: Sigma, ids: Iterable<string>): RenderedM
       const descent = metrics.actualBoundingBoxDescent || settings.labelSize * 0.2;
       const left = center.x + radius + 3;
       item.top = Math.min(item.top, baseline - ascent);
-      item.right = Math.max(item.right, left + metrics.width);
+      const customMarkWidth = data.foreign ? foreignLabelMarkWidth(settings.labelSize) : 0;
+      item.right = Math.max(item.right, left + metrics.width + customMarkWidth);
       item.bottom = Math.max(item.bottom, baseline + descent);
-      fixedExtent.width = Math.max(fixedExtent.width, metrics.width + 3);
+      fixedExtent.width = Math.max(fixedExtent.width, metrics.width + customMarkWidth + 3);
       fixedExtent.height = Math.max(fixedExtent.height, ascent + descent);
     }
     bounds = includeBounds(bounds, item.left, item.top, item.right, item.bottom);
@@ -174,11 +217,11 @@ export function fitCorrection(
   return { center, viewportCenter, scale, settled };
 }
 
-export function fitRenderedGraph(
+export function planRenderedGraphFit(
   renderer: Sigma,
   requestedIds: Iterable<string>,
-  options: RenderedGraphFitOptions = {},
-): void {
+  padding: number | Partial<FitInsets> = graphFitInsets(renderer),
+): RenderedGraphFitPlan {
   const graph = renderer.getGraph();
   const ids = [...new Set(requestedIds)].filter((id) => graph.hasNode(id)).sort();
   const positions = Object.fromEntries(
@@ -190,13 +233,12 @@ export function fitRenderedGraph(
       },
     ]),
   );
-  const source = renderer.getCamera().getState();
-  renderer.setCustomBBox(positionBounds(positions, ids));
+  const bbox = positionBounds(positions, ids);
+  renderer.setCustomBBox(bbox);
   renderer.refresh();
   renderer.getCamera().setState(CAMERA_TARGET);
 
   const dimensions = renderer.getDimensions();
-  const padding = options.padding ?? graphFitInsets(renderer);
   for (let pass = 0; pass < MAX_CORRECTIONS; pass += 1) {
     renderer.refresh();
     const measurement = measureRenderedGraph(renderer, ids);
@@ -229,19 +271,53 @@ export function fitRenderedGraph(
     });
   }
 
-  const target = renderer.getCamera().getState();
+  return {
+    bbox,
+    camera: renderer.getCamera().getState(),
+    maximumRatio: renderer.getSetting("maxCameraRatio"),
+  };
+}
+
+export function applyRenderedGraphFit(
+  renderer: Sigma,
+  plan: RenderedGraphFitPlan,
+  options: RenderedGraphFitOptions = {},
+  sourceCamera?: GraphCameraState,
+): void {
+  renderer.setCustomBBox(plan.bbox);
+  const maximumRatio = renderer.getSetting("maxCameraRatio");
+  if (plan.maximumRatio !== null && (maximumRatio === null || plan.maximumRatio > maximumRatio)) {
+    renderer.setSetting("maxCameraRatio", plan.maximumRatio);
+  }
+  renderer.refresh();
   if (!options.animate) {
     // Replacing an active animation prevents its next frame from restoring a stale camera state.
-    void renderer.getCamera().animate(target, { duration: 1 });
-    renderer.getCamera().setState(target);
+    void renderer.getCamera().animate(plan.camera, { duration: 1 });
+    renderer.getCamera().setState(plan.camera);
     options.onAnimationComplete?.();
     return;
   }
-  renderer.getCamera().setState(source);
+  if (sourceCamera) renderer.getCamera().setState(sourceCamera);
   options.onAnimationStart?.();
   renderer.getCamera().animate(
-    target,
+    plan.camera,
     { duration: options.duration ?? 320, easing: "quadraticInOut" },
     options.onAnimationComplete,
+  );
+}
+
+export function fitRenderedGraph(
+  renderer: Sigma,
+  requestedIds: Iterable<string>,
+  options: RenderedGraphFitOptions = {},
+): void {
+  const sourceBBox = renderer.getCustomBBox() ?? renderer.getBBox();
+  const sourceCamera = renderer.getCamera().getState();
+  const plan = planRenderedGraphFit(renderer, requestedIds, options.padding ?? graphFitInsets(renderer));
+  applyRenderedGraphFit(
+    renderer,
+    plan,
+    options,
+    convertCameraToBoundingBox(sourceCamera, sourceBBox, plan.bbox),
   );
 }

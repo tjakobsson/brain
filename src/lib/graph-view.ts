@@ -19,7 +19,12 @@ import {
   type GraphContext,
   type GraphData,
 } from "./graph-data";
-import { graphEdgeAttributes, graphNodeAttributes } from "./graph-style";
+import {
+  forceForeignLabel,
+  foreignLabelMarkWidth,
+  graphEdgeAttributes,
+  graphNodeAttributes,
+} from "./graph-style";
 import { combinedRoutes, joinBase, routes, routesFor, type LogicalRoute } from "./routes";
 
 /**
@@ -235,7 +240,7 @@ function touchTargetNode(renderer: Sigma, graph: Graph, point: { x: number; y: n
     if (!labelContext || !data.label || !displayedLabels.has(node)) return;
     const labelLeft = center.x + visualRadius + 3;
     const labelWidth = labelContext.measureText(data.label).width +
-      ((data as NodeLabelData).foreign ? settings.labelSize + 4 : 0);
+      ((data as NodeLabelData).foreign ? foreignLabelMarkWidth(settings.labelSize) : 0);
     if (
       point.x >= labelLeft - 8 &&
       point.x <= labelLeft + labelWidth + 8 &&
@@ -253,13 +258,14 @@ function wireHoverAndClick(
   renderer: Sigma,
   graph: Graph,
   state: InteractionState,
-  onNodeEnter?: () => void,
+  onInteraction?: () => void,
 ): void {
   const navigateToNode = (node: string) => {
+    onInteraction?.();
     const route = graph.getNodeAttribute(node, "route") as LogicalRoute | undefined;
     if (route) window.location.assign(joinBase(import.meta.env.BASE_URL, route));
   };
-  wireGraphHover(renderer, graph, state, onNodeEnter, () => state.dragged !== null);
+  wireGraphHover(renderer, graph, state, onInteraction, () => state.dragged !== null);
   renderer.on("clickNode", ({ node }) => {
     if (state.draggedMoved) {
       state.draggedMoved = false;
@@ -438,7 +444,9 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     }
     ui.relatedBrainsToggle?.setAttribute("aria-pressed", String(showRelatedBrains));
     if (ui.relatedBrainsToggle) {
-      ui.relatedBrainsToggle.textContent = showRelatedBrains ? "Hide related brains" : "Show related brains";
+      ui.relatedBrainsToggle.querySelector<HTMLElement>("[data-control-label]")!.textContent = showRelatedBrains
+        ? "Hide related brains"
+        : "Show related brains";
     }
   }
   let selectedBrainIds = combined
@@ -457,6 +465,33 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   const graph = buildGraph(data, visualContext);
   const theme = graphTheme();
   const renderer = new Sigma(graph, ui.host, baseSettings(theme, graph.order));
+  const narrowGraphQuery = window.matchMedia("(max-width: 700px)");
+  const desktopLabelThreshold = graph.order > 500 ? 14 : 4;
+  const desktopLabelGridCellSize = graph.order > 500 ? 180 : 100;
+  const labelContext = document.createElement("canvas").getContext("2d")!;
+  labelContext.font = "500 13px ui-sans-serif, system-ui, sans-serif";
+  const labelWidths = new Map<string, number>();
+  const labelFitsNarrowViewport = (attrs: Record<string, unknown>) => {
+    const label = typeof attrs.label === "string" ? attrs.label : "";
+    let width = labelWidths.get(label);
+    if (width === undefined) {
+      width = labelContext.measureText(label).width;
+      labelWidths.set(label, width);
+    }
+    if (attrs.foreign) width += foreignLabelMarkWidth(13);
+    const viewportWidth = renderer.getDimensions().width;
+    const maximumWidth = attrs.foreign
+      ? Math.max(160, viewportWidth - 96)
+      : Math.max(160, Math.min(220, viewportWidth - 160));
+    return width <= maximumWidth;
+  };
+  const applyResponsiveLabelThreshold = () => {
+    renderer.setSettings({
+      labelRenderedSizeThreshold: narrowGraphQuery.matches ? 0 : desktopLabelThreshold,
+      labelGridCellSize: narrowGraphQuery.matches ? 400 : desktopLabelGridCellSize,
+    });
+  };
+  applyResponsiveLabelThreshold();
   const motion = new GraphMotionController(renderer, graph, data, () => {
     relatedBrainsSessionInvalid = false;
     if (relatedBrainsStatePending) saveRelatedBrainsState();
@@ -465,8 +500,6 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     ? motion.restoreSession()
     : { positions: false, view: false };
   if (relatedBrainsStorageKey && !restored.positions) relatedBrainsStatePending = true;
-  if (!restored.view) fitRenderedGraph(renderer, graph.nodes());
-
   function saveRelatedBrainsState(): void {
     if (!relatedBrainsStorageKey) return;
     try {
@@ -580,9 +613,20 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
         res.hidden = true;
         return res as typeof attrs;
       }
+      if (attrs.foreign) {
+        res.forceLabel = forceForeignLabel(true, narrowGraphQuery.matches);
+      }
       const label = (attrs.label as string).toLowerCase();
+      if (
+        narrowGraphQuery.matches &&
+        node !== state.hovered &&
+        !labelFitsNarrowViewport(attrs as Record<string, unknown>)
+      ) {
+        res.label = "";
+        res.forceLabel = false;
+      }
       if (state.hovered) {
-        return hoverReducers.nodeReducer(node, attrs);
+        return hoverReducers.nodeReducer(node, res as typeof attrs);
       } else if (query && !label.includes(query)) {
         res.color = state.theme.fadedNode;
         res.label = "";
@@ -602,13 +646,47 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     renderer.refresh();
   }
 
+  const updateRenderedLabelStats = () => {
+    const displayed = renderer.getNodeDisplayedLabels();
+    ui.host.dataset.renderedLabels = String(displayed.size);
+    ui.host.dataset.renderedForeignLabels = String(
+      [...displayed].filter((id) => graph.getNodeAttribute(id, "foreign") === true && !hidden.has(id)).length,
+    );
+  };
+  renderer.on("afterRender", updateRenderedLabelStats);
+
   const visibleIds = () => graph.nodes().filter((id) => !hidden.has(id));
+  let filterSettleTimer: number | null = null;
+  const cancelFilterSettle = () => {
+    if (filterSettleTimer !== null) window.clearTimeout(filterSettleTimer);
+    filterSettleTimer = null;
+    ui.host.removeAttribute("data-filter-settle-pending");
+  };
+
+  const settleFilter = () => {
+    cancelFilterSettle();
+    ui.host.setAttribute("data-filter-settle-pending", "");
+    filterSettleTimer = window.setTimeout(() => {
+      filterSettleTimer = null;
+      ui.host.removeAttribute("data-filter-settle-pending");
+      motion.settle("filter", visibleIds());
+    }, 180);
+  };
 
   function refresh(settle = true): void {
     recomputeHidden();
     applyReducers();
-    if (settle) motion.settle("filter", visibleIds());
+    if (settle) settleFilter();
   }
+
+  const resizeSettler = new ResizeSettler(
+    ui.host.clientWidth,
+    ui.host.clientHeight,
+    () => {
+      renderer.resize();
+      motion.settle("resize", visibleIds());
+    },
+  );
 
   if (import.meta.env.DEV) {
     (window as unknown as Record<string, unknown>).__graphDebug = { renderer, graph, hidden };
@@ -625,12 +703,22 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     motion.setSessionScope(motionScope());
     ui.relatedBrainsToggle?.setAttribute("aria-pressed", String(showRelatedBrains));
     if (ui.relatedBrainsToggle) {
-      ui.relatedBrainsToggle.textContent = showRelatedBrains ? "Hide related brains" : "Show related brains";
+      ui.relatedBrainsToggle.querySelector<HTMLElement>("[data-control-label]")!.textContent = showRelatedBrains
+        ? "Hide related brains"
+        : "Show related brains";
     }
     refresh();
     renderSearchResults();
   };
   ui.relatedBrainsToggle?.addEventListener("click", onRelatedBrainsToggle);
+  const onNarrowGraphChange = () => {
+    applyResponsiveLabelThreshold();
+    applyReducers();
+    renderer.resize();
+    resizeSettler.reset(ui.host.clientWidth, ui.host.clientHeight);
+    motion.settle("resize", visibleIds());
+  };
+  narrowGraphQuery.addEventListener("change", onNarrowGraphChange);
 
   if (combined) {
     for (const control of ui.brainFilters) {
@@ -695,6 +783,8 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   }
 
   function focusNode(id: string): void {
+    cancelFilterSettle();
+    resizeSettler.reset(ui.host.clientWidth, ui.host.clientHeight);
     motion.cancel();
     resolveCanceledRelatedBrainsState();
     const displayData = renderer.getNodeDisplayData(id);
@@ -711,7 +801,11 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     applyReducers();
   });
 
-  const onFitView = () => motion.fitView(visibleIds());
+  const onFitView = () => {
+    cancelFilterSettle();
+    resizeSettler.reset(ui.host.clientWidth, ui.host.clientHeight);
+    motion.fitView(visibleIds());
+  };
   ui.fitViewButton.addEventListener("click", onFitView);
 
   const stopCamera = () => stopCameraAnimation(renderer);
@@ -724,14 +818,6 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   mouse.on("wheel", onWheel);
   wireTheme(renderer, state);
 
-  const resizeSettler = new ResizeSettler(
-    ui.host.clientWidth,
-    ui.host.clientHeight,
-    () => {
-      renderer.resize();
-      motion.settle("resize", visibleIds());
-    },
-  );
   const resizeObserver = new ResizeObserver(() => {
     if (state.dragged) {
       resizeSettler.reset(ui.host.clientWidth, ui.host.clientHeight);
@@ -741,6 +827,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   });
   resizeObserver.observe(ui.host);
   const interruptAutomaticMotion = () => {
+    cancelFilterSettle();
     resizeSettler.reset(ui.host.clientWidth, ui.host.clientHeight);
     motion.cancel();
     stopCamera();
@@ -748,6 +835,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   };
   wireHoverAndClick(renderer, graph, state, interruptAutomaticMotion);
   const commitDrag = (_node: string, _neighborhood: string[], moved: boolean) => {
+    cancelFilterSettle();
     stopCamera();
     motion.cancel();
     resizeSettler.reset(ui.host.clientWidth, ui.host.clientHeight);
@@ -760,6 +848,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
 
   const onVisibilityChange = () => {
     if (document.hidden) {
+      cancelFilterSettle();
       motion.cancel();
       resolveCanceledRelatedBrainsState();
     } else if (relatedBrainsStatePending || relatedBrainsSessionInvalid) {
@@ -770,18 +859,21 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   renderer.on("kill", () => {
     mouse.off("wheel", onWheel);
     if (sessionTimer !== null) window.clearTimeout(sessionTimer);
+    cancelFilterSettle();
     resizeObserver.disconnect();
     resizeSettler.cancel();
     renderer.getCamera().off("updated", saveSession);
     window.removeEventListener("pagehide", flushSession);
     ui.fitViewButton.removeEventListener("click", onFitView);
     ui.relatedBrainsToggle?.removeEventListener("click", onRelatedBrainsToggle);
+    narrowGraphQuery.removeEventListener("change", onNarrowGraphChange);
     document.removeEventListener("visibilitychange", onVisibilityChange);
     motion.destroy();
   });
 
   refresh(false);
   if (!restored.positions) motion.settle("initial", visibleIds());
+  else if (!restored.view) fitRenderedGraph(renderer, visibleIds());
 }
 
 /* ------------------------------------------------------------------------ */
@@ -810,16 +902,17 @@ export async function mountLocalGraphs(): Promise<void> {
       ...baseSettings(theme, graph.order),
       labelRenderedSizeThreshold: 3,
     });
+    const narrowGraphQuery = window.matchMedia("(max-width: 700px)");
+    const applyResponsiveLabelThreshold = () => {
+      renderer.setSettings({
+        labelRenderedSizeThreshold: narrowGraphQuery.matches ? 0 : 3,
+        labelGridCellSize: narrowGraphQuery.matches ? 180 : 100,
+      });
+    };
+    applyResponsiveLabelThreshold();
     const fitButton = host
       .closest<HTMLElement>(".local-graph-panel")
       ?.querySelector<HTMLButtonElement>("[data-fit-local-graph]");
-    const fitView = (animate: boolean) => {
-      if (animate) stopCameraAnimation(renderer);
-      fitRenderedGraph(renderer, graph.nodes(), {
-        animate: animate && !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-      });
-    };
-    fitView(false);
     const state: InteractionState = {
       hovered: null,
       neighbors: new Set(),
@@ -827,13 +920,41 @@ export async function mountLocalGraphs(): Promise<void> {
       draggedMoved: false,
       theme,
     };
-    renderer.setSettings(createHoverReducers(graph, state));
+    const hoverReducers = createHoverReducers(graph, state);
+    const applyLocalReducers = () => {
+      renderer.setSettings({
+        nodeReducer: (node, attrs) => {
+          const reduced = hoverReducers.nodeReducer(node, attrs);
+          return reduced.foreign
+            ? { ...reduced, forceLabel: forceForeignLabel(true, narrowGraphQuery.matches) }
+            : reduced;
+        },
+        edgeReducer: hoverReducers.edgeReducer,
+      });
+    };
+    applyLocalReducers();
+    const fitView = (animate: boolean) => {
+      if (animate) stopCameraAnimation(renderer);
+      fitRenderedGraph(renderer, graph.nodes(), {
+        animate: animate && !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+      });
+    };
+    fitView(false);
     wireHoverAndClick(renderer, graph, state);
     wireNodeDragging(renderer, graph, state);
     wireTheme(renderer, state);
     const onFitView = () => fitView(true);
+    const onNarrowGraphChange = () => {
+      applyResponsiveLabelThreshold();
+      applyLocalReducers();
+      fitView(false);
+    };
     fitButton?.addEventListener("click", onFitView);
-    renderer.on("kill", () => fitButton?.removeEventListener("click", onFitView));
+    narrowGraphQuery.addEventListener("change", onNarrowGraphChange);
+    renderer.on("kill", () => {
+      fitButton?.removeEventListener("click", onFitView);
+      narrowGraphQuery.removeEventListener("change", onNarrowGraphChange);
+    });
     if (import.meta.env.DEV) {
       (window as unknown as Record<string, unknown>).__localGraphDebug = { renderer, graph };
     }

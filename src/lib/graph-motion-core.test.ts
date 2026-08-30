@@ -97,6 +97,22 @@ describe("resize settling", () => {
     vi.useRealTimers();
   });
 
+  it("settles rapid measured changes once at the final dimensions and ignores unchanged overlays", () => {
+    vi.useFakeTimers();
+    const callback = vi.fn();
+    const resize = new ResizeSettler(1200, 800, callback);
+
+    expect(resize.update(1200, 800)).toBe(false);
+    expect(resize.update(900, 800)).toBe(true);
+    expect(resize.update(1040, 800)).toBe(true);
+    expect(resize.update(1040, 800)).toBe(false);
+    vi.runAllTimers();
+
+    expect(callback).toHaveBeenCalledOnce();
+    expect(callback).toHaveBeenCalledWith(1040, 800);
+    vi.useRealTimers();
+  });
+
   it("cancels queued work and rebases dimensions during an interaction", () => {
     vi.useFakeTimers();
     const callback = vi.fn();

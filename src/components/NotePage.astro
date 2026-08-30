@@ -3,6 +3,7 @@ import { render } from "astro:content";
 import BaseLayout from "../layouts/BaseLayout.astro";
 import NoteMeta from "./NoteMeta.astro";
 import NoteMentions from "./NoteMentions.astro";
+import GraphLegend from "./GraphLegend.astro";
 import { getLinkIndex } from "../lib/link-index";
 import { joinBase, routesFor } from "../lib/routes";
 import { getWorkspaceSnapshot } from "../lib/vault-state";
@@ -44,6 +45,8 @@ for (const id of localIds) {
 const nearbyNotes = index.notes
   .filter(({ id }) => nearbyIds.has(id))
   .sort((a, b) => a.title.localeCompare(b.title));
+const localLegendBrainIds = new Set([note.brainId, ...nearbyNotes.map(({ brainId }) => brainId)]);
+const localLegendBrains = snapshot.registry.brains.filter(({ id }) => localLegendBrainIds.has(id));
 const contextualRoutes = routesFor(
   snapshot.mode === "workspace"
     ? { mode: "workspace", brainId: note.brainId }
@@ -75,6 +78,12 @@ const url = (route: import("../lib/routes").LogicalRoute) =>
         </div>
         <div class="local-graph-panel__actions">
           <button class="graph-control" type="button" data-fit-local-graph>Fit view</button>
+          <GraphLegend
+            id="local-graph-legend"
+            context="local"
+            brains={localLegendBrains}
+            activeBrainId={note.brainId}
+          />
           <a href={url(contextualRoutes.graph)}>Open full graph</a>
         </div>
       </header>

@@ -34,6 +34,14 @@ export function nodeSize(degree: number): number {
   return 3.5 + Math.sqrt(degree) * 2.5;
 }
 
+export function forceForeignLabel(foreign: boolean, narrow: boolean): boolean {
+  return foreign && !narrow;
+}
+
+export function foreignLabelMarkWidth(labelSize: number): number {
+  return labelSize + 4;
+}
+
 function accentColor(accent: string, status: string): string {
   const match = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(accent);
   if (!match) return accent;
@@ -73,7 +81,7 @@ export function graphNodeAttributes(node: GraphNodeDatum, context: GraphContext)
     brainTitle: node.brainTitle,
     brainAccent: node.brainAccent,
     foreign,
-    forceLabel: foreign,
+    forceLabel: forceForeignLabel(foreign, false),
     zIndex: foreign ? 0 : 1,
   };
 }

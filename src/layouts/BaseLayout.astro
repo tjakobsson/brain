@@ -29,6 +29,8 @@ const contextualRoutes = activeBrain
 const contextLabel = activeBrain ? `@${activeBrain.id}` : combined ? "Combined" : "Workspace";
 const contextActionLabel = `Switch brain, current: ${contextLabel}`;
 const graphRoute = activeBrain ? contextualRoutes.graph : combined ? routes.graphAlias : routes.home;
+const hasGraphRoute = !isWorkspace || Boolean(activeBrain) || combined;
+const hasContextReports = !isWorkspace || Boolean(activeBrain);
 const brainRouteRegistry = snapshot.registry.brains.map(({ id }) => ({ id }));
 const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.meta.env.BASE_URL, route);
 ---
@@ -46,66 +48,107 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
     <div class="site-header-slot">
       <header class="site-header">
         <nav class="site-nav-pill" aria-label="Primary navigation">
-          {isWorkspace && (
-            <details class="context-switcher">
-              <summary
-                role="button"
-                aria-label={contextActionLabel}
-                aria-expanded="false"
-                title={contextActionLabel}
-                style={activeBrain ? `--brain-accent: ${activeBrain.accent}` : undefined}
-              >
-                <BrainMark />
-              </summary>
-              <div class="context-switcher__panel">
-                <a href={url(routes.home)} aria-current={!activeBrain && !combined ? "page" : undefined}>
-                  <span class="context-switcher__label">Brain chooser</span>
-                  {!activeBrain && !combined && <span class="context-switcher__current">Current</span>}
-                </a>
-                {snapshot.registry.brains.map((brain) => (
-                  <a
-                    href={url(routesFor({ mode: "workspace", brainId: brain.id }).graph)}
-                    aria-current={brain.id === activeBrainId ? "page" : undefined}
-                    style={`--brain-accent: ${brain.accent}`}
-                  >
-                    <BrainMark />
-                    <span class="context-switcher__label" title={`@${brain.id}`}>@{brain.id}</span>
-                    {brain.id === activeBrainId && <span class="context-switcher__current">Current</span>}
-                  </a>
-                ))}
-              </div>
-            </details>
-          )}
-          <a
-            class="nav-action graph-trigger"
-            href={url(graphRoute)}
-            aria-label="Graph"
-            data-combined-route={combined ? "" : undefined}
-            data-combined-graph-route={combined ? "" : undefined}
-            data-combined-registry={combined ? JSON.stringify(brainRouteRegistry) : undefined}
-            hidden={combined}
-          >
-            <svg class="nav-icon graph-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M7.5 7.5 12 5l4.5 2.5v5L12 15l-4.5-2.5z"></path>
-              <path d="M7.5 12.5 5 17m11.5-4.5L19 17M12 15v4"></path>
-              <circle cx="5" cy="17" r="1.5"></circle>
-              <circle cx="19" cy="17" r="1.5"></circle>
-              <circle cx="12" cy="20" r="1.5"></circle>
-            </svg>
-          </a>
           <button
-            class="nav-action search-trigger"
-            data-open-switcher
+            class="nav-action mobile-nav-launcher"
             type="button"
-            aria-label="Search"
-            aria-haspopup="dialog"
-            aria-controls="quick-switcher"
+            aria-label="Navigation"
+            aria-controls="mobile-nav-actions"
+            aria-expanded="false"
           >
-            <svg class="nav-icon search-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="11" cy="11" r="6.5"></circle>
-              <path d="m16 16 4 4"></path>
+            <svg class="nav-icon launcher-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="8" cy="8" r="1.5"></circle>
+              <circle cx="16" cy="8" r="1.5"></circle>
+              <circle cx="8" cy="16" r="1.5"></circle>
+              <circle cx="16" cy="16" r="1.5"></circle>
             </svg>
           </button>
+          <div id="mobile-nav-actions" class="mobile-nav-actions" inert aria-hidden="true">
+            {isWorkspace && (
+              <details class="context-switcher">
+                <summary
+                  role="button"
+                  aria-label={contextActionLabel}
+                  aria-expanded="false"
+                  title={contextActionLabel}
+                  style={activeBrain ? `--brain-accent: ${activeBrain.accent}` : undefined}
+                >
+                  <BrainMark />
+                </summary>
+                <div class="context-switcher__panel">
+                  <a href={url(routes.home)} aria-current={!activeBrain && !combined ? "page" : undefined}>
+                    <span class="context-switcher__label">Brain chooser</span>
+                    {!activeBrain && !combined && <span class="context-switcher__current">Current</span>}
+                  </a>
+                  {snapshot.registry.brains.map((brain) => (
+                    <a
+                      href={url(routesFor({ mode: "workspace", brainId: brain.id }).graph)}
+                      aria-current={brain.id === activeBrainId ? "page" : undefined}
+                      style={`--brain-accent: ${brain.accent}`}
+                    >
+                      <BrainMark />
+                      <span class="context-switcher__label" title={`@${brain.id}`}>@{brain.id}</span>
+                      {brain.id === activeBrainId && <span class="context-switcher__current">Current</span>}
+                    </a>
+                  ))}
+                </div>
+              </details>
+            )}
+            <a
+              class="nav-action graph-trigger"
+              href={url(graphRoute)}
+              aria-label="Graph"
+              data-combined-route={combined ? "" : undefined}
+              data-combined-graph-route={combined ? "" : undefined}
+              data-combined-registry={combined ? JSON.stringify(brainRouteRegistry) : undefined}
+              hidden={!hasGraphRoute || combined}
+            >
+              <svg class="nav-icon graph-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M7.5 7.5 12 5l4.5 2.5v5L12 15l-4.5-2.5z"></path>
+                <path d="M7.5 12.5 5 17m11.5-4.5L19 17M12 15v4"></path>
+                <circle cx="5" cy="17" r="1.5"></circle>
+                <circle cx="19" cy="17" r="1.5"></circle>
+                <circle cx="12" cy="20" r="1.5"></circle>
+              </svg>
+            </a>
+            <button
+              class="nav-action search-trigger"
+              data-open-switcher
+              type="button"
+              aria-label="Search"
+              aria-haspopup="dialog"
+              aria-controls="quick-switcher"
+            >
+              <svg class="nav-icon search-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="6.5"></circle>
+                <path d="m16 16 4 4"></path>
+              </svg>
+            </button>
+            {hasContextReports && (
+              <a class="nav-action mobile-direct-action" href={url(contextualRoutes.tags)} aria-label="Tags">
+                <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 5.5V11l8.5 8.5 7-7L11 4H5.5A1.5 1.5 0 0 0 4 5.5Z"></path>
+                  <circle cx="8" cy="8" r="1"></circle>
+                </svg>
+              </a>
+            )}
+            {hasContextReports && (
+              <a class="nav-action mobile-direct-action" href={url(contextualRoutes.recent)} aria-label="Recent">
+                <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="12" cy="12" r="8"></circle>
+                  <path d="M12 7v5l3.5 2"></path>
+                </svg>
+              </a>
+            )}
+            {hasContextReports && (
+              <a class="nav-action mobile-direct-action" href={url(contextualRoutes.orphans)} aria-label="Orphans">
+                <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="8" cy="8" r="2.5"></circle>
+                  <circle cx="16" cy="16" r="2.5"></circle>
+                  <path d="m10 10 4 4" stroke-dasharray="2.5 2.5"></path>
+                </svg>
+              </a>
+            )}
+          </div>
           <details class="nav-menu">
             <summary class="nav-action" role="button" aria-label="More navigation" aria-expanded="false">
               <svg class="nav-icon expand-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -113,9 +156,9 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
               </svg>
             </summary>
             <div class="nav-menu-panel">
-              {(!isWorkspace || activeBrain) && <a href={url(contextualRoutes.tags)}>Tags</a>}
-              {(!isWorkspace || activeBrain) && <a href={url(contextualRoutes.recent)}>Recent</a>}
-              {(!isWorkspace || activeBrain) && <a href={url(contextualRoutes.orphans)}>Orphans</a>}
+              {hasContextReports && <a href={url(contextualRoutes.tags)}>Tags</a>}
+              {hasContextReports && <a href={url(contextualRoutes.recent)}>Recent</a>}
+              {hasContextReports && <a href={url(contextualRoutes.orphans)}>Orphans</a>}
             </div>
           </details>
         </nav>
@@ -126,6 +169,66 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
     </main>
     <QuickSwitcher activeBrainId={activeBrainId} combined={combined} workspace={isWorkspace} />
     <script>
+      const header = document.querySelector<HTMLElement>(".site-header")!;
+      const launcher = header.querySelector<HTMLButtonElement>(".mobile-nav-launcher")!;
+      const mobileActions = header.querySelector<HTMLElement>(".mobile-nav-actions")!;
+      const mobileQuery = window.matchMedia("(max-width: 700px), (pointer: coarse)");
+      let mobileExpanded = false;
+
+      const applyMobileState = () => {
+        const mobile = mobileQuery.matches;
+        header.toggleAttribute("data-mobile", mobile);
+        header.toggleAttribute("data-mobile-expanded", mobile && mobileExpanded);
+        launcher.setAttribute("aria-expanded", String(mobile && mobileExpanded));
+        mobileActions.setAttribute("aria-hidden", String(mobile && !mobileExpanded));
+        mobileActions.inert = mobile && !mobileExpanded;
+        mobileActions.style.setProperty("--mobile-actions-height", `${mobileActions.scrollHeight}px`);
+      };
+      const collapseMobile = (restoreFocus: boolean) => {
+        if (!mobileQuery.matches || !mobileExpanded) return;
+        mobileExpanded = false;
+        for (const details of mobileActions.querySelectorAll<HTMLDetailsElement>("details[open]")) {
+          details.open = false;
+        }
+        applyMobileState();
+        if (restoreFocus) launcher.focus();
+      };
+
+      launcher.addEventListener("click", () => {
+        if (mobileExpanded) {
+          collapseMobile(false);
+          return;
+        }
+        mobileExpanded = true;
+        applyMobileState();
+      });
+      mobileActions.addEventListener("click", (event) => {
+        const target = event.target instanceof Element ? event.target : null;
+        if (target?.closest(".search-trigger")) collapseMobile(true);
+        else if (target?.closest("a")) collapseMobile(false);
+      }, { capture: true });
+      document.addEventListener("pointerdown", (event) => {
+        if (mobileExpanded && event.target instanceof Node && !header.contains(event.target)) {
+          collapseMobile(false);
+          const interactiveTarget = event.target instanceof Element && event.target.closest(
+            'a[href], button, input, select, textarea, summary, [contenteditable="true"], [tabindex]:not([tabindex="-1"])',
+          );
+          if (!interactiveTarget) window.setTimeout(() => launcher.focus(), 0);
+        }
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && mobileExpanded) {
+          event.stopImmediatePropagation();
+          collapseMobile(true);
+        }
+      });
+      mobileQuery.addEventListener("change", () => {
+        mobileExpanded = false;
+        applyMobileState();
+      });
+      new ResizeObserver(applyMobileState).observe(mobileActions);
+      applyMobileState();
+
       for (const details of document.querySelectorAll<HTMLDetailsElement>(".context-switcher, .nav-menu")) {
         const summary = details.querySelector<HTMLElement>(":scope > summary")!;
         const updateExpanded = () => summary.setAttribute("aria-expanded", String(details.open));

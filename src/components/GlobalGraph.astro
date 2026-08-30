@@ -1,6 +1,7 @@
 ---
 import { getLinkIndex } from "../lib/link-index";
 import { getWorkspaceSnapshot } from "../lib/vault-state";
+import GraphLegend from "./GraphLegend.astro";
 
 interface Props { activeBrainId?: string; combined?: boolean }
 const { activeBrainId, combined = false } = Astro.props;
@@ -34,18 +35,45 @@ const legendBrains = snapshot.registry.brains.filter((brain) =>
         id="graph-filter-toggle"
         class="graph-control graph-filter-toggle"
         type="button"
+        aria-label="Filters"
         aria-controls="graph-sidebar"
         aria-expanded="false"
-      >Filters</button>
-      <button id="graph-fit-view" class="graph-control" type="button">Fit view</button>
+      >
+        <svg class="graph-control-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 6h16M7 12h10M10 18h4"></path>
+        </svg>
+        <span class="graph-control-label" data-control-label>Filters</span>
+      </button>
+      <button id="graph-fit-view" class="graph-control" type="button" aria-label="Fit view">
+        <svg class="graph-control-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M9 4H4v5M15 4h5v5M20 15v5h-5M4 15v5h5"></path>
+        </svg>
+        <span class="graph-control-label">Fit view</span>
+      </button>
       {activeBrainId && boundaryBrainIds.size > 0 && (
         <button
           id="graph-related-toggle"
           class="graph-control graph-related-toggle"
           type="button"
+          aria-label="Related brains"
           aria-pressed="false"
-        >Show related brains</button>
+        >
+          <svg class="graph-control-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="7" cy="12" r="3"></circle>
+            <circle cx="17" cy="7" r="3"></circle>
+            <circle cx="17" cy="17" r="3"></circle>
+            <path d="m9.7 10.7 4.5-2.3M9.7 13.3l4.5 2.3"></path>
+          </svg>
+          <span class="graph-control-label" data-control-label>Show related brains</span>
+        </button>
       )}
+      <GraphLegend
+        id="global-graph-legend"
+        context={combined ? "combined" : activeBrainId ? "brain" : "global"}
+        brains={legendBrains}
+        activeBrainId={activeBrainId}
+        globalControl
+      />
     </div>
     <aside id="graph-sidebar" class="graph-sidebar" inert>
       <h2>Search</h2>
@@ -149,7 +177,11 @@ const legendBrains = snapshot.registry.brains.filter((brain) =>
     sidebar.inert = !open;
     graphShell.classList.toggle("filters-closed", !open);
     filterToggle.setAttribute("aria-expanded", String(open));
-    filterToggle.textContent = open ? "Close filters" : "Filters";
+    filterToggle.setAttribute("aria-label", open ? "Close filters" : "Filters");
+    filterToggle.querySelector<HTMLElement>("[data-control-label]")!.textContent = open
+      ? "Close filters"
+      : "Filters";
+    if (open) document.dispatchEvent(new CustomEvent("graph-legend-close"));
     if (persist) {
       try {
         sessionStorage.setItem(filterStateKey, String(open));
@@ -200,6 +232,9 @@ const legendBrains = snapshot.registry.brains.filter((brain) =>
 
   filterToggle.addEventListener("click", () => {
     setFiltersOpen(filterToggle.getAttribute("aria-expanded") !== "true");
+  });
+  document.addEventListener("graph-legend-open", () => {
+    if (filterToggle.getAttribute("aria-expanded") === "true") setFiltersOpen(false);
   });
   document.addEventListener("keydown", (event) => {
     if (document.querySelector("#quick-switcher:not([hidden])")) return;
