@@ -86,6 +86,14 @@ describe("scanVault", () => {
     expect(mentions?.map((n) => n.slug)).toEqual(["note-a"]);
   });
 
+  it("does not treat authored link labels as unlinked mentions", () => {
+    writeNote("Source.md", "[[Other|Principles]] and [Principles](/other).");
+    writeNote("Other.md", "Linked by its alias.");
+    writeNote("Principles.md", "Only present in authored link labels.");
+
+    expect(scanVault(dir).unlinkedMentions.get("principles")).toBeUndefined();
+  });
+
   it("ignores mentions inside code blocks", () => {
     writeNote("Note A.md", "```\nMentions Note B here.\n```");
     writeNote("Note B.md", "Nothing.");

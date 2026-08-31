@@ -1,7 +1,7 @@
 import type { Emphasis, Html, Link, Paragraph, Root, Text } from "mdast";
 import { VFile } from "vfile";
 import { describe, expect, it } from "vitest";
-import { remarkWikiLinks } from "./remark-wiki-links";
+import { remarkPotentialLinks, remarkWikiLinks } from "./remark-wiki-links";
 import { slugify } from "./slugify";
 import { routes } from "./routes";
 import type { LinkIndex, VaultNote } from "./vault-scan";
@@ -71,10 +71,13 @@ function runWorkspace(text: string, source: string): Paragraph {
     type: "root",
     children: [{ type: "paragraph", children: [{ type: "text", value: text }] }],
   };
-  remarkWikiLinks({
+  const options = {
     index: snapshot.index,
     brainAccents: new Map(snapshot.registry.brains.map((brain) => [brain.id, brain.accent])),
-  })(tree, new VFile({ path: source }));
+  };
+  const file = new VFile({ path: source });
+  remarkWikiLinks(options)(tree, file);
+  remarkPotentialLinks(options)(tree, file);
   return tree.children[0] as Paragraph;
 }
 
@@ -229,8 +232,9 @@ describe("remarkWikiLinks", () => {
     };
     const file = new VFile({ path: path.join(workspace, "design", "Interaction model.md") });
 
-    remarkHighlights()(tree, file);
     remarkWikiLinks({ index: snapshot.index, brainAccents: new Map() })(tree, file);
+    remarkHighlights()(tree, file);
+    remarkPotentialLinks({ index: snapshot.index })(tree, file);
 
     const mark = (tree.children[0] as Paragraph).children[1];
     expect(mark).toMatchObject({
@@ -239,6 +243,28 @@ describe("remarkWikiLinks", () => {
       children: [{ type: "html" }],
     });
     expect(((mark as Emphasis).children[0] as Html).value).toContain("potential-link");
+  });
+
+  it("resolves authored links before parsing highlight delimiters", () => {
+    const tree: Root = {
+      type: "root",
+      children: [{
+        type: "paragraph",
+        children: [{ type: "text", value: "[[Note B|==label==]] and [[A == B]]" }],
+      }],
+    };
+    const file = new VFile({ path: "/vault/Source Note.md" });
+    const options = { index: fakeIndex(["Note B", "A == B"]), brainAccents: new Map() };
+
+    remarkWikiLinks(options)(tree, file);
+    remarkHighlights()(tree, file);
+    remarkPotentialLinks(options)(tree, file);
+
+    const paragraph = tree.children[0] as Paragraph;
+    expect(paragraph.children.filter((child) => child.type === "link")).toMatchObject([
+      { url: "/notes/note-b", children: [{ type: "text", value: "==label==" }] },
+      { url: "/notes/a-b", children: [{ type: "text", value: "A == B" }] },
+    ]);
   });
 
   it("does not mark already-linked pairs, authored links, code, or unrelated text", () => {
@@ -265,6 +291,10 @@ describe("remarkWikiLinks", () => {
       }],
     };
     remarkWikiLinks({ index: snapshot.index, brainAccents: new Map() })(
+      tree,
+      new VFile({ path: path.join(workspace, "design", "Interaction model.md") }),
+    );
+    remarkPotentialLinks({ index: snapshot.index })(
       tree,
       new VFile({ path: path.join(workspace, "design", "Interaction model.md") }),
     );

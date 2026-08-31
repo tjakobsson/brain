@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   displayText,
   parseWikiLinks,
+  stripAuthoredLinks,
   stripCode,
   stripMarkdownLinks,
   wikiLinksToText,
@@ -230,5 +231,15 @@ describe("stripCode", () => {
 describe("stripMarkdownLinks", () => {
   it("keeps visible text, drops URLs and images", () => {
     expect(stripMarkdownLinks("a [shown](page.md) ![alt](img.png)")).toBe("a shown alt");
+  });
+});
+
+describe("stripAuthoredLinks", () => {
+  it("masks wiki and Markdown links while preserving surrounding prose", () => {
+    const text = "Before [[Other|Principles]] and [Principles](/other) after.";
+    const stripped = stripAuthoredLinks(text);
+    expect(stripped).toHaveLength(text.length);
+    expect(stripped).toMatch(/^Before\s+and\s+after\.$/);
+    expect(stripped).not.toContain("Principles");
   });
 });

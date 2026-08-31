@@ -180,6 +180,13 @@ export function remarkWikiLinks(options: RemarkWikiLinksOptions = {}) {
       getWorkspaceSnapshot().registry.brains.map((brain) => [brain.id, brain.accent]),
     );
     transformTextNodes(tree, (node) => splitTextNode(node, index, source, base, brainAccents));
+  };
+}
+
+export function remarkPotentialLinks(options: RemarkWikiLinksOptions = {}) {
+  return (tree: Root, file: VFile) => {
+    const index = options.index ?? getLinkIndex();
+    const source = findSource(index, file, options.sourceBrainId);
     const targets = potentialTargets(index, source);
     transformTextNodes(tree, (node) => splitPotentialLinks(node, targets));
   };

@@ -4,6 +4,7 @@ import matter from "gray-matter";
 import { VAULT_DIR } from "./vault-path";
 import {
   parseWikiLinks,
+  stripAuthoredLinks,
   stripCode,
   stripMarkdownLinks,
   wikiLinksToText,
@@ -149,9 +150,9 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** Plain prose a mention can hide in: no code, wiki syntax reduced to display text. */
+/** Plain prose a mention can hide in, excluding code and authored links. */
 function searchableText(body: string): string {
-  return stripMarkdownLinks(wikiLinksToText(stripCode(body)));
+  return stripAuthoredLinks(stripCode(body));
 }
 
 function scanBrain(input: BrainManifestInput, mode: InputMode): VaultNote[] {

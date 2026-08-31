@@ -135,6 +135,36 @@ export function stripCode(text: string): string {
   return masked.join("");
 }
 
+/** Remove authored wiki-links and Markdown links from mention-search prose. */
+export function stripAuthoredLinks(text: string): string {
+  const masked = text.split("");
+  const tree = fromMarkdown(text);
+
+  function mask(start: number, end: number): void {
+    for (let index = start; index < end; index += 1) {
+      if (masked[index] !== "\n" && masked[index] !== "\r") masked[index] = " ";
+    }
+  }
+
+  function visit(node: Nodes): void {
+    if (node.type === "link" || node.type === "image") {
+      const start = node.position?.start.offset ?? 0;
+      mask(start, node.position?.end.offset ?? start);
+      return;
+    }
+    if ("children" in node) {
+      for (const child of (node as Parent).children) visit(child);
+    }
+  }
+
+  visit(tree);
+  const withoutMarkdownLinks = masked.join("");
+  for (const link of parseWikiLinks(withoutMarkdownLinks)) {
+    mask(link.index, link.index + link.length);
+  }
+  return masked.join("");
+}
+
 /** Reduce markdown links/images to their visible text. */
 export function stripMarkdownLinks(text: string): string {
   return text.replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1");
