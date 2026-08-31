@@ -255,30 +255,40 @@ export function stripAuthoredLinks(text: string): string {
     }
   }
 
-  for (const match of text.matchAll(/<([A-Za-z][\w:-]*)\b[^>]*>[\s\S]*?<\/\1\s*>/gi)) {
-    mask(match.index, match.index + match[0].length);
+  function visitChildren(parent: Parent): void {
+    const rawHtmlStack: string[] = [];
+    for (const child of parent.children) {
+      if (child.type === "html") {
+        const start = child.position?.start.offset ?? 0;
+        mask(start, child.position?.end.offset ?? start);
+        updateRawHtmlStack(child.value, rawHtmlStack);
+        continue;
+      }
+
+      if (rawHtmlStack.length > 0) {
+        const start = child.position?.start.offset ?? 0;
+        mask(start, child.position?.end.offset ?? start);
+        continue;
+      }
+
+      if (
+        child.type === "link" ||
+        child.type === "image" ||
+        child.type === "linkReference" ||
+        child.type === "imageReference" ||
+        child.type === "definition"
+      ) {
+        const start = child.position?.start.offset ?? 0;
+        mask(start, child.position?.end.offset ?? start);
+      } else if ("children" in child) {
+        visitChildren(child as Parent);
+      }
+    }
   }
 
-  function visit(node: Nodes): void {
-    if (
-      node.type === "link" ||
-      node.type === "image" ||
-      node.type === "linkReference" ||
-      node.type === "imageReference" ||
-      node.type === "definition"
-    ) {
-      const start = node.position?.start.offset ?? 0;
-      mask(start, node.position?.end.offset ?? start);
-      return;
-    }
-    if ("children" in node) {
-      for (const child of (node as Parent).children) visit(child);
-    }
-  }
-
-  visit(tree);
+  visitChildren(tree);
   const withoutMarkdownLinks = masked.join("");
-  for (const link of parseWikiLinks(withoutMarkdownLinks)) {
+  for (const link of parseMarkdownWikiLinks(withoutMarkdownLinks)) {
     mask(link.index, link.index + link.length);
   }
   return masked.join("");

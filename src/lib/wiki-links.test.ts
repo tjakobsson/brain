@@ -258,4 +258,13 @@ describe("stripAuthoredLinks", () => {
     expect(stripped).toMatch(/^Before\s+,\s+,\s+, and\s+after\.$/);
     expect(stripped).not.toContain("Principles");
   });
+
+  it("masks nested raw HTML containers and context-aware wiki-links", () => {
+    const text = "10. [[Other\n    target|Principles]]\n\n<span><span>ignored</span>Principles</span>";
+    const stripped = stripAuthoredLinks(text);
+
+    expect(stripped).toHaveLength(text.length);
+    expect(stripped).not.toContain("Principles");
+    expect(stripped).not.toContain("ignored");
+  });
 });

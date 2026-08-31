@@ -140,6 +140,21 @@ describe("scanVault", () => {
     expect(scanVault(dir).unlinkedMentions.get("principles")).toBeUndefined();
   });
 
+  it("does not treat wrapped list-link aliases as unlinked mentions", () => {
+    writeNote("Source.md", "10. [[Other\n    target|Principles]]");
+    writeNote("Other target.md", "Linked from a list.");
+    writeNote("Principles.md", "Only present as the authored alias.");
+
+    expect(scanVault(dir).unlinkedMentions.get("principles")).toBeUndefined();
+  });
+
+  it("does not treat text in nested raw HTML containers as an unlinked mention", () => {
+    writeNote("Source.md", "Intro <span><span>ignored</span>Principles</span>");
+    writeNote("Principles.md", "Only present inside nested HTML.");
+
+    expect(scanVault(dir).unlinkedMentions.get("principles")).toBeUndefined();
+  });
+
   it("does not treat callout type markers as unlinked mentions", () => {
     writeNote("Source.md", "> [!note]\n> Read this carefully.");
     writeNote("Note.md", "A note title that matches the callout type.");
