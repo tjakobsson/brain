@@ -47,6 +47,29 @@ describe("remarkHighlights", () => {
     );
   });
 
+  it("renders inside benign HTML wrappers but skips unsafe containers", () => {
+    const tree: Root = {
+      type: "root",
+      children: [{
+        type: "paragraph",
+        children: [
+          { type: "html", value: "<span>" },
+          { type: "text", value: "==important==" },
+          { type: "html", value: "</span>" },
+          { type: "html", value: "<script>" },
+          { type: "text", value: "==unsafe==" },
+          { type: "html", value: "</script>" },
+        ],
+      }],
+    };
+
+    remarkHighlights()(tree, new VFile({ path: "x.md" }));
+
+    const children = (tree.children[0] as Paragraph).children;
+    expect(children.filter((child) => child.type === "emphasis")).toHaveLength(1);
+    expect(children).toContainEqual({ type: "text", value: "==unsafe==" });
+  });
+
   it("handles adjacent single-line and multiline highlights", () => {
     const para = run("==one====two\ncontinued==");
     const marks = para.children.filter((c) => c.type === "emphasis") as Emphasis[];

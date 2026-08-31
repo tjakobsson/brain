@@ -32,6 +32,6 @@ function splitHighlights(node: Text): PhrasingContent[] {
 /** Renders Brain `==highlighted text==` syntax as `<mark>`. */
 export function remarkHighlights() {
   return (tree: Root, _file: VFile) => {
-    transformTextNodes(tree, splitHighlights);
+    transformTextNodes(tree, splitHighlights, { skipRawHtmlContainers: "unsafe" });
   };
 }
