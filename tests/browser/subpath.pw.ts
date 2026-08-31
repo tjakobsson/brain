@@ -756,7 +756,7 @@ test("mobile local graphs recompose clustered positions for their viewport", asy
   expect(Math.abs(stableInk.nodeBottom - settledInk.nodeBottom)).toBeLessThan(3);
 });
 
-test("local graphs resume an interrupted initial settle when the page becomes visible", async ({ page }, testInfo) => {
+test("local graphs resume interrupted motion when the page becomes visible", async ({ page }, testInfo) => {
   const { base } = deployment(testInfo);
   await preserveGraphPixels(page);
   await page.addInitScript(() => {
@@ -778,6 +778,19 @@ test("local graphs resume an interrupted initial settle when the page becomes vi
 
   await expect.poll(async () => Number(await graph.getAttribute("data-fit-completions"))).toBeGreaterThan(0);
   await expect.poll(async () => (await graphNodeComponents(graph)).length).toBeGreaterThan(1);
+
+  const initialCompletions = Number(await graph.getAttribute("data-fit-completions"));
+  await page.getByRole("button", { name: "Fit view" }).click();
+  await page.evaluate(() => {
+    (window as typeof window & { __graphDocumentHidden: boolean }).__graphDocumentHidden = true;
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.evaluate(() => {
+    (window as typeof window & { __graphDocumentHidden: boolean }).__graphDocumentHidden = false;
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect.poll(async () => Number(await graph.getAttribute("data-fit-completions")))
+    .toBeGreaterThan(initialCompletions);
 });
 
 test("touch layouts keep the local graph interactive", async ({ browser }, testInfo) => {

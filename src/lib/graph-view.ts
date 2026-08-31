@@ -977,13 +977,13 @@ export async function mountLocalGraphs(): Promise<void> {
         return () => camera.off("updated", listener);
       },
     );
-    let pendingSettle: "initial" | "resize" | null = null;
+    let pendingMotion: "initial" | "resize" | "fit" | null = null;
     const motion = new GraphMotionController(
       renderer,
       graph,
       local,
       () => {
-        pendingSettle = null;
+        pendingMotion = null;
         host.dataset.fittedRatio = String(labelReveal.recordFit());
         host.dataset.fitCompletions = String(Number(host.dataset.fitCompletions ?? 0) + 1);
       },
@@ -992,13 +992,13 @@ export async function mountLocalGraphs(): Promise<void> {
       true,
     );
     const fitView = () => {
-      pendingSettle = null;
+      pendingMotion = "fit";
       stopCameraAnimation(renderer);
       labelReveal.beginFit();
       motion.fitView(graph.nodes());
     };
     const settle = (trigger: "initial" | "resize") => {
-      pendingSettle = trigger;
+      pendingMotion = trigger;
       labelReveal.beginFit();
       motion.settle(trigger, graph.nodes(), slug);
     };
@@ -1011,13 +1011,13 @@ export async function mountLocalGraphs(): Promise<void> {
       },
     );
     const interruptAutomaticMotion = () => {
-      pendingSettle = null;
+      pendingMotion = null;
       resizeSettler.reset(host.clientWidth, host.clientHeight);
       motion.cancel();
       labelReveal.finishFitPlanning();
       stopCameraAnimation(renderer);
     };
-    wireHoverAndClick(renderer, graph, state, interruptAutomaticMotion);
+    wireHoverAndClick(renderer, graph, state);
     wireNodeDragging(renderer, graph, state, undefined, interruptAutomaticMotion);
     wireTheme(renderer, state);
     const onFitView = () => {
@@ -1042,8 +1042,10 @@ export async function mountLocalGraphs(): Promise<void> {
       if (document.hidden) {
         motion.cancel();
         labelReveal.finishFitPlanning();
-      } else if (pendingSettle) {
-        settle(pendingSettle);
+      } else if (pendingMotion === "fit") {
+        fitView();
+      } else if (pendingMotion) {
+        settle(pendingMotion);
       }
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
