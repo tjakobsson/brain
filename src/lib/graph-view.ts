@@ -1033,8 +1033,13 @@ export async function mountLocalGraphs(): Promise<void> {
     }, interruptAutomaticMotion);
     wireTheme(renderer, state);
     const onFitView = () => {
+      if (
+        resizeSettler.hasPending()
+        || pendingMotion === "initial"
+        || pendingMotion === "resize"
+        || pendingMotion === "drag-resize"
+      ) return;
       resizeSettler.reset(host.clientWidth, host.clientHeight);
-      if (pendingMotion === "initial" || pendingMotion === "resize" || pendingMotion === "drag-resize") return;
       fitView();
     };
     const onNarrowGraphChange = () => {

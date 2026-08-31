@@ -742,6 +742,15 @@ test("mobile local graphs recompose clustered positions for their viewport", asy
   const portraitHeight = Math.max(...portrait.map(({ y }) => y)) - Math.min(...portrait.map(({ y }) => y));
   expect(portraitHeight).toBeGreaterThan(portraitWidth);
 
+  const beforeQueuedResize = Number(await graph.getAttribute("data-fit-completions"));
+  await page.setViewportSize({ width: 650, height: 844 });
+  await page.waitForTimeout(80);
+  await page.getByRole("button", { name: "Fit view" }).click();
+  await page.waitForTimeout(500);
+  expect(Number(await graph.getAttribute("data-fit-completions"))).toBe(beforeQueuedResize);
+  await expect.poll(async () => Number(await graph.getAttribute("data-fit-completions")))
+    .toBeGreaterThan(beforeQueuedResize);
+
   const portraitCompletions = Number(await graph.getAttribute("data-fit-completions"));
   await page.setViewportSize({ width: 844, height: 390 });
   await expect.poll(async () => Number(await graph.getAttribute("data-fit-completions")))

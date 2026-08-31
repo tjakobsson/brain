@@ -313,6 +313,10 @@ export class ResizeSettler {
     return true;
   }
 
+  hasPending(): boolean {
+    return this.timer !== null;
+  }
+
   cancel(): void {
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
