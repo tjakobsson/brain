@@ -214,6 +214,44 @@ describe("parseMarkdownWikiLinks", () => {
       length: raw.length,
     }]);
   });
+
+  it.each([
+    ["[[Note&vert;label]]", "Note", null, "label"],
+    ["[[Note&num;Heading&vert;label]]", "Note", "Heading", "label"],
+    ["[[Note&NewLine;Title]]", "Note Title", null, null],
+    ["&lbrack;&lbrack;Note&rbrack;&rbrack;", "Note", null, null],
+    ["\\[\\[Note&rbrack;&rbrack;", "Note", null, null],
+  ])(
+    "tokenizes decoded wiki-link syntax while preserving the source span: %s",
+    (raw, target, anchor, alias) => {
+      const source = `Before ${raw} after`;
+      expect(parseMarkdownWikiLinks(source)).toEqual([{
+        raw,
+        target,
+        targetBrainId: null,
+        anchor,
+        alias,
+        index: 7,
+        length: raw.length,
+      }]);
+    },
+  );
+
+  it("maps a closing character reference without consuming following source text", () => {
+    const raw = "[[Note&rbrack;&rbrack;";
+    const source = `Before ${raw} trailing]] after`;
+
+    expect(parseMarkdownWikiLinks(source)).toMatchObject([{
+      raw,
+      target: "Note",
+      index: 7,
+      length: raw.length,
+    }]);
+  });
+
+  it("rejects decoded line breaks that split a wiki-link across blocks", () => {
+    expect(parseMarkdownWikiLinks("[[Note&NewLine;&NewLine;Title]]")).toEqual([]);
+  });
 });
 
 describe("displayText", () => {

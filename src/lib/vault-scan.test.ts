@@ -161,6 +161,16 @@ describe("scanVault", () => {
     ]);
   });
 
+  it("indexes delimiters introduced by character references", () => {
+    writeNote("Source.md", "See [[Note&vert;label]].");
+    writeNote("Note.md", "Decoded alias delimiter.");
+
+    const index = scanVault(dir);
+    expect(index.edges).toMatchObject([{ source: "source", target: "note" }]);
+    expect(index.backlinks.get("note")).toMatchObject([{ source: { slug: "source" } }]);
+    expect(index.unresolved).toEqual([]);
+  });
+
   it("does not index wiki-link delimiters spanning GFM table rows", () => {
     writeNote("Source.md", "| Value |\n| --- |\n| [[Note\n| shown]] |");
     writeNote("Note.md", "Not linked across table rows.");

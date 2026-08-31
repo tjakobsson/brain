@@ -41,6 +41,12 @@ interface TextRange {
   quoteDepth: number;
 }
 
+interface MarkdownTextRange {
+  start: number;
+  end: number;
+  value: string;
+}
+
 function parseMarkdown(text: string): Root {
   return fromMarkdown(text, {
     extensions: [gfm()],
@@ -75,6 +81,64 @@ function decodeMarkdownField(value: string): string {
     return normalizeField(tree.children[0].children[0].value.slice(2, -2));
   }
   return value;
+}
+
+function decodedSourceOffsets(source: string, decoded: string): number[] {
+  const offsets = [0];
+  let sourceIndex = 0;
+  let decodedIndex = 0;
+
+  while (decodedIndex < decoded.length) {
+    if (source[sourceIndex] === decoded[decodedIndex]) {
+      sourceIndex += 1;
+      decodedIndex += 1;
+      offsets[decodedIndex] = sourceIndex;
+      continue;
+    }
+
+    if (
+      source[sourceIndex] === "\r" &&
+      source[sourceIndex + 1] === "\n" &&
+      decoded[decodedIndex] === "\n"
+    ) {
+      sourceIndex += 2;
+      decodedIndex += 1;
+      offsets[decodedIndex] = sourceIndex;
+      continue;
+    }
+
+    if (source[sourceIndex] === "\\" && source[sourceIndex + 1] === decoded[decodedIndex]) {
+      sourceIndex += 2;
+      decodedIndex += 1;
+      offsets[decodedIndex] = sourceIndex;
+      continue;
+    }
+
+    const characterReference = /^&(?:#[xX][\dA-Fa-f]+|#\d+|[A-Za-z][\dA-Za-z]+);/.exec(
+      source.slice(sourceIndex),
+    )?.[0];
+    if (characterReference) {
+      const tree = parseMarkdown(characterReference);
+      const child = tree.children[0]?.type === "paragraph" ? tree.children[0].children[0] : undefined;
+      const value = child?.type === "text" ? child.value : characterReference;
+      if (decoded.startsWith(value, decodedIndex)) {
+        for (let index = 1; index <= value.length; index += 1) {
+          offsets[decodedIndex + index] = index === value.length
+            ? sourceIndex + characterReference.length
+            : sourceIndex;
+        }
+        sourceIndex += characterReference.length;
+        decodedIndex += value.length;
+        continue;
+      }
+    }
+
+    // mdast omits continuation indentation and blockquote markers from text values.
+    sourceIndex += 1;
+    offsets[decodedIndex] = sourceIndex;
+  }
+
+  return offsets;
 }
 
 function blockquoteDepth(linePrefix: string): number {
@@ -184,10 +248,10 @@ export function parseWikiLinks(text: string): WikiLink[] {
 
 /** Parse only source ranges that Astro's GFM parser exposes as renderable text nodes. */
 export function parseMarkdownWikiLinks(text: string): WikiLink[] {
-  const ranges: TextRange[] = [];
+  const ranges: MarkdownTextRange[] = [];
   const tree = parseMarkdown(text);
 
-  function visit(node: Nodes, quoteDepth: number, insideUnsafeHtml: boolean): void {
+  function visit(node: Nodes, insideUnsafeHtml: boolean): void {
     if (
       node.type === "link" ||
       node.type === "image" ||
@@ -203,26 +267,37 @@ export function parseMarkdownWikiLinks(text: string): WikiLink[] {
       ranges.push({
         start: node.position.start.offset,
         end: node.position.end.offset,
-        quoteDepth,
+        value: node.value,
       });
       return;
     }
     if ("children" in node) {
-      const childQuoteDepth = quoteDepth + (node.type === "blockquote" ? 1 : 0);
       const rawHtmlStack: string[] = [];
       for (const child of (node as Parent).children) {
         if (child.type === "html") updateRawHtmlStack(child.value, rawHtmlStack);
         visit(
           child,
-          childQuoteDepth,
           insideUnsafeHtml || hasUnsafeRawHtmlContainer(rawHtmlStack),
         );
       }
     }
   }
 
-  visit(tree, 0, false);
-  return parseWikiLinksInRanges(text, ranges);
+  visit(tree, false);
+  return ranges.flatMap(({ start, end, value }) => {
+    const source = text.slice(start, end);
+    const offsets = decodedSourceOffsets(source, value);
+    return parseWikiLinks(value).map((link) => {
+      const sourceStart = start + offsets[link.index];
+      const sourceEnd = start + offsets[link.index + link.length];
+      return {
+        ...link,
+        raw: text.slice(sourceStart, sourceEnd),
+        index: sourceStart,
+        length: sourceEnd - sourceStart,
+      };
+    });
+  });
 }
 
 /** Link text only; renderers identify a foreign target separately from its title. */
