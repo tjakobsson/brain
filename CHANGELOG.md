@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.0 - 2026-08-31
+
+- Unify compact navigation and graph controls across desktop and touch layouts, with persistent neighborhood inspection and theme-aware graph rendering.
+- Recompose connection maps after container changes while preserving motion and reader input during settling, resizing, and visibility changes.
+- Resolve wiki-links consistently across Markdown containers, authored HTML, decoded entities, and wrapped source lines.
+- Improve Brain card layout, tooltip positioning, highlights, callouts, and narrow WebKit code blocks.
+
 ## 1.2.3 - 2026-08-30
 
 - Place fenced-code copy controls alongside the first line without reducing their target size or hiding horizontally scrollable code.
