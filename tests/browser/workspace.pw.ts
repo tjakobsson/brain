@@ -442,7 +442,10 @@ test("mention sections precede the connection map and empty regions stay omitted
 });
 
 test("potential links are static, subtle, and non-clickable", async ({ browser }) => {
-  const context = await browser.newContext({ javaScriptEnabled: false });
+  const context = await browser.newContext({
+    javaScriptEnabled: false,
+    viewport: { width: 390, height: 844 },
+  });
   const page = await context.newPage();
   await page.goto(`${workspace}/brains/design/notes/interaction-model`);
 
@@ -460,6 +463,10 @@ test("potential links are static, subtle, and non-clickable", async ({ browser }
     getComputedStyle(element).color === getComputedStyle(element.parentElement!).color
   )).toBe(true);
   expect(await potential.evaluate((element) => getComputedStyle(element, "::after").opacity)).toBe("0");
+  expect(await potential.evaluate((element) => {
+    const tooltip = getComputedStyle(element, "::after");
+    return [tooltip.position, tooltip.left, tooltip.right, tooltip.bottom];
+  })).toEqual(["fixed", "16px", "16px", "16px"]);
   await potential.hover();
   await expect.poll(() => potential.evaluate((element) => getComputedStyle(element, "::after").opacity)).toBe("1");
   await potential.focus();

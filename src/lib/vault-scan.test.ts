@@ -96,7 +96,7 @@ describe("scanVault", () => {
   it("does not treat authored link labels as unlinked mentions", () => {
     writeNote(
       "Source.md",
-      "[[Other|Principles]], [Principles](/other), [Principles][ref], and <a href=\"/other\">Principles</a>.\n\n[ref]: /other",
+      "[[Other|Principles]], [Principles](/other), [Principles][ref], and <a href=\"/other\">Principles</a>.\n\n[ref]: /other \"Principles\"",
     );
     writeNote("Other.md", "Linked by its alias.");
     writeNote("Principles.md", "Only present in authored link labels.");

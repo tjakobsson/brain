@@ -191,7 +191,8 @@ export function stripAuthoredLinks(text: string): string {
       node.type === "link" ||
       node.type === "image" ||
       node.type === "linkReference" ||
-      node.type === "imageReference"
+      node.type === "imageReference" ||
+      node.type === "definition"
     ) {
       const start = node.position?.start.offset ?? 0;
       mask(start, node.position?.end.offset ?? start);

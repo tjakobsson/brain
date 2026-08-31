@@ -1814,6 +1814,21 @@ div[data-callout] [data-callout-body] > :last-child {
   .brain-card__identity {
     min-height: 0;
   }
+
+  .potential-link::after {
+    position: fixed;
+    right: 1rem;
+    bottom: 1rem;
+    left: 1rem;
+    width: auto;
+    max-width: none;
+    transform: translateY(0.2rem);
+  }
+
+  .potential-link:hover::after,
+  .potential-link:focus-visible::after {
+    transform: translateY(0);
+  }
 }
 
 @media (max-width: 700px), (pointer: coarse) {
