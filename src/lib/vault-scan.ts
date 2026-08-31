@@ -153,8 +153,8 @@ function escapeRegExp(s: string): string {
 /** Plain prose a mention can hide in, excluding code and authored links. */
 function searchableText(body: string): string {
   return stripCode(stripAuthoredLinks(body)).replace(
-    /^(?=[^\r\n]*>)(?:(?: {0,3}>[\t ]*)|(?: {0,3}(?:[-+*]|\d+[.)])[\t ]+))*\[![^\]\r\n]+\]/gim,
-    (marker) => " ".repeat(marker.length),
+    /^((?:(?: {0,3}>[\t ]*)|(?: {0,3}(?:[-+*]|\d+[.)])[\t ]+))*)\[![^\]\r\n]+\]/gim,
+    (marker, prefix: string) => prefix.includes(">") ? " ".repeat(marker.length) : marker,
   );
 }
 

@@ -94,6 +94,13 @@ describe("scanVault", () => {
     expect(scanVault(dir).edges).toMatchObject([{ source: "note-a", target: "note-b" }]);
   });
 
+  it("indexes wrapped links with lazy blockquote continuations", () => {
+    writeNote("Note A.md", "> [[Note\nB]]");
+    writeNote("Note B.md", "Linked from a lazy blockquote continuation.");
+
+    expect(scanVault(dir).edges).toMatchObject([{ source: "note-a", target: "note-b" }]);
+  });
+
   it("indexes wrapped links using ordered-list continuation indentation", () => {
     writeNote("Note A.md", "10. [[Note\n    B]]");
     writeNote("Note B.md", "Linked from a list.");
@@ -224,7 +231,7 @@ describe("scanVault", () => {
   });
 
   it("keeps callout-like text outside blockquotes searchable", () => {
-    writeNote("Source.md", "Plain [!warning] text.");
+    writeNote("Source.md", "[!warning] > comparison");
     writeNote("Warning.md", "A title matching ordinary prose.");
 
     expect(scanVault(dir).unlinkedMentions.get("warning")).toHaveLength(1);
