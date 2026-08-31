@@ -153,7 +153,7 @@ function escapeRegExp(s: string): string {
 /** Plain prose a mention can hide in, excluding code and authored links. */
 function searchableText(body: string): string {
   return stripCode(stripAuthoredLinks(body)).replace(
-    /^ {0,3}>[\t ]*\[![^\]\r\n]+\]/gim,
+    /^(?=[^\r\n]*>)(?:(?: {0,3}>[\t ]*)|(?: {0,3}(?:[-+*]|\d+[.)])[\t ]+))*\[![^\]\r\n]+\]/gim,
     (marker) => " ".repeat(marker.length),
   );
 }

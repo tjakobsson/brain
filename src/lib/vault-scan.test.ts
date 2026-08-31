@@ -171,11 +171,21 @@ describe("scanVault", () => {
     expect(scanVault(dir).unlinkedMentions.get("principles")).toBeUndefined();
   });
 
-  it("does not treat callout type markers as unlinked mentions", () => {
-    writeNote("Source.md", "> [!note]\n> Read this carefully.");
+  it("does not treat nested callout type markers as unlinked mentions", () => {
+    writeNote(
+      "Source.md",
+      "> [!note]\n> Read this carefully.\n\n- > [!note]\n  > Nested in a list.\n\n> > [!note]\n> > Nested in a quote.",
+    );
     writeNote("Note.md", "A note title that matches the callout type.");
 
     expect(scanVault(dir).unlinkedMentions.get("note")).toBeUndefined();
+  });
+
+  it("keeps callout-like text outside blockquotes searchable", () => {
+    writeNote("Source.md", "Plain [!warning] text.");
+    writeNote("Warning.md", "A title matching ordinary prose.");
+
+    expect(scanVault(dir).unlinkedMentions.get("warning")).toHaveLength(1);
   });
 
   it("ignores mentions inside code blocks", () => {
