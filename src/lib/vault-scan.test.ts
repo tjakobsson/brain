@@ -85,6 +85,21 @@ describe("scanVault", () => {
     expect(scanVault(dir).edges).toMatchObject([{ source: "note-a", target: "note-b" }]);
   });
 
+  it("indexes wrapped links using ordered-list continuation indentation", () => {
+    writeNote("Note A.md", "10. [[Note\n    B]]");
+    writeNote("Note B.md", "Linked from a list.");
+
+    expect(scanVault(dir).edges).toMatchObject([{ source: "note-a", target: "note-b" }]);
+  });
+
+  it("does not index wiki-link delimiters spanning GFM table rows", () => {
+    writeNote("Source.md", "| Value |\n| --- |\n| [[Note\n| shown]] |");
+    writeNote("Note.md", "Not linked across table rows.");
+
+    expect(scanVault(dir).edges).toEqual([]);
+    expect(scanVault(dir).backlinks.get("note")).toBeUndefined();
+  });
+
   it("detects unlinked mentions without double-reporting linked notes", () => {
     writeNote("Note A.md", "The Zettelkasten method deserves study.");
     writeNote("Note B.md", "Links [[Zettelkasten method]] and also says Zettelkasten method in prose.");

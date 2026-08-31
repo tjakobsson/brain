@@ -3,7 +3,7 @@ import path from "node:path";
 import matter from "gray-matter";
 import { VAULT_DIR } from "./vault-path";
 import {
-  parseWikiLinks,
+  parseMarkdownWikiLinks,
   stripAuthoredLinks,
   stripCode,
   stripMarkdownLinks,
@@ -166,11 +166,7 @@ function scanBrain(input: BrainManifestInput, mode: InputMode): VaultNote[] {
       const { data, content } = matter(source);
       const title = path.basename(entry.path, path.extname(entry.path));
       const slug = slugify(title);
-      const linkSource = stripCode(content);
-      const links = parseWikiLinks(linkSource).filter((link) =>
-        linkSource.slice(link.index, link.index + link.length) ===
-        content.slice(link.index, link.index + link.length)
-      );
+      const links = parseMarkdownWikiLinks(content);
       return {
         id: noteId(mode, input.brainId, slug),
         brainId: input.brainId,

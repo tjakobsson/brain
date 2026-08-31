@@ -1,5 +1,7 @@
-import type { Nodes, Parent } from "mdast";
+import type { Nodes, Parent, Root } from "mdast";
+import { gfmFromMarkdown } from "mdast-util-gfm";
 import { fromMarkdown } from "mdast-util-from-markdown";
+import { gfm } from "micromark-extension-gfm";
 
 /**
  * Shared parser for Brain wiki-links:
@@ -32,12 +34,19 @@ export interface WikiLink {
 const WIKI_LINK_RE = /(?<!!)\[\[([^\]|#]+?)(?:#([^\]|]+?))?(?:\|([^\]]+?))?\]\]/g;
 const BRAIN_ID_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
+function parseMarkdown(text: string): Root {
+  return fromMarkdown(text, {
+    extensions: [gfm()],
+    mdastExtensions: [gfmFromMarkdown()],
+  });
+}
+
 function hasOnlySoftBreaks(value: string): boolean {
   if (!value.includes("\n")) return true;
   if (/\r(?!\n)/.test(value) || /\n[\t ]*\r?\n/.test(value)) return false;
   if (/(?:[\t ]{2,}|\\)\r?\n/.test(value)) return false;
   if (/\r?\n(?: {4}|\t)/.test(value)) return false;
-  const tree = fromMarkdown(value);
+  const tree = parseMarkdown(value);
   return tree.children.length === 1 &&
     tree.children[0].type === "paragraph" &&
     tree.children[0].children.length === 1 &&
@@ -88,7 +97,10 @@ function parseTarget(value: string): Pick<WikiLink, "target" | "targetBrainId"> 
   return { target: namespacedTarget, targetBrainId };
 }
 
-export function parseWikiLinks(text: string): WikiLink[] {
+function parseWikiLinksInRanges(
+  text: string,
+  textRanges: readonly { start: number; end: number }[] | null,
+): WikiLink[] {
   const links: WikiLink[] = [];
   let searchIndex = 0;
   while (searchIndex < text.length) {
@@ -99,8 +111,15 @@ export function parseWikiLinks(text: string): WikiLink[] {
     const lineStart = text.lastIndexOf("\n", match.index) + 1;
     const quoteDepth = blockquoteDepth(text.slice(lineStart, match.index));
     const candidate = stripBlockquotePrefixes(match[0], quoteDepth);
+    const matchEnd = match.index + match[0].length;
+    const insideTextNode = textRanges?.some(({ start, end }) =>
+      start <= match.index && end >= matchEnd
+    ) ?? false;
 
-    if (!hasOnlySoftBreaks(candidate)) {
+    if (
+      (textRanges !== null && !insideTextNode) ||
+      (textRanges === null && !hasOnlySoftBreaks(candidate))
+    ) {
       const nestedOffset = match[0].indexOf("[[", 2);
       if (nestedOffset >= 0) searchIndex = match.index + nestedOffset;
       continue;
@@ -129,6 +148,39 @@ export function parseWikiLinks(text: string): WikiLink[] {
   return links;
 }
 
+export function parseWikiLinks(text: string): WikiLink[] {
+  return parseWikiLinksInRanges(text, null);
+}
+
+/** Parse only source ranges that Astro's GFM parser exposes as renderable text nodes. */
+export function parseMarkdownWikiLinks(text: string): WikiLink[] {
+  const ranges: { start: number; end: number }[] = [];
+  const tree = parseMarkdown(text);
+
+  function visit(node: Nodes): void {
+    if (
+      node.type === "link" ||
+      node.type === "image" ||
+      node.type === "linkReference" ||
+      node.type === "imageReference"
+    ) return;
+    if (
+      node.type === "text" &&
+      node.position?.start.offset !== undefined &&
+      node.position.end.offset !== undefined
+    ) {
+      ranges.push({ start: node.position.start.offset, end: node.position.end.offset });
+      return;
+    }
+    if ("children" in node) {
+      for (const child of (node as Parent).children) visit(child);
+    }
+  }
+
+  visit(tree);
+  return parseWikiLinksInRanges(text, ranges);
+}
+
 /** Link text only; renderers identify a foreign target separately from its title. */
 export function displayText(link: WikiLink): string {
   return link.alias ?? link.target;
@@ -151,7 +203,7 @@ export function wikiLinksToText(text: string): string {
 /** Remove code and raw HTML nodes skipped by remark text transforms. */
 export function stripCode(text: string): string {
   const masked = text.split("");
-  const tree = fromMarkdown(text);
+  const tree = parseMarkdown(text);
 
   function visit(node: Nodes): void {
     if (node.type === "code" || node.type === "inlineCode" || node.type === "html") {
@@ -174,7 +226,7 @@ export function stripCode(text: string): string {
 /** Remove authored wiki-links and Markdown links from mention-search prose. */
 export function stripAuthoredLinks(text: string): string {
   const masked = text.split("");
-  const tree = fromMarkdown(text);
+  const tree = parseMarkdown(text);
 
   function mask(start: number, end: number): void {
     for (let index = start; index < end; index += 1) {
