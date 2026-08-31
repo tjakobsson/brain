@@ -48,6 +48,30 @@ function normalizeField(value: string): string {
   return value.replace(/[\t ]*\r?\n[\t ]*/g, " ").trim();
 }
 
+function blockquoteDepth(linePrefix: string): number {
+  let depth = 0;
+  let rest = linePrefix;
+  while (true) {
+    const marker = /^ {0,3}>[\t ]?/.exec(rest);
+    if (!marker) return depth;
+    depth += 1;
+    rest = rest.slice(marker[0].length);
+  }
+}
+
+function stripBlockquotePrefixes(value: string, depth: number): string {
+  if (depth === 0 || !value.includes("\n")) return value;
+  return value.replace(/\r?\n([^\r\n]*)/g, (lineBreak, line: string) => {
+    let rest = line;
+    for (let level = 0; level < depth; level += 1) {
+      const marker = /^ {0,3}>[\t ]?/.exec(rest);
+      if (!marker) return lineBreak;
+      rest = rest.slice(marker[0].length);
+    }
+    return `\n${rest}`;
+  });
+}
+
 function parseTarget(value: string): Pick<WikiLink, "target" | "targetBrainId"> | null {
   const target = value.trim();
   if (!target.startsWith("@")) return { target, targetBrainId: null };
@@ -72,13 +96,16 @@ export function parseWikiLinks(text: string): WikiLink[] {
     const match = WIKI_LINK_RE.exec(text);
     if (!match) break;
     searchIndex = match.index + match[0].length;
+    const lineStart = text.lastIndexOf("\n", match.index) + 1;
+    const quoteDepth = blockquoteDepth(text.slice(lineStart, match.index));
+    const candidate = stripBlockquotePrefixes(match[0], quoteDepth);
 
-    if (!hasOnlySoftBreaks(match[0])) {
+    if (!hasOnlySoftBreaks(candidate)) {
       const nestedOffset = match[0].indexOf("[[", 2);
       if (nestedOffset >= 0) searchIndex = match.index + nestedOffset;
       continue;
     }
-    const target = parseTarget(normalizeField(match[1]));
+    const target = parseTarget(normalizeField(stripBlockquotePrefixes(match[1], quoteDepth)));
     if (!target) {
       const nestedOffset = match[0].indexOf("[[", 2);
       if (nestedOffset >= 0) searchIndex = match.index + nestedOffset;
@@ -88,8 +115,12 @@ export function parseWikiLinks(text: string): WikiLink[] {
     links.push({
       raw: match[0],
       ...target,
-      anchor: match[2] === undefined ? null : normalizeField(match[2]),
-      alias: match[3] === undefined ? null : normalizeField(match[3]),
+      anchor: match[2] === undefined
+        ? null
+        : normalizeField(stripBlockquotePrefixes(match[2], quoteDepth)),
+      alias: match[3] === undefined
+        ? null
+        : normalizeField(stripBlockquotePrefixes(match[3], quoteDepth)),
       index: match.index,
       length: match[0].length,
     });

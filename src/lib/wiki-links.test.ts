@@ -137,6 +137,16 @@ describe("parseWikiLinks", () => {
     }]);
   });
 
+  it("normalizes explicit blockquote continuation prefixes", () => {
+    const source = "> [[Note\n> Title|read\n> this]]";
+    expect(parseWikiLinks(source)).toMatchObject([{
+      raw: "[[Note\n> Title|read\n> this]]",
+      target: "Note Title",
+      alias: "read this",
+      index: 2,
+    }]);
+  });
+
   it.each([
     ["[[Wrapped\nlocal target]]", "Wrapped local target"],
     ["[[Future\nidea]]", "Future idea"],
@@ -170,6 +180,7 @@ describe("parseWikiLinks", () => {
     "[[Note\n===\nTitle]]",
     "[[Note\n[ref]: /url\nTitle]]",
     "[[Note\n<div>\nTitle]]",
+    "[[Note\n> Title]]",
   ])("rejects a wiki-link crossing a hard break or block boundary: %j", (source) => {
     expect(parseWikiLinks(source)).toEqual([]);
   });

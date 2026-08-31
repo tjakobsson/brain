@@ -78,6 +78,13 @@ describe("scanVault", () => {
     expect(backlinks?.[0].context).toBe("This builds on Note B in practice.");
   });
 
+  it("indexes wrapped links with explicit blockquote continuation prefixes", () => {
+    writeNote("Note A.md", "> [[Note\n> B]]");
+    writeNote("Note B.md", "Linked from a blockquote.");
+
+    expect(scanVault(dir).edges).toMatchObject([{ source: "note-a", target: "note-b" }]);
+  });
+
   it("detects unlinked mentions without double-reporting linked notes", () => {
     writeNote("Note A.md", "The Zettelkasten method deserves study.");
     writeNote("Note B.md", "Links [[Zettelkasten method]] and also says Zettelkasten method in prose.");
