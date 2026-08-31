@@ -37,5 +37,6 @@ export function computeResponsiveTargets(request: LayoutRequest): GraphPositions
     request.width,
     request.height,
     request.pinnedId,
+    request.fitViewportAspect ? 4 : undefined,
   );
 }

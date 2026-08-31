@@ -949,6 +949,9 @@ export async function mountLocalGraphs(): Promise<void> {
           const brainAware = reduced.foreign
             ? { ...reduced, forceLabel: forceForeignLabel(true, narrowGraphQuery.matches) }
             : reduced;
+          if (narrowGraphQuery.matches && !revealNarrowLabels) {
+            if (node !== state.hovered) return { ...brainAware, label: "", forceLabel: false };
+          }
           return revealNarrowLabels && brainAware.label
             ? { ...brainAware, forceLabel: true }
             : brainAware;
@@ -974,39 +977,83 @@ export async function mountLocalGraphs(): Promise<void> {
         return () => camera.off("updated", listener);
       },
     );
-    const fitView = (animate: boolean) => {
-      if (animate) stopCameraAnimation(renderer);
+    const motion = new GraphMotionController(
+      renderer,
+      graph,
+      local,
+      () => {
+        host.dataset.fittedRatio = String(labelReveal.recordFit());
+        host.dataset.fitCompletions = String(Number(host.dataset.fitCompletions ?? 0) + 1);
+      },
+      `local:${slug}`,
+      false,
+      true,
+    );
+    const fitView = () => {
+      stopCameraAnimation(renderer);
       labelReveal.beginFit();
-      try {
-        fitRenderedGraph(renderer, graph.nodes(), {
-          animate: animate && !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-          onAnimationComplete: () => {
-            host.dataset.fittedRatio = String(labelReveal.recordFit());
-          },
-        });
-      } finally {
-        labelReveal.finishFitPlanning();
-      }
+      motion.fitView(graph.nodes());
     };
-    fitView(false);
-    wireHoverAndClick(renderer, graph, state);
-    wireNodeDragging(renderer, graph, state);
+    const settle = (trigger: "initial" | "resize") => {
+      labelReveal.beginFit();
+      motion.settle(trigger, graph.nodes(), slug);
+    };
+    const resizeSettler = new ResizeSettler(
+      host.clientWidth,
+      host.clientHeight,
+      () => {
+        renderer.resize();
+        settle("resize");
+      },
+    );
+    const interruptAutomaticMotion = () => {
+      resizeSettler.reset(host.clientWidth, host.clientHeight);
+      motion.cancel();
+      labelReveal.finishFitPlanning();
+      stopCameraAnimation(renderer);
+    };
+    wireHoverAndClick(renderer, graph, state, interruptAutomaticMotion);
+    wireNodeDragging(renderer, graph, state, undefined, interruptAutomaticMotion);
     wireTheme(renderer, state);
-    const onFitView = () => fitView(true);
+    const onFitView = () => {
+      resizeSettler.reset(host.clientWidth, host.clientHeight);
+      fitView();
+    };
     const onNarrowGraphChange = () => {
       applyResponsiveLabelThreshold();
-      fitView(false);
+      renderer.resize();
+      resizeSettler.reset(host.clientWidth, host.clientHeight);
+      settle("resize");
     };
+    const resizeObserver = new ResizeObserver(() => {
+      if (state.dragged) {
+        resizeSettler.reset(host.clientWidth, host.clientHeight);
+        return;
+      }
+      resizeSettler.update(host.clientWidth, host.clientHeight);
+    });
+    resizeObserver.observe(host);
+    const onVisibilityChange = () => {
+      if (!document.hidden) return;
+      motion.cancel();
+      labelReveal.finishFitPlanning();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
     fitButton?.addEventListener("click", onFitView);
     narrowGraphQuery.addEventListener("change", onNarrowGraphChange);
     renderer.on("kill", () => {
       fitButton?.removeEventListener("click", onFitView);
       narrowGraphQuery.removeEventListener("change", onNarrowGraphChange);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      resizeObserver.disconnect();
+      resizeSettler.cancel();
+      motion.destroy();
       labelReveal.destroy();
       renderer.off("afterRender", updateRenderedLabelStats);
     });
     if (import.meta.env.DEV) {
       (window as unknown as Record<string, unknown>).__localGraphDebug = { renderer, graph };
     }
+    settle("initial");
   }
 }

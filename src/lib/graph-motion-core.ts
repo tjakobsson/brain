@@ -33,6 +33,7 @@ export interface LayoutRequest {
   height: number;
   iterations: number;
   pinnedId?: string;
+  fitViewportAspect?: boolean;
 }
 
 export interface LayoutResponse {
@@ -104,6 +105,7 @@ export function adaptPositionsToViewport(
   width: number,
   height: number,
   pinnedId?: string,
+  scaleLimit = 1.45,
 ): GraphPositions {
   const entries = Object.entries(positions).sort(([a], [b]) => a.localeCompare(b));
   if (entries.length === 0) return {};
@@ -117,8 +119,9 @@ export function adaptPositionsToViewport(
   const currentAspect = rangeX / rangeY;
   const targetAspect = clamp(width / Math.max(height, 1), 0.45, 2.2);
   const adjustment = Math.sqrt(targetAspect / currentAspect);
-  const scaleX = clamp(adjustment, 0.7, 1.45);
-  const scaleY = clamp(1 / adjustment, 0.7, 1.45);
+  const minimumScale = 1 / scaleLimit;
+  const scaleX = clamp(adjustment, minimumScale, scaleLimit);
+  const scaleY = clamp(1 / adjustment, minimumScale, scaleLimit);
 
   const adapted = Object.fromEntries(
     entries.map(([id, point]) => [
