@@ -239,7 +239,7 @@ a:hover {
   right: calc(max(0.75rem, env(safe-area-inset-right)) + 3.3rem);
   display: grid;
   width: min(13rem, calc(100vw - 4.6rem));
-  max-height: calc(100dvh - 1rem);
+  max-height: calc(100dvh - max(0.75rem, env(safe-area-inset-top)) - 3.25rem);
   box-sizing: border-box;
   padding: 0.4rem;
   border: 1px solid var(--border);
@@ -1757,13 +1757,6 @@ div[data-callout] [data-callout-body] > :last-child {
   .site-header {
     top: max(0.75rem, env(safe-area-inset-top));
     right: max(0.75rem, env(safe-area-inset-right));
-  }
-
-  .context-switcher__panel {
-    position: fixed;
-    top: calc(max(0.75rem, env(safe-area-inset-top)) + 2.75rem);
-    right: calc(max(0.75rem, env(safe-area-inset-right)) + 3.3rem);
-    max-height: calc(100dvh - max(0.75rem, env(safe-area-inset-top)) - 3.25rem);
   }
 
 }

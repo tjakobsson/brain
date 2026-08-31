@@ -341,6 +341,14 @@ test("launcher is bounded in short viewports and disables motion when requested"
   expect(geometry.inViewport).toBe(true);
   expect(geometry.scrollHeight).toBeGreaterThan(geometry.clientHeight);
   expect((await page.locator(".site-header").boundingBox())!.y).toBe(collapsed!.y);
+
+  await page.setViewportSize({ width: 900, height: 180 });
+  await page.reload();
+  await page.getByRole("button", { name: "Navigation" }).click();
+  await page.getByRole("button", { name: "Switch brain, current: @engineering" }).click();
+  const contextPanel = page.locator(".context-switcher__panel");
+  await expect(contextPanel).toBeVisible();
+  expect(await contextPanel.evaluate((panel) => panel.getBoundingClientRect().bottom <= innerHeight)).toBe(true);
 });
 
 test("foreign links and backlinks expose owner text, shape markers, accents, and keyboard links", async ({ page }) => {
