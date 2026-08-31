@@ -55,7 +55,7 @@ test("active brain navigation is one collapsed, ordered, viewport-safe pill", as
   await expect(header).toHaveCSS("border-top-width", "1px");
   await expect(header).toHaveCSS("width", "48px");
   await expect(context).toHaveCSS("border-top-width", "0px");
-  await expect(reports.at(-1)!).toHaveCSS("opacity", "1");
+  await expect(reports.at(-1)!).toHaveCSS("transform", "none");
 
   const geometry = await header.evaluate((pill) => {
     const controls = [
