@@ -36,7 +36,7 @@ function hasOnlySoftBreaks(value: string): boolean {
   if (!value.includes("\n")) return true;
   if (/\r(?!\n)/.test(value) || /\n[\t ]*\r?\n/.test(value)) return false;
   if (/(?:[\t ]{2,}|\\)\r?\n/.test(value)) return false;
-  return !/\r?\n(?: {4}|\t| {0,3}(?:#{1,6}(?:[\t ]|$)|>|(?:[-+*]|\d+[.)])[\t ]+|(?:(?:\*[\t ]*){3,}|(?:_[\t ]*){3,}|(?:-[\t ]*){3,})(?=\r?\n|$)|(?:=+|-+)[\t ]*(?=\r?\n|$)|`{3,}|~{3,}|<))/.test(value);
+  return !/\r?\n(?: {4}|\t| {0,3}(?:#{1,6}(?:[\t ]|$)|>|(?:[-+*]|\d+[.)])[\t ]+|\[[^\]\r\n]+\]:[\t ]*|(?:(?:\*[\t ]*){3,}|(?:_[\t ]*){3,}|(?:-[\t ]*){3,})(?=\r?\n|$)|(?:=+|-+)[\t ]*(?=\r?\n|$)|`{3,}|~{3,}|<))/.test(value);
 }
 
 function normalizeField(value: string): string {

@@ -185,6 +185,7 @@ docker run --rm \
   --mount "type=bind,src=$PWD/examples/demo-workspace/brains/engineering,dst=/workspace/brains/engineering,readonly" \
   --mount "type=bind,src=$PWD/examples/demo-workspace/brains/design,dst=/workspace/brains/design,readonly" \
   --mount "type=bind,src=$PWD/examples/demo-workspace/brains/research,dst=/workspace/brains/research,readonly" \
+  --mount "type=bind,src=$PWD/examples/demo-workspace/brains/research-archive-and-synthesis-source-trails,dst=/workspace/brains/research-archive-and-synthesis-source-trails,readonly" \
   --mount "type=bind,src=$PWD/.generated/docker-output,dst=/output" \
   --mount "type=bind,src=$PWD/.generated/docker-work,dst=/work" \
   --tmpfs /tmp:rw,mode=1777 \
@@ -204,6 +205,7 @@ docker run --rm \
   --mount "type=bind,src=$PWD/examples/demo-workspace/brains/engineering,dst=/workspace/brains/engineering,readonly" \
   --mount "type=bind,src=$PWD/examples/demo-workspace/brains/design,dst=/workspace/brains/design,readonly" \
   --mount "type=bind,src=$PWD/examples/demo-workspace/brains/research,dst=/workspace/brains/research,readonly" \
+  --mount "type=bind,src=$PWD/examples/demo-workspace/brains/research-archive-and-synthesis-source-trails,dst=/workspace/brains/research-archive-and-synthesis-source-trails,readonly" \
   --mount "type=bind,src=$PWD/.generated/docker-output,dst=/output" \
   --mount "type=bind,src=$PWD/.generated/docker-work,dst=/work" \
   --tmpfs /tmp:rw,mode=1777 \

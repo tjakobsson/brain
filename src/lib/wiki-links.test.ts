@@ -167,6 +167,7 @@ describe("parseWikiLinks", () => {
     "[[Note\n* * *\nTitle]]",
     "[[Note\n___\nTitle]]",
     "[[Note\n===\nTitle]]",
+    "[[Note\n[ref]: /url\nTitle]]",
   ])("rejects a wiki-link crossing a hard break or block boundary: %j", (source) => {
     expect(parseWikiLinks(source)).toEqual([]);
   });
@@ -174,6 +175,7 @@ describe("parseWikiLinks", () => {
   it.each([
     "[[unfinished\n\nSee [[Good]]",
     "[[unfinished\n---\nSee [[Good]]",
+    "[[unfinished\n[ref]: /url\nSee [[Good]]",
     "[[@Bad/unfinished [[Good]]",
   ])("preserves a valid nested link after rejecting its enclosing candidate: %j", (source) => {
     expect(parseWikiLinks(source)).toMatchObject([{
