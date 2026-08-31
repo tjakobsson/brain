@@ -40,6 +40,25 @@ describe("computeResponsiveTargets", () => {
     expect(positions.c).toEqual({ x: 0, y: 1 });
   });
 
+  it("fits a clustered local layout more closely to a portrait viewport", () => {
+    const positions = computeResponsiveTargets({
+      ...REQUEST,
+      nodes: REQUEST.nodes.map((node, index) => ({
+        ...node,
+        x: index,
+        y: index % 2 === 0 ? -0.01 : 0.01,
+      })),
+      pinnedId: "a",
+      fitViewportAspect: true,
+    });
+    const xs = Object.values(positions).map(({ x }) => x);
+    const ys = Object.values(positions).map(({ y }) => y);
+    const aspect = (Math.max(...xs) - Math.min(...xs)) / (Math.max(...ys) - Math.min(...ys));
+
+    expect(aspect).toBeLessThan(0.85);
+    expect(positions.a).toEqual({ x: 0, y: -0.01 });
+  });
+
   it("ignores edges outside the active graph", () => {
     const positions = computeResponsiveTargets({
       ...REQUEST,

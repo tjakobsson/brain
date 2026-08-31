@@ -49,6 +49,8 @@ export class GraphMotionController {
     private readonly data: GraphMotionData,
     private readonly onSettled: () => void = () => {},
     private sessionScope = "",
+    private readonly persistSession = true,
+    private readonly fitViewportAspect = false,
   ) {
     this.baseline = this.capturePositions();
     this.signature = graphSignature(data.nodes, data.edges);
@@ -165,13 +167,20 @@ export class GraphMotionController {
       height: dimensions.height,
       iterations: plan.iterations,
       pinnedId,
+      fitViewportAspect: this.fitViewportAspect,
     };
 
     const fallback = () => {
       const positions = Object.fromEntries(request.nodes.map(({ id, x, y }) => [id, { x, y }]));
       this.animateTo(
         generation,
-        adaptPositionsToViewport(positions, request.width, request.height, pinnedId),
+        adaptPositionsToViewport(
+          positions,
+          request.width,
+          request.height,
+          pinnedId,
+          request.fitViewportAspect ? 4 : undefined,
+        ),
         fittedIds,
         plan.duration,
         fitCamera,
@@ -324,6 +333,10 @@ export class GraphMotionController {
 
   private finish(generation: number): void {
     if (!this.generations.isCurrent(generation)) return;
+    if (!this.persistSession) {
+      this.onSettled();
+      return;
+    }
     if (this.commitSession()) this.onSettled();
   }
 

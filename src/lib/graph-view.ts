@@ -974,39 +974,133 @@ export async function mountLocalGraphs(): Promise<void> {
         return () => camera.off("updated", listener);
       },
     );
-    const fitView = (animate: boolean) => {
-      if (animate) stopCameraAnimation(renderer);
+    let pendingMotion: "initial" | "resize" | "drag-resize" | "fit" | null = null;
+    let pendingPinnedId = slug;
+    let resizeDeferredDuringDrag = false;
+    const motion = new GraphMotionController(
+      renderer,
+      graph,
+      local,
+      () => {
+        pendingMotion = null;
+        host.dataset.fittedRatio = String(labelReveal.recordFit());
+        host.dataset.fitCompletions = String(Number(host.dataset.fitCompletions ?? 0) + 1);
+      },
+      `local:${slug}`,
+      false,
+      true,
+    );
+    const fitView = () => {
+      pendingMotion = "fit";
+      stopCameraAnimation(renderer);
       labelReveal.beginFit();
-      try {
-        fitRenderedGraph(renderer, graph.nodes(), {
-          animate: animate && !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-          onAnimationComplete: () => {
-            host.dataset.fittedRatio = String(labelReveal.recordFit());
-          },
-        });
-      } finally {
-        labelReveal.finishFitPlanning();
-      }
+      motion.fitView(graph.nodes());
     };
-    fitView(false);
+    const settle = (trigger: "initial" | "resize") => {
+      pendingMotion = trigger;
+      pendingPinnedId = slug;
+      labelReveal.beginFit();
+      motion.settle(trigger, graph.nodes(), slug);
+    };
+    const settleDraggedResize = (pinnedId: string) => {
+      pendingMotion = "drag-resize";
+      pendingPinnedId = pinnedId;
+      labelReveal.beginFit();
+      motion.settle("drag", graph.nodes(), pinnedId, undefined, true);
+    };
+    const resizeSettler = new ResizeSettler(
+      host.clientWidth,
+      host.clientHeight,
+      () => {
+        renderer.resize();
+        settle("resize");
+      },
+    );
+    const interruptAutomaticMotion = () => {
+      pendingMotion = null;
+      resizeSettler.reset(host.clientWidth, host.clientHeight);
+      motion.cancel();
+      labelReveal.finishFitPlanning();
+      stopCameraAnimation(renderer);
+    };
     wireHoverAndClick(renderer, graph, state);
-    wireNodeDragging(renderer, graph, state);
+    wireNodeDragging(renderer, graph, state, (node) => {
+      if (!resizeDeferredDuringDrag) return;
+      resizeDeferredDuringDrag = false;
+      renderer.resize();
+      resizeSettler.reset(host.clientWidth, host.clientHeight);
+      settleDraggedResize(node);
+    }, interruptAutomaticMotion);
     wireTheme(renderer, state);
-    const onFitView = () => fitView(true);
+    const onFitView = () => {
+      if (
+        resizeSettler.hasPending()
+        || pendingMotion === "initial"
+        || pendingMotion === "resize"
+        || pendingMotion === "drag-resize"
+      ) return;
+      resizeSettler.reset(host.clientWidth, host.clientHeight);
+      fitView();
+    };
     const onNarrowGraphChange = () => {
       applyResponsiveLabelThreshold();
-      fitView(false);
+      renderer.resize();
+      resizeSettler.reset(host.clientWidth, host.clientHeight);
+      if (state.dragged) {
+        resizeDeferredDuringDrag = true;
+        return;
+      }
+      settle("resize");
     };
+    const resizeObserver = new ResizeObserver(() => {
+      if (state.dragged) {
+        resizeDeferredDuringDrag = true;
+        resizeSettler.reset(host.clientWidth, host.clientHeight);
+        return;
+      }
+      resizeSettler.update(host.clientWidth, host.clientHeight);
+    });
+    resizeObserver.observe(host);
+    const interruptViewportMotion = () => {
+      resizeSettler.reset(host.clientWidth, host.clientHeight);
+      if (pendingMotion) interruptAutomaticMotion();
+    };
+    const mouse = renderer.getMouseCaptor();
+    const touch = renderer.getTouchCaptor();
+    mouse.on("mousedown", interruptViewportMotion);
+    mouse.on("wheel", interruptViewportMotion);
+    touch.on("touchdown", interruptViewportMotion);
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        motion.cancel();
+        labelReveal.finishFitPlanning();
+      } else if (pendingMotion === "fit") {
+        fitView();
+      } else if (pendingMotion === "drag-resize") {
+        settleDraggedResize(pendingPinnedId);
+      } else if (pendingMotion) {
+        settle(pendingMotion);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
     fitButton?.addEventListener("click", onFitView);
     narrowGraphQuery.addEventListener("change", onNarrowGraphChange);
     renderer.on("kill", () => {
       fitButton?.removeEventListener("click", onFitView);
       narrowGraphQuery.removeEventListener("change", onNarrowGraphChange);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      mouse.off("mousedown", interruptViewportMotion);
+      mouse.off("wheel", interruptViewportMotion);
+      touch.off("touchdown", interruptViewportMotion);
+      resizeObserver.disconnect();
+      resizeSettler.cancel();
+      motion.destroy();
       labelReveal.destroy();
       renderer.off("afterRender", updateRenderedLabelStats);
     });
     if (import.meta.env.DEV) {
       (window as unknown as Record<string, unknown>).__localGraphDebug = { renderer, graph };
     }
+    settle("initial");
   }
 }

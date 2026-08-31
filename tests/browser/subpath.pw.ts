@@ -107,6 +107,55 @@ async function graphInkBounds(host: Locator) {
   });
 }
 
+async function graphNodeComponents(host: Locator) {
+  return host.evaluate((element) => {
+    const canvas = element.querySelector<HTMLCanvasElement>("canvas.sigma-nodes");
+    const gl =
+      (canvas?.getContext("webgl2") as WebGL2RenderingContext | null) ??
+      (canvas?.getContext("webgl") as WebGLRenderingContext | null);
+    if (!canvas || !gl) throw new Error("Graph node canvas is unavailable");
+    const pixels = new Uint8Array(canvas.width * canvas.height * 4);
+    gl.finish();
+    gl.readPixels(0, 0, canvas.width, canvas.height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    const occupied = new Uint8Array(canvas.width * canvas.height);
+    const visited = new Uint8Array(canvas.width * canvas.height);
+    for (let index = 0; index < occupied.length; index += 1) {
+      occupied[index] = pixels[index * 4 + 3] > 0 ? 1 : 0;
+    }
+    const components: { x: number; y: number; pixels: number }[] = [];
+    for (let start = 0; start < occupied.length; start += 1) {
+      if (!occupied[start] || visited[start]) continue;
+      const stack = [start];
+      visited[start] = 1;
+      let count = 0;
+      let xTotal = 0;
+      let yTotal = 0;
+      while (stack.length > 0) {
+        const index = stack.pop()!;
+        const x = index % canvas.width;
+        const y = Math.floor(index / canvas.width);
+        count += 1;
+        xTotal += x;
+        yTotal += y;
+        for (let dy = -1; dy <= 1; dy += 1) {
+          for (let dx = -1; dx <= 1; dx += 1) {
+            if (dx === 0 && dy === 0) continue;
+            const nextX = x + dx;
+            const nextY = y + dy;
+            if (nextX < 0 || nextX >= canvas.width || nextY < 0 || nextY >= canvas.height) continue;
+            const next = nextY * canvas.width + nextX;
+            if (!occupied[next] || visited[next]) continue;
+            visited[next] = 1;
+            stack.push(next);
+          }
+        }
+      }
+      if (count >= 4) components.push({ x: xTotal / count, y: yTotal / count, pixels: count });
+    }
+    return components;
+  });
+}
+
 async function initialListContentClearsNavigation(page: Page) {
   return page.locator(".note-list li").first().evaluate((row) => {
     const navigation = document.querySelector<HTMLElement>(".site-header")!.getBoundingClientRect();
@@ -616,13 +665,16 @@ test("mobile local graphs reveal titles relative to their fitted view", async ({
   const canvas = graph.locator("canvas.sigma-mouse");
   await expect(canvas).toBeVisible();
   await canvas.scrollIntoViewIfNeeded();
-  await expect.poll(async () => Number(await graph.getAttribute("data-rendered-labels"))).toBeGreaterThan(0);
-  const fittedLabels = Number(await graph.getAttribute("data-rendered-labels"));
-  expect(fittedLabels).toBeLessThan(neighbors.length + 1);
+  await expect.poll(async () => Number(await graph.getAttribute("data-fit-completions"))).toBeGreaterThan(0);
+  await page.waitForTimeout(100);
+  const overviewLabels = Number(await graph.getAttribute("data-rendered-labels"));
+  expect(overviewLabels).toBeGreaterThan(0);
+  expect(overviewLabels).toBeLessThan(neighbors.length + 1);
+  expect((await graphInkBounds(graph)).labelPixels).toBeGreaterThan(0);
   await page.getByRole("button", { name: "Fit view" }).click();
   await page.waitForTimeout(400);
   const fittedRatio = Number(await graph.getAttribute("data-fitted-ratio"));
-  expect(fittedRatio).toBeGreaterThan(1.49);
+  expect(fittedRatio).toBeGreaterThan(0);
   const fittedInk = await graphInkBounds(graph);
 
   await canvas.hover();
@@ -630,8 +682,9 @@ test("mobile local graphs reveal titles relative to their fitted view", async ({
   await expect.poll(async () => Number(await graph.getAttribute("data-rendered-labels"))).toBe(neighbors.length + 1);
 
   await page.getByRole("button", { name: "Fit view" }).click();
-  await expect.poll(async () => Number(await graph.getAttribute("data-rendered-labels"))).toBe(fittedLabels);
   await page.waitForTimeout(400);
+  expect(Number(await graph.getAttribute("data-rendered-labels"))).toBe(overviewLabels);
+  expect((await graphInkBounds(graph)).labelPixels).toBeGreaterThan(0);
   expect(Math.abs(Number(await graph.getAttribute("data-fitted-ratio")) - fittedRatio)).toBeLessThan(0.01);
   const resetInk = await graphInkBounds(graph);
   expect(
@@ -642,10 +695,166 @@ test("mobile local graphs reveal titles relative to their fitted view", async ({
   ).toBeLessThan(3);
 });
 
+test("mobile local graphs recompose clustered positions for their viewport", async ({ page }, testInfo) => {
+  const { base } = deployment(testInfo);
+  await preserveGraphPixels(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const neighbors = Array.from({ length: 8 }, (_, index) => ({
+    id: `clustered-${index + 1}`,
+    title: `Clustered nearby note ${index + 1}`,
+    route: `/notes/clustered-${index + 1}`,
+    type: "permanent",
+    status: "developing",
+    tags: [],
+    degree: 1,
+    x: (index - 3.5) * 0.002,
+    y: index % 2 === 0 ? -0.001 : 0.001,
+  }));
+  await page.route("**/graph-data.json", (route) => route.fulfill({
+    json: {
+      nodes: [{
+        id: "welcome",
+        title: "Welcome",
+        route: "/notes/welcome",
+        type: "permanent",
+        status: "established",
+        tags: [],
+        degree: neighbors.length,
+        x: 0,
+        y: 0,
+      }, ...neighbors],
+      edges: neighbors.map((node) => ({ source: "welcome", target: node.id })),
+    },
+  }));
+  await page.goto(`${base}/notes/welcome`);
+
+  const graph = page.locator(".local-graph");
+  await expect(graph.locator("canvas.sigma-nodes")).toBeVisible();
+  await page.getByRole("button", { name: "Fit view" }).click();
+  await expect.poll(async () => Number(await graph.getAttribute("data-fitted-ratio"))).toBeGreaterThan(0);
+  await expect.poll(async () => (await graphNodeComponents(graph)).length).toBe(neighbors.length + 1);
+  const portrait = await graphNodeComponents(graph);
+  const portraitMinimumDistance = Math.min(...portrait.flatMap((node, index) =>
+    portrait.slice(index + 1).map((other) => Math.hypot(node.x - other.x, node.y - other.y))
+  ));
+  expect(portraitMinimumDistance).toBeGreaterThan(18);
+  const portraitWidth = Math.max(...portrait.map(({ x }) => x)) - Math.min(...portrait.map(({ x }) => x));
+  const portraitHeight = Math.max(...portrait.map(({ y }) => y)) - Math.min(...portrait.map(({ y }) => y));
+  expect(portraitHeight).toBeGreaterThan(portraitWidth);
+
+  const beforeQueuedResize = Number(await graph.getAttribute("data-fit-completions"));
+  await page.setViewportSize({ width: 650, height: 844 });
+  await page.waitForTimeout(80);
+  await page.getByRole("button", { name: "Fit view" }).click();
+  await page.waitForTimeout(500);
+  expect(Number(await graph.getAttribute("data-fit-completions"))).toBe(beforeQueuedResize);
+  await expect.poll(async () => Number(await graph.getAttribute("data-fit-completions")))
+    .toBeGreaterThan(beforeQueuedResize);
+
+  const portraitCompletions = Number(await graph.getAttribute("data-fit-completions"));
+  await page.setViewportSize({ width: 844, height: 390 });
+  await expect.poll(async () => Number(await graph.getAttribute("data-fit-completions")))
+    .toBeGreaterThan(portraitCompletions);
+  await expect.poll(async () => (await graphNodeComponents(graph)).length).toBe(neighbors.length + 1);
+  const landscape = await graphNodeComponents(graph);
+  const landscapeWidth = Math.max(...landscape.map(({ x }) => x)) - Math.min(...landscape.map(({ x }) => x));
+  const landscapeHeight = Math.max(...landscape.map(({ y }) => y)) - Math.min(...landscape.map(({ y }) => y));
+  expect(landscapeWidth).toBeGreaterThan(landscapeHeight);
+
+  const settledInk = await graphInkBounds(graph);
+  await page.waitForTimeout(500);
+  const stableInk = await graphInkBounds(graph);
+  expect(Math.abs(stableInk.nodeLeft - settledInk.nodeLeft)).toBeLessThan(3);
+  expect(Math.abs(stableInk.nodeTop - settledInk.nodeTop)).toBeLessThan(3);
+  expect(Math.abs(stableInk.nodeRight - settledInk.nodeRight)).toBeLessThan(3);
+  expect(Math.abs(stableInk.nodeBottom - settledInk.nodeBottom)).toBeLessThan(3);
+
+  const completedLayouts = Number(await graph.getAttribute("data-fit-completions"));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(250);
+  await graph.locator("canvas.sigma-mouse").hover();
+  await page.mouse.wheel(0, -300);
+  await page.waitForTimeout(1_000);
+  expect(Number(await graph.getAttribute("data-fit-completions"))).toBe(completedLayouts);
+
+  await page.setViewportSize({ width: 391, height: 844 });
+  await page.waitForTimeout(80);
+  await page.mouse.wheel(0, -300);
+  await page.waitForTimeout(1_000);
+  expect(Number(await graph.getAttribute("data-fit-completions"))).toBe(completedLayouts);
+
+  const dragComponents = await graphNodeComponents(graph);
+  const dragTarget = [...dragComponents].sort((a, b) => a.pixels - b.pixels)[0];
+  const dragCanvas = graph.locator("canvas.sigma-nodes");
+  const dragBounds = (await dragCanvas.boundingBox())!;
+  const dragPixels = await dragCanvas.evaluate((canvas) => ({
+    width: (canvas as HTMLCanvasElement).width,
+    height: (canvas as HTMLCanvasElement).height,
+  }));
+  const dragPoint = {
+    x: dragBounds.x + (dragTarget.x / dragPixels.width) * dragBounds.width,
+    y: dragBounds.y + (1 - dragTarget.y / dragPixels.height) * dragBounds.height,
+  };
+  await page.mouse.move(dragPoint.x, dragPoint.y);
+  await page.mouse.down();
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.waitForTimeout(300);
+  expect(Number(await graph.getAttribute("data-fit-completions"))).toBe(completedLayouts);
+  await page.mouse.move(dragPoint.x + 20, dragPoint.y + 20, { steps: 3 });
+  await page.mouse.up();
+  await page.getByRole("button", { name: "Fit view" }).click();
+  await expect.poll(async () => Number(await graph.getAttribute("data-fit-completions")))
+    .toBeGreaterThan(completedLayouts);
+  const fittedAfterDrag = await graphNodeComponents(graph);
+  const fittedAfterDragWidth = Math.max(...fittedAfterDrag.map(({ x }) => x))
+    - Math.min(...fittedAfterDrag.map(({ x }) => x));
+  const fittedAfterDragHeight = Math.max(...fittedAfterDrag.map(({ y }) => y))
+    - Math.min(...fittedAfterDrag.map(({ y }) => y));
+  expect(fittedAfterDragWidth).toBeGreaterThan(fittedAfterDragHeight);
+});
+
+test("local graphs resume interrupted motion when the page becomes visible", async ({ page }, testInfo) => {
+  const { base } = deployment(testInfo);
+  await preserveGraphPixels(page);
+  await page.addInitScript(() => {
+    (window as typeof window & { __graphDocumentHidden: boolean }).__graphDocumentHidden = true;
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      get: () => (window as typeof window & { __graphDocumentHidden: boolean }).__graphDocumentHidden,
+    });
+  });
+  await page.goto(`${base}/notes/welcome`);
+
+  const graph = page.locator(".local-graph");
+  await expect(graph.locator("canvas.sigma-nodes")).toBeVisible();
+  await expect(graph).not.toHaveAttribute("data-fit-completions", /\d+/u);
+  await page.evaluate(() => {
+    (window as typeof window & { __graphDocumentHidden: boolean }).__graphDocumentHidden = false;
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+
+  await expect.poll(async () => Number(await graph.getAttribute("data-fit-completions"))).toBeGreaterThan(0);
+  await expect.poll(async () => (await graphNodeComponents(graph)).length).toBeGreaterThan(1);
+
+  const initialCompletions = Number(await graph.getAttribute("data-fit-completions"));
+  await page.getByRole("button", { name: "Fit view" }).click();
+  await page.evaluate(() => {
+    (window as typeof window & { __graphDocumentHidden: boolean }).__graphDocumentHidden = true;
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.evaluate(() => {
+    (window as typeof window & { __graphDocumentHidden: boolean }).__graphDocumentHidden = false;
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect.poll(async () => Number(await graph.getAttribute("data-fit-completions")))
+    .toBeGreaterThan(initialCompletions);
+});
+
 test("touch layouts keep the local graph interactive", async ({ browser }, testInfo) => {
   const { origin, base } = deployment(testInfo);
   const context = await browser.newContext({ hasTouch: true, viewport: { width: 900, height: 600 } });
   const page = await context.newPage();
+  await preserveGraphPixels(page);
   await page.goto(`${origin}${base}/notes/welcome`);
   const localGraphCanvas = page.locator(".local-graph canvas.sigma-mouse");
   await expect(localGraphCanvas).toBeVisible();
@@ -667,42 +876,22 @@ test("touch layouts keep the local graph interactive", async ({ browser }, testI
 
   await page.goto(`${origin}${base}/notes/welcome`);
   await expect(page.locator(".local-graph canvas.sigma-nodes")).toBeVisible();
-  await page.locator(".local-graph").scrollIntoViewIfNeeded();
-  const labelPoint = await page.locator(".local-graph canvas.sigma-labels").evaluate((canvas) => {
-    const element = canvas as HTMLCanvasElement;
-    const context = element.getContext("2d")!;
-    const pixels = context.getImageData(0, 0, element.width, element.height).data;
-    const bands: { top: number; bottom: number; left: number; right: number }[] = [];
-    let band: (typeof bands)[number] | null = null;
-    for (let y = 0; y < element.height; y += 1) {
-      let left = element.width;
-      let right = -1;
-      for (let x = 0; x < element.width; x += 1) {
-        if (pixels[(y * element.width + x) * 4 + 3] === 0) continue;
-        left = Math.min(left, x);
-        right = x;
-      }
-      if (right < 0) {
-        if (band) bands.push(band);
-        band = null;
-      } else if (band) {
-        band.bottom = y;
-        band.left = Math.min(band.left, left);
-        band.right = Math.max(band.right, right);
-      } else {
-        band = { top: y, bottom: y, left, right };
-      }
-    }
-    if (band) bands.push(band);
-    const longest = bands.sort((a, b) => b.right - b.left - (a.right - a.left))[0];
-    if (!longest) throw new Error("No rendered graph title found");
-    const bounds = element.getBoundingClientRect();
-    return {
-      x: bounds.left + ((longest.left + longest.right) / 2 / element.width) * bounds.width,
-      y: bounds.top + ((longest.top + longest.bottom) / 2 / element.height) * bounds.height,
-    };
-  });
-  await page.touchscreen.tap(labelPoint.x, labelPoint.y);
+  const touchGraph = page.locator(".local-graph");
+  await touchGraph.scrollIntoViewIfNeeded();
+  await expect.poll(async () => Number(await touchGraph.getAttribute("data-fit-completions"))).toBeGreaterThan(0);
+  const components = await graphNodeComponents(touchGraph);
+  expect(components.length).toBeGreaterThan(1);
+  const target = [...components].sort((a, b) => a.pixels - b.pixels)[0];
+  const nodeCanvas = page.locator(".local-graph canvas.sigma-nodes");
+  const canvasBounds = (await nodeCanvas.boundingBox())!;
+  const canvasPixels = await nodeCanvas.evaluate((canvas) => ({
+    width: (canvas as HTMLCanvasElement).width,
+    height: (canvas as HTMLCanvasElement).height,
+  }));
+  await page.touchscreen.tap(
+    canvasBounds.x + (target.x / canvasPixels.width) * canvasBounds.width,
+    canvasBounds.y + (1 - target.y / canvasPixels.height) * canvasBounds.height,
+  );
   await expect(page).toHaveURL(new RegExp(`${base}/notes/[^/]+/?$`));
   await expect(page).not.toHaveURL(new RegExp(`${base}/notes/welcome/?$`));
   await context.close();

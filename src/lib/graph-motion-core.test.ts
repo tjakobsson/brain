@@ -86,13 +86,16 @@ describe("resize settling", () => {
     vi.useFakeTimers();
     const callback = vi.fn();
     const resize = new ResizeSettler(390, 844, callback);
+    expect(resize.hasPending()).toBe(false);
     expect(resize.update(400, 850)).toBe(false);
     expect(resize.update(844, 390)).toBe(true);
+    expect(resize.hasPending()).toBe(true);
     expect(resize.update(900, 390)).toBe(true);
     vi.advanceTimersByTime(179);
     expect(callback).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
     expect(callback).toHaveBeenCalledOnce();
+    expect(resize.hasPending()).toBe(false);
     resize.cancel();
     vi.useRealTimers();
   });

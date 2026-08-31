@@ -321,6 +321,38 @@ describe("GraphMotionController", () => {
     controller.destroy();
   });
 
+  it("settles a pinned local graph without persisting its view", () => {
+    const { storage, renderer, graph, data } = fixture();
+    const onSettled = vi.fn();
+    const controller = new GraphMotionController(
+      renderer as never,
+      graph,
+      data,
+      onSettled,
+      "local:a",
+      false,
+      true,
+    );
+
+    controller.settle("initial", graph.nodes(), "a");
+    const worker = FakeWorker.instances[0];
+    expect(worker.request).toMatchObject({
+      width: 390,
+      height: 844,
+      pinnedId: "a",
+      fitViewportAspect: true,
+      nodes: expect.arrayContaining([expect.objectContaining({ id: "a" })]),
+    });
+    worker.emit("message", {
+      generation: (worker.request as { generation: number }).generation,
+      positions: { a: { x: -1, y: 0 }, b: { x: 2, y: 1 }, c: { x: 0, y: 2 } },
+    });
+
+    expect(onSettled).toHaveBeenCalledOnce();
+    expect(storage.values.size).toBe(0);
+    controller.destroy();
+  });
+
   it("invalidates an incomplete graph session", () => {
     const { storage, renderer, graph, data } = fixture();
     const controller = new GraphMotionController(renderer as never, graph, data);
