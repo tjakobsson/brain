@@ -179,7 +179,11 @@ export function remarkWikiLinks(options: RemarkWikiLinksOptions = {}) {
     const brainAccents = options.brainAccents ?? new Map(
       getWorkspaceSnapshot().registry.brains.map((brain) => [brain.id, brain.accent]),
     );
-    transformTextNodes(tree, (node) => splitTextNode(node, index, source, base, brainAccents));
+    transformTextNodes(
+      tree,
+      (node) => splitTextNode(node, index, source, base, brainAccents),
+      { skipRawHtmlContainers: "unsafe" },
+    );
   };
 }
 

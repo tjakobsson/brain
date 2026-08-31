@@ -99,6 +99,20 @@ describe("scanVault", () => {
     expect(scanVault(dir).edges).toMatchObject([{ source: "note-a", target: "note-b" }]);
   });
 
+  it("indexes wiki-links inside benign inline HTML wrappers", () => {
+    writeNote("Note A.md", "<span>[[Note B]]</span>");
+    writeNote("Note B.md", "Linked from an inline wrapper.");
+
+    expect(scanVault(dir).edges).toMatchObject([{ source: "note-a", target: "note-b" }]);
+  });
+
+  it("does not index wiki-links inside unsafe inline HTML containers", () => {
+    writeNote("Note A.md", "Intro <script>[[Note B]]</script>");
+    writeNote("Note B.md", "Not linked from executable text.");
+
+    expect(scanVault(dir).edges).toEqual([]);
+  });
+
   it("does not index wiki-link delimiters spanning GFM table rows", () => {
     writeNote("Source.md", "| Value |\n| --- |\n| [[Note\n| shown]] |");
     writeNote("Note.md", "Not linked across table rows.");

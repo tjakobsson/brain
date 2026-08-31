@@ -364,6 +364,31 @@ describe("remarkWikiLinks", () => {
     ]);
   });
 
+  it("renders wiki-links inside benign raw HTML wrappers", () => {
+    const tree: Root = {
+      type: "root",
+      children: [{
+        type: "paragraph",
+        children: [
+          { type: "html", value: "<span>" },
+          { type: "text", value: "[[Note B]]" },
+          { type: "html", value: "</span>" },
+        ],
+      }],
+    };
+
+    remarkWikiLinks({ index: fakeIndex(["Note B"]), brainAccents: new Map() })(
+      tree,
+      new VFile({ path: "/vault/Source Note.md" }),
+    );
+
+    expect((tree.children[0] as Paragraph).children).toMatchObject([
+      { type: "html", value: "<span>" },
+      { type: "link", url: "/notes/note-b" },
+      { type: "html", value: "</span>" },
+    ]);
+  });
+
   it("distinguishes missing foreign notes from unknown brains", () => {
     const source = path.resolve(
       "examples/demo-workspace/brains/engineering/Principles.md",

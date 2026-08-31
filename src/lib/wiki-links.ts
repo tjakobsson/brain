@@ -2,6 +2,7 @@ import type { Nodes, Parent, Root } from "mdast";
 import { gfmFromMarkdown } from "mdast-util-gfm";
 import { fromMarkdown } from "mdast-util-from-markdown";
 import { gfm } from "micromark-extension-gfm";
+import { hasUnsafeRawHtmlContainer, updateRawHtmlStack } from "./mdast-text";
 
 /**
  * Shared parser for Brain wiki-links:
@@ -163,7 +164,7 @@ export function parseMarkdownWikiLinks(text: string): WikiLink[] {
   const ranges: TextRange[] = [];
   const tree = parseMarkdown(text);
 
-  function visit(node: Nodes, quoteDepth: number): void {
+  function visit(node: Nodes, quoteDepth: number, insideUnsafeHtml: boolean): void {
     if (
       node.type === "link" ||
       node.type === "image" ||
@@ -172,6 +173,7 @@ export function parseMarkdownWikiLinks(text: string): WikiLink[] {
     ) return;
     if (
       node.type === "text" &&
+      !insideUnsafeHtml &&
       node.position?.start.offset !== undefined &&
       node.position.end.offset !== undefined
     ) {
@@ -184,11 +186,19 @@ export function parseMarkdownWikiLinks(text: string): WikiLink[] {
     }
     if ("children" in node) {
       const childQuoteDepth = quoteDepth + (node.type === "blockquote" ? 1 : 0);
-      for (const child of (node as Parent).children) visit(child, childQuoteDepth);
+      const rawHtmlStack: string[] = [];
+      for (const child of (node as Parent).children) {
+        if (child.type === "html") updateRawHtmlStack(child.value, rawHtmlStack);
+        visit(
+          child,
+          childQuoteDepth,
+          insideUnsafeHtml || hasUnsafeRawHtmlContainer(rawHtmlStack),
+        );
+      }
     }
   }
 
-  visit(tree, 0);
+  visit(tree, 0, false);
   return parseWikiLinksInRanges(text, ranges);
 }
 
