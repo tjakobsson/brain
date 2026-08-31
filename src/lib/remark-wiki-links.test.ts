@@ -262,7 +262,14 @@ describe("remarkWikiLinks", () => {
 
     const paragraph = tree.children[0] as Paragraph;
     expect(paragraph.children.filter((child) => child.type === "link")).toMatchObject([
-      { url: "/notes/note-b", children: [{ type: "text", value: "==label==" }] },
+      {
+        url: "/notes/note-b",
+        children: [{
+          type: "emphasis",
+          data: { hName: "mark" },
+          children: [{ type: "text", value: "label" }],
+        }],
+      },
       { url: "/notes/a-b", children: [{ type: "text", value: "A == B" }] },
     ]);
   });
