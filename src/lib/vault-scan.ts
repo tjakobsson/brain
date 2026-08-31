@@ -1,5 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
+import type { Nodes, Parent } from "mdast";
+import { fromMarkdown } from "mdast-util-from-markdown";
 import matter from "gray-matter";
 import { VAULT_DIR } from "./vault-path";
 import {
@@ -152,10 +154,33 @@ function escapeRegExp(s: string): string {
 
 /** Plain prose a mention can hide in, excluding code and authored links. */
 function searchableText(body: string): string {
-  return stripCode(stripAuthoredLinks(body)).replace(
-    /^((?:(?: {0,3}>[\t ]*)|(?: {0,3}(?:[-+*]|\d+[.)])[\t ]+))*)\[![^\]\r\n]+\]/gim,
-    (marker, prefix: string) => prefix.includes(">") ? " ".repeat(marker.length) : marker,
-  );
+  const searchable = stripCode(stripAuthoredLinks(body)).split("");
+  const tree = fromMarkdown(body);
+
+  function visit(node: Nodes): void {
+    if (node.type === "blockquote") {
+      const paragraph = node.children[0];
+      const firstText = paragraph?.type === "paragraph" ? paragraph.children[0] : undefined;
+      if (
+        paragraph?.type === "paragraph" &&
+        node.position?.start.line === paragraph.position?.start.line &&
+        firstText?.type === "text"
+      ) {
+        const firstLine = firstText.value.split("\n", 1)[0];
+        const marker = firstLine.match(/^(\[![^\]\r]+\])(?:[+-])?(?: .*)?$/)?.[1];
+        const start = firstText.position?.start.offset;
+        if (marker && start !== undefined) {
+          searchable.fill(" ", start, start + marker.length);
+        }
+      }
+    }
+    if ("children" in node) {
+      for (const child of (node as Parent).children) visit(child);
+    }
+  }
+
+  visit(tree);
+  return searchable.join("");
 }
 
 function scanBrain(input: BrainManifestInput, mode: InputMode): VaultNote[] {

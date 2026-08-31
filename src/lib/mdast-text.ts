@@ -4,7 +4,8 @@ import type { Content, Parent, PhrasingContent, Root, Text } from "mdast";
 export type TextSplitter = (node: Text) => PhrasingContent[];
 
 export interface TransformTextOptions {
-  skipRawHtmlContainers?: "all" | "unsafe";
+  skipRawHtmlContainers?: "all" | "unsafe" | "non-rendered";
+  skipLinks?: boolean;
 }
 
 const VOID_HTML_ELEMENTS = new Set([
@@ -12,9 +13,15 @@ const VOID_HTML_ELEMENTS = new Set([
   "source", "track", "wbr",
 ]);
 
+const NON_RENDERED_RAW_HTML_ELEMENTS = new Set([
+  "datalist", "head", "iframe", "noembed", "noframes", "noscript", "option", "plaintext", "script",
+  "select", "style", "template", "textarea", "title", "xmp",
+]);
+
 const UNSAFE_RAW_HTML_ELEMENTS = new Set([
-  "a", "button", "iframe", "noembed", "noframes", "option", "plaintext", "script", "select",
-  "style", "textarea", "title", "xmp",
+  ...NON_RENDERED_RAW_HTML_ELEMENTS,
+  "a",
+  "button",
 ]);
 
 export function updateRawHtmlStack(value: string, stack: string[]): void {
@@ -37,23 +44,33 @@ export function hasUnsafeRawHtmlContainer(stack: readonly string[]): boolean {
   return stack.some((tag) => UNSAFE_RAW_HTML_ELEMENTS.has(tag));
 }
 
+function hasNonRenderedRawHtmlContainer(stack: readonly string[]): boolean {
+  return stack.some((tag) => NON_RENDERED_RAW_HTML_ELEMENTS.has(tag));
+}
+
 /**
  * Walks an mdast tree, applying `split` to every text node and splicing the
- * results in place. Never descends into existing links or images — nesting
- * interactive content inside an anchor produces invalid HTML.
+ * results in place. By default, it does not descend into links or images,
+ * since transforms that create interactive content must not nest it in anchors.
  */
 export function transformTextNodes(
   tree: Root,
   split: TextSplitter,
   options: TransformTextOptions = {},
 ): void {
-  processChildren(tree, split, options.skipRawHtmlContainers ?? "all");
+  processChildren(
+    tree,
+    split,
+    options.skipRawHtmlContainers ?? "all",
+    options.skipLinks ?? true,
+  );
 }
 
 function processChildren(
   parent: Parent,
   split: TextSplitter,
-  skipRawHtmlContainers: "all" | "unsafe",
+  skipRawHtmlContainers: "all" | "unsafe" | "non-rendered",
+  skipLinks: boolean,
 ): void {
   const next: Content[] = [];
   const rawHtmlStack: string[] = [];
@@ -63,27 +80,32 @@ function processChildren(
       next.push(child);
     } else if (
       child.type === "text" &&
-      (skipRawHtmlContainers === "unsafe"
-        ? !hasUnsafeRawHtmlContainer(rawHtmlStack)
-        : rawHtmlStack.length === 0)
+      !insideSkippedRawHtml(rawHtmlStack, skipRawHtmlContainers)
     ) {
       next.push(...split(child as Text));
     } else {
-      const insideSkippedHtml = skipRawHtmlContainers === "unsafe"
-        ? hasUnsafeRawHtmlContainer(rawHtmlStack)
-        : rawHtmlStack.length > 0;
+      const insideSkippedHtml = insideSkippedRawHtml(rawHtmlStack, skipRawHtmlContainers);
       if (
         !insideSkippedHtml &&
-        child.type !== "link" &&
+        (!skipLinks || child.type !== "link") &&
         child.type !== "image" &&
-        child.type !== "linkReference" &&
+        (!skipLinks || child.type !== "linkReference") &&
         child.type !== "imageReference" &&
         "children" in child
       ) {
-        processChildren(child as unknown as Parent, split, skipRawHtmlContainers);
+        processChildren(child as unknown as Parent, split, skipRawHtmlContainers, skipLinks);
       }
       next.push(child);
     }
   }
   parent.children = next;
+}
+
+function insideSkippedRawHtml(
+  stack: readonly string[],
+  policy: "all" | "unsafe" | "non-rendered",
+): boolean {
+  if (policy === "unsafe") return hasUnsafeRawHtmlContainer(stack);
+  if (policy === "non-rendered") return hasNonRenderedRawHtmlContainer(stack);
+  return stack.length > 0;
 }

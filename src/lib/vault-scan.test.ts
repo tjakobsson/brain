@@ -223,7 +223,7 @@ describe("scanVault", () => {
   it("does not treat nested callout type markers as unlinked mentions", () => {
     writeNote(
       "Source.md",
-      "> [!note]\n> Read this carefully.\n\n- > [!note]\n  > Nested in a list.\n\n> > [!note]\n> > Nested in a quote.",
+      "> [!note]\n> Read this carefully.\n\n- > [!note]\n  > Nested in a list.\n\n> > [!note]\n> > Nested in a quote.\n\n10. Item\n    > [!note]\n    > Ordered continuation.\n\n- Item\n  > [!note]\n  > Unordered continuation.\n\n* Item\n    > > [!note]\n    > > Unordered continuation and two quote depths.\n\n- Outer\n  1. Inner\n     > [!note]\n     > Nested list continuation.\n\n123456789. Item\n           > [!note]\n           > Wide ordered marker.",
     );
     writeNote("Note.md", "A note title that matches the callout type.");
 
@@ -231,7 +231,7 @@ describe("scanVault", () => {
   });
 
   it("keeps callout-like text outside blockquotes searchable", () => {
-    writeNote("Source.md", "[!warning] > comparison");
+    writeNote("Source.md", "[!warning] > comparison\n\nOrdinary prose\n    > [!warning]");
     writeNote("Warning.md", "A title matching ordinary prose.");
 
     expect(scanVault(dir).unlinkedMentions.get("warning")).toHaveLength(1);

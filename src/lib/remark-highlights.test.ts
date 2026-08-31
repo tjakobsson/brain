@@ -47,18 +47,18 @@ describe("remarkHighlights", () => {
     );
   });
 
-  it("renders inside benign HTML wrappers but skips unsafe containers", () => {
+  it("renders inside authored anchors and other rendered HTML containers", () => {
     const tree: Root = {
       type: "root",
       children: [{
         type: "paragraph",
         children: [
-          { type: "html", value: "<span>" },
+          { type: "html", value: '<a href="/other">' },
           { type: "text", value: "==important==" },
-          { type: "html", value: "</span>" },
-          { type: "html", value: "<script>" },
-          { type: "text", value: "==unsafe==" },
-          { type: "html", value: "</script>" },
+          { type: "html", value: "</a>" },
+          { type: "html", value: "<button>" },
+          { type: "text", value: "==action==" },
+          { type: "html", value: "</button>" },
         ],
       }],
     };
@@ -66,8 +66,51 @@ describe("remarkHighlights", () => {
     remarkHighlights()(tree, new VFile({ path: "x.md" }));
 
     const children = (tree.children[0] as Paragraph).children;
-    expect(children.filter((child) => child.type === "emphasis")).toHaveLength(1);
-    expect(children).toContainEqual({ type: "text", value: "==unsafe==" });
+    expect(children.filter((child) => child.type === "emphasis")).toHaveLength(2);
+  });
+
+  it("renders inside Markdown links", () => {
+    const tree: Root = {
+      type: "root",
+      children: [{
+        type: "paragraph",
+        children: [{
+          type: "link",
+          url: "/other",
+          children: [{ type: "text", value: "==important==" }],
+        }],
+      }],
+    };
+
+    remarkHighlights()(tree, new VFile({ path: "x.md" }));
+
+    const link = (tree.children[0] as Paragraph).children[0];
+    expect(link).toMatchObject({
+      type: "link",
+      children: [{ type: "emphasis", data: { hName: "mark" } }],
+    });
+  });
+
+  it("skips raw-text and non-rendered HTML containers", () => {
+    const children: Paragraph["children"] = [];
+    const tags = [
+      "datalist", "head", "iframe", "noembed", "noframes", "noscript", "option", "plaintext",
+      "script", "select", "style", "template", "textarea", "title", "xmp",
+    ];
+    for (const tag of tags) {
+      children.push(
+        { type: "html", value: `<${tag}>` },
+        { type: "text", value: `==${tag}==` },
+        { type: "html", value: `</${tag}>` },
+      );
+    }
+    const tree: Root = { type: "root", children: [{ type: "paragraph", children }] };
+
+    remarkHighlights()(tree, new VFile({ path: "x.md" }));
+
+    const transformed = (tree.children[0] as Paragraph).children;
+    expect(transformed.some((child) => child.type === "emphasis")).toBe(false);
+    expect(transformed.filter((child) => child.type === "text")).toHaveLength(tags.length);
   });
 
   it("handles adjacent single-line and multiline highlights", () => {
