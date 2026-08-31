@@ -1834,7 +1834,7 @@ div[data-callout] [data-callout-body] > :last-child {
 
 }
 
-@media (max-width: 700px) {
+@media (max-width: 1120px) {
   .potential-link::after {
     position: fixed;
     right: 1rem;

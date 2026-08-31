@@ -473,6 +473,14 @@ test("potential links are static, subtle, and non-clickable", async ({ browser }
   await expect(potential).toBeFocused();
   await expect.poll(() => potential.evaluate((element) => getComputedStyle(element, "::after").opacity)).toBe("1");
 
+  await page.setViewportSize({ width: 800, height: 900 });
+  await page.reload();
+  const tabletPotential = page.locator("article .potential-link", { hasText: "principles" });
+  expect(await tabletPotential.evaluate((element) => {
+    const tooltip = getComputedStyle(element, "::after");
+    return [tooltip.position, tooltip.left, tooltip.right, tooltip.bottom];
+  })).toEqual(["fixed", "16px", "16px", "16px"]);
+
   await page.goto(`${workspace}/brains/design/notes/principles`);
   const section = page.getByRole("heading", { name: "Potential links", exact: true }).locator("..");
   await expect(section.getByRole("link", { name: "Interaction model" })).toBeVisible();
