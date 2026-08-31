@@ -249,6 +249,63 @@ describe("parseMarkdownWikiLinks", () => {
     }]);
   });
 
+  it("maps links after parser-normalized NUL characters without hanging", { timeout: 1_000 }, () => {
+    const raw = "[[Note]]";
+    const source = `Before\0${raw} after`;
+
+    expect(parseMarkdownWikiLinks(source)).toEqual([{
+      raw,
+      target: "Note",
+      targetBrainId: null,
+      anchor: null,
+      alias: null,
+      index: 7,
+      length: raw.length,
+    }]);
+  });
+
+  it("maps parser-normalized NUL characters inside a link to their raw source span", () => {
+    const raw = "[[No\0te]]";
+    const source = `Before ${raw} after`;
+
+    expect(parseMarkdownWikiLinks(source)).toEqual([{
+      raw,
+      target: "No\uFFFDte",
+      targetBrainId: null,
+      anchor: null,
+      alias: null,
+      index: 7,
+      length: raw.length,
+    }]);
+  });
+
+  it("preserves a link span after a lone carriage return", { timeout: 1_000 }, () => {
+    const raw = "[[Note]]";
+    const source = `Before\r${raw} after`;
+
+    expect(parseMarkdownWikiLinks(source)).toMatchObject([{
+      raw,
+      target: "Note",
+      index: 7,
+      length: raw.length,
+    }]);
+  });
+
+  it("maps CRLF, omitted container prefixes, escapes, and entities to the exact raw span", () => {
+    const raw = "[[Research \\& &amp;\r\n> Notes]]";
+    const source = `> ${raw} trailing`;
+
+    expect(parseMarkdownWikiLinks(source)).toEqual([{
+      raw,
+      target: "Research & & Notes",
+      targetBrainId: null,
+      anchor: null,
+      alias: null,
+      index: 2,
+      length: raw.length,
+    }]);
+  });
+
   it("rejects decoded line breaks that split a wiki-link across blocks", () => {
     expect(parseMarkdownWikiLinks("[[Note&NewLine;&NewLine;Title]]")).toEqual([]);
   });

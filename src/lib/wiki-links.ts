@@ -89,6 +89,14 @@ function decodedSourceOffsets(source: string, decoded: string): number[] {
   let decodedIndex = 0;
 
   while (decodedIndex < decoded.length) {
+    if (sourceIndex >= source.length) {
+      while (decodedIndex < decoded.length) {
+        decodedIndex += 1;
+        offsets[decodedIndex] = source.length;
+      }
+      break;
+    }
+
     if (source[sourceIndex] === decoded[decodedIndex]) {
       sourceIndex += 1;
       decodedIndex += 1;
@@ -98,10 +106,16 @@ function decodedSourceOffsets(source: string, decoded: string): number[] {
 
     if (
       source[sourceIndex] === "\r" &&
-      source[sourceIndex + 1] === "\n" &&
       decoded[decodedIndex] === "\n"
     ) {
-      sourceIndex += 2;
+      sourceIndex += source[sourceIndex + 1] === "\n" ? 2 : 1;
+      decodedIndex += 1;
+      offsets[decodedIndex] = sourceIndex;
+      continue;
+    }
+
+    if (source[sourceIndex] === "\0" && decoded[decodedIndex] === "\uFFFD") {
+      sourceIndex += 1;
       decodedIndex += 1;
       offsets[decodedIndex] = sourceIndex;
       continue;
@@ -287,15 +301,16 @@ export function parseMarkdownWikiLinks(text: string): WikiLink[] {
   return ranges.flatMap(({ start, end, value }) => {
     const source = text.slice(start, end);
     const offsets = decodedSourceOffsets(source, value);
-    return parseWikiLinks(value).map((link) => {
+    return parseWikiLinks(value).flatMap((link) => {
       const sourceStart = start + offsets[link.index];
       const sourceEnd = start + offsets[link.index + link.length];
-      return {
+      if (sourceEnd <= sourceStart) return [];
+      return [{
         ...link,
         raw: text.slice(sourceStart, sourceEnd),
         index: sourceStart,
         length: sourceEnd - sourceStart,
-      };
+      }];
     });
   });
 }
