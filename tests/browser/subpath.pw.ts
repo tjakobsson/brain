@@ -588,7 +588,7 @@ test("mobile navigation stays within the deployment base", async ({ page }, test
   await page.waitForTimeout(400);
   const fittedLocalBounds = await graphInkBounds(localGraph);
   expect(fittedLocalBounds.nodePixels).toBeGreaterThan(0);
-  expect(fittedLocalBounds.labelPixels).toBe(0);
+  expect(fittedLocalBounds.labelPixels).toBeGreaterThan(0);
   expect(fittedLocalBounds.left).toBeGreaterThanOrEqual(18);
   expect(fittedLocalBounds.top).toBeGreaterThanOrEqual(18);
   expect(fittedLocalBounds.right).toBeLessThanOrEqual(fittedLocalBounds.width - 18);
@@ -667,7 +667,10 @@ test("mobile local graphs reveal titles relative to their fitted view", async ({
   await canvas.scrollIntoViewIfNeeded();
   await expect.poll(async () => Number(await graph.getAttribute("data-fit-completions"))).toBeGreaterThan(0);
   await page.waitForTimeout(100);
-  expect((await graphInkBounds(graph)).labelPixels).toBe(0);
+  const overviewLabels = Number(await graph.getAttribute("data-rendered-labels"));
+  expect(overviewLabels).toBeGreaterThan(0);
+  expect(overviewLabels).toBeLessThan(neighbors.length + 1);
+  expect((await graphInkBounds(graph)).labelPixels).toBeGreaterThan(0);
   await page.getByRole("button", { name: "Fit view" }).click();
   await page.waitForTimeout(400);
   const fittedRatio = Number(await graph.getAttribute("data-fitted-ratio"));
@@ -680,7 +683,8 @@ test("mobile local graphs reveal titles relative to their fitted view", async ({
 
   await page.getByRole("button", { name: "Fit view" }).click();
   await page.waitForTimeout(400);
-  expect((await graphInkBounds(graph)).labelPixels).toBe(0);
+  expect(Number(await graph.getAttribute("data-rendered-labels"))).toBe(overviewLabels);
+  expect((await graphInkBounds(graph)).labelPixels).toBeGreaterThan(0);
   expect(Math.abs(Number(await graph.getAttribute("data-fitted-ratio")) - fittedRatio)).toBeLessThan(0.01);
   const resetInk = await graphInkBounds(graph);
   expect(
@@ -789,8 +793,15 @@ test("mobile local graphs recompose clustered positions for their viewport", asy
   expect(Number(await graph.getAttribute("data-fit-completions"))).toBe(completedLayouts);
   await page.mouse.move(dragPoint.x + 20, dragPoint.y + 20, { steps: 3 });
   await page.mouse.up();
+  await page.getByRole("button", { name: "Fit view" }).click();
   await expect.poll(async () => Number(await graph.getAttribute("data-fit-completions")))
     .toBeGreaterThan(completedLayouts);
+  const fittedAfterDrag = await graphNodeComponents(graph);
+  const fittedAfterDragWidth = Math.max(...fittedAfterDrag.map(({ x }) => x))
+    - Math.min(...fittedAfterDrag.map(({ x }) => x));
+  const fittedAfterDragHeight = Math.max(...fittedAfterDrag.map(({ y }) => y))
+    - Math.min(...fittedAfterDrag.map(({ y }) => y));
+  expect(fittedAfterDragWidth).toBeGreaterThan(fittedAfterDragHeight);
 });
 
 test("local graphs resume interrupted motion when the page becomes visible", async ({ page }, testInfo) => {

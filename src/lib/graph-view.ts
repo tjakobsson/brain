@@ -949,9 +949,6 @@ export async function mountLocalGraphs(): Promise<void> {
           const brainAware = reduced.foreign
             ? { ...reduced, forceLabel: forceForeignLabel(true, narrowGraphQuery.matches) }
             : reduced;
-          if (narrowGraphQuery.matches && !revealNarrowLabels) {
-            if (node !== state.hovered) return { ...brainAware, label: "", forceLabel: false };
-          }
           return revealNarrowLabels && brainAware.label
             ? { ...brainAware, forceLabel: true }
             : brainAware;
@@ -1037,7 +1034,7 @@ export async function mountLocalGraphs(): Promise<void> {
     wireTheme(renderer, state);
     const onFitView = () => {
       resizeSettler.reset(host.clientWidth, host.clientHeight);
-      if (pendingMotion === "initial" || pendingMotion === "resize") return;
+      if (pendingMotion === "initial" || pendingMotion === "resize" || pendingMotion === "drag-resize") return;
       fitView();
     };
     const onNarrowGraphChange = () => {
