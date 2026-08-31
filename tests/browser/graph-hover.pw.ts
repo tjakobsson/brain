@@ -267,6 +267,17 @@ test("touch long press pins and clears graph inspection", async ({ browser }, te
     if (hold) await page.waitForTimeout(hold);
     await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   };
+  const drag = async (start: { x: number; y: number }, end: { x: number; y: number }) => {
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: start.x, y: start.y }],
+    });
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ x: end.x, y: end.y }],
+    });
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  };
 
   await touch(target, 550);
   await expect(page).toHaveURL(new RegExp(`${base}/?$`));
@@ -275,7 +286,11 @@ test("touch long press pins and clears graph inspection", async ({ browser }, te
   expect(pinned.equals(normal)).toBe(false);
 
   const bounds = (await graph.boundingBox())!;
-  await touch({ x: bounds.x + bounds.width - 12, y: bounds.y + bounds.height - 12 });
+  const empty = { x: bounds.x + bounds.width - 12, y: bounds.y + bounds.height - 12 };
+  await drag(empty, { x: empty.x - 50, y: empty.y - 50 });
+  await expect(graph).toHaveAttribute("data-pinned-inspection");
+
+  await touch(empty);
   await expect(graph).not.toHaveAttribute("data-pinned-inspection");
   expect((await nodesCanvas.screenshot()).equals(pinned)).toBe(false);
   await context.close();

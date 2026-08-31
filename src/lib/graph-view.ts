@@ -285,8 +285,10 @@ function wireHoverAndClick(
       renderer.refresh({ skipIndexation: true });
     },
   });
+  let emptyStageTouch: { x: number; y: number } | null = null;
   wireGraphHover(renderer, graph, state, onInteraction, () => state.dragged !== null);
   renderer.on("downNode", ({ node, event }) => {
+    emptyStageTouch = null;
     if (event.original.type.startsWith("touch")) longPress.start(node, event);
   });
   renderer.on("downStage", ({ event }) => {
@@ -295,11 +297,7 @@ function wireHoverAndClick(
     if (node) longPress.start(node, event);
     else {
       longPress.consumeActivatedPress();
-      if (state.pinned) {
-        setPinnedInspection(graph, state, null);
-        delete renderer.getContainer().dataset.pinnedInspection;
-        renderer.refresh({ skipIndexation: true });
-      }
+      emptyStageTouch = { x: event.x, y: event.y };
     }
   });
   renderer.on("clickNode", ({ node }) => {
@@ -334,8 +332,23 @@ function wireHoverAndClick(
   const moveLongPress = (event: TouchCoords) => {
     const point = event.touches[0];
     if (point) longPress.move(point);
+    if (
+      !point ||
+      event.touches.length !== 1 ||
+      (emptyStageTouch && Math.hypot(point.x - emptyStageTouch.x, point.y - emptyStageTouch.y) > 8)
+    ) {
+      emptyStageTouch = null;
+    }
   };
-  const releaseLongPress = () => longPress.release();
+  const releaseLongPress = () => {
+    longPress.release();
+    if (emptyStageTouch && state.pinned) {
+      setPinnedInspection(graph, state, null);
+      delete renderer.getContainer().dataset.pinnedInspection;
+      renderer.refresh({ skipIndexation: true });
+    }
+    emptyStageTouch = null;
+  };
   touch.on("touchmove", moveLongPress);
   touch.on("touchup", releaseLongPress);
   renderer.on("kill", () => {
@@ -696,7 +709,8 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
         res.label = "";
         res.forceLabel = false;
       }
-      if (revealNarrowLabels && res.label) res.forceLabel = true;
+      const inspectedNeighborhood = activeNode === node || state.neighbors.has(node);
+      if ((revealNarrowLabels || inspectedNeighborhood) && res.label) res.forceLabel = true;
       if (activeNode) {
         return hoverReducers.nodeReducer(node, res as typeof attrs);
       } else if (query && !label.includes(query)) {
