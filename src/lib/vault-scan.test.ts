@@ -97,6 +97,13 @@ describe("scanVault", () => {
     expect(scanVault(dir).unlinkedMentions.get("principles")).toBeUndefined();
   });
 
+  it("does not treat callout type markers as unlinked mentions", () => {
+    writeNote("Source.md", "> [!note]\n> Read this carefully.");
+    writeNote("Note.md", "A note title that matches the callout type.");
+
+    expect(scanVault(dir).unlinkedMentions.get("note")).toBeUndefined();
+  });
+
   it("ignores mentions inside code blocks", () => {
     writeNote("Note A.md", "```\nMentions Note B here.\n```");
     writeNote("Note B.md", "Nothing.");

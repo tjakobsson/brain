@@ -152,7 +152,10 @@ function escapeRegExp(s: string): string {
 
 /** Plain prose a mention can hide in, excluding code and authored links. */
 function searchableText(body: string): string {
-  return stripCode(stripAuthoredLinks(body));
+  return stripCode(stripAuthoredLinks(body)).replace(
+    /^ {0,3}>[\t ]*\[![^\]\r\n]+\]/gim,
+    (marker) => " ".repeat(marker.length),
+  );
 }
 
 function scanBrain(input: BrainManifestInput, mode: InputMode): VaultNote[] {
