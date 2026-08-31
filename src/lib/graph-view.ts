@@ -1022,6 +1022,7 @@ export async function mountLocalGraphs(): Promise<void> {
     wireTheme(renderer, state);
     const onFitView = () => {
       resizeSettler.reset(host.clientWidth, host.clientHeight);
+      if (pendingMotion === "initial" || pendingMotion === "resize") return;
       fitView();
     };
     const onNarrowGraphChange = () => {
@@ -1038,6 +1039,14 @@ export async function mountLocalGraphs(): Promise<void> {
       resizeSettler.update(host.clientWidth, host.clientHeight);
     });
     resizeObserver.observe(host);
+    const interruptViewportMotion = () => {
+      if (pendingMotion) interruptAutomaticMotion();
+    };
+    const mouse = renderer.getMouseCaptor();
+    const touch = renderer.getTouchCaptor();
+    mouse.on("mousedown", interruptViewportMotion);
+    mouse.on("wheel", interruptViewportMotion);
+    touch.on("touchdown", interruptViewportMotion);
     const onVisibilityChange = () => {
       if (document.hidden) {
         motion.cancel();
@@ -1055,6 +1064,9 @@ export async function mountLocalGraphs(): Promise<void> {
       fitButton?.removeEventListener("click", onFitView);
       narrowGraphQuery.removeEventListener("change", onNarrowGraphChange);
       document.removeEventListener("visibilitychange", onVisibilityChange);
+      mouse.off("mousedown", interruptViewportMotion);
+      mouse.off("wheel", interruptViewportMotion);
+      touch.off("touchdown", interruptViewportMotion);
       resizeObserver.disconnect();
       resizeSettler.cancel();
       motion.destroy();

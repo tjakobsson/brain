@@ -726,6 +726,7 @@ test("mobile local graphs recompose clustered positions for their viewport", asy
 
   const graph = page.locator(".local-graph");
   await expect(graph.locator("canvas.sigma-nodes")).toBeVisible();
+  await page.getByRole("button", { name: "Fit view" }).click();
   await expect.poll(async () => Number(await graph.getAttribute("data-fitted-ratio"))).toBeGreaterThan(0);
   await expect.poll(async () => (await graphNodeComponents(graph)).length).toBe(neighbors.length + 1);
   const portrait = await graphNodeComponents(graph);
@@ -754,6 +755,14 @@ test("mobile local graphs recompose clustered positions for their viewport", asy
   expect(Math.abs(stableInk.nodeTop - settledInk.nodeTop)).toBeLessThan(3);
   expect(Math.abs(stableInk.nodeRight - settledInk.nodeRight)).toBeLessThan(3);
   expect(Math.abs(stableInk.nodeBottom - settledInk.nodeBottom)).toBeLessThan(3);
+
+  const completedLayouts = Number(await graph.getAttribute("data-fit-completions"));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(250);
+  await graph.locator("canvas.sigma-mouse").hover();
+  await page.mouse.wheel(0, -300);
+  await page.waitForTimeout(1_000);
+  expect(Number(await graph.getAttribute("data-fit-completions"))).toBe(completedLayouts);
 });
 
 test("local graphs resume interrupted motion when the page becomes visible", async ({ page }, testInfo) => {
