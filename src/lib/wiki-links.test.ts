@@ -142,6 +142,7 @@ describe("parseWikiLinks", () => {
     ["[[Future\nidea]]", "Future idea"],
     ["[[Note#Deep\nsection]]", "Note"],
     ["[[Note|read\nthis]]", "Note"],
+    ["[[Note|love\n<3]]", "Note"],
   ])("parses a soft-wrapped wiki-link: %j", (source, target) => {
     expect(parseWikiLinks(source)).toMatchObject([{ raw: source, target }]);
   });
@@ -168,6 +169,7 @@ describe("parseWikiLinks", () => {
     "[[Note\n___\nTitle]]",
     "[[Note\n===\nTitle]]",
     "[[Note\n[ref]: /url\nTitle]]",
+    "[[Note\n<div>\nTitle]]",
   ])("rejects a wiki-link crossing a hard break or block boundary: %j", (source) => {
     expect(parseWikiLinks(source)).toEqual([]);
   });

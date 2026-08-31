@@ -36,7 +36,12 @@ function hasOnlySoftBreaks(value: string): boolean {
   if (!value.includes("\n")) return true;
   if (/\r(?!\n)/.test(value) || /\n[\t ]*\r?\n/.test(value)) return false;
   if (/(?:[\t ]{2,}|\\)\r?\n/.test(value)) return false;
-  return !/\r?\n(?: {4}|\t| {0,3}(?:#{1,6}(?:[\t ]|$)|>|(?:[-+*]|\d+[.)])[\t ]+|\[[^\]\r\n]+\]:[\t ]*|(?:(?:\*[\t ]*){3,}|(?:_[\t ]*){3,}|(?:-[\t ]*){3,})(?=\r?\n|$)|(?:=+|-+)[\t ]*(?=\r?\n|$)|`{3,}|~{3,}|<))/.test(value);
+  if (/\r?\n(?: {4}|\t)/.test(value)) return false;
+  const tree = fromMarkdown(value);
+  return tree.children.length === 1 &&
+    tree.children[0].type === "paragraph" &&
+    tree.children[0].children.length === 1 &&
+    tree.children[0].children[0].type === "text";
 }
 
 function normalizeField(value: string): string {
@@ -151,7 +156,12 @@ export function stripAuthoredLinks(text: string): string {
   }
 
   function visit(node: Nodes): void {
-    if (node.type === "link" || node.type === "image") {
+    if (
+      node.type === "link" ||
+      node.type === "image" ||
+      node.type === "linkReference" ||
+      node.type === "imageReference"
+    ) {
       const start = node.position?.start.offset ?? 0;
       mask(start, node.position?.end.offset ?? start);
       return;

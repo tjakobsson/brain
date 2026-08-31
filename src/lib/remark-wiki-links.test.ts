@@ -285,6 +285,14 @@ describe("remarkWikiLinks", () => {
           { type: "text", value: "Principles before " },
           { type: "link", url: "/manual", children: [{ type: "text", value: "Principles" }] },
           { type: "text", value: " and " },
+          {
+            type: "linkReference",
+            identifier: "ref",
+            label: "ref",
+            referenceType: "full",
+            children: [{ type: "text", value: "Principles" }],
+          },
+          { type: "text", value: " and " },
           { type: "inlineCode", value: "Principles" },
           { type: "text", value: " plus unrelated prose." },
         ],
@@ -303,6 +311,9 @@ describe("remarkWikiLinks", () => {
     expect(paragraph.children.filter((child) => child.type === "html")).toHaveLength(1);
     expect(paragraph.children.find((child) => child.type === "link")).toMatchObject({
       url: "/manual",
+      children: [{ type: "text", value: "Principles" }],
+    });
+    expect(paragraph.children.find((child) => child.type === "linkReference")).toMatchObject({
       children: [{ type: "text", value: "Principles" }],
     });
     expect(paragraph.children.find((child) => child.type === "inlineCode")).toMatchObject({

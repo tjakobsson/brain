@@ -18,7 +18,13 @@ function processChildren(parent: Parent, split: TextSplitter): void {
     if (child.type === "text") {
       next.push(...split(child as Text));
     } else {
-      if (child.type !== "link" && child.type !== "image" && "children" in child) {
+      if (
+        child.type !== "link" &&
+        child.type !== "image" &&
+        child.type !== "linkReference" &&
+        child.type !== "imageReference" &&
+        "children" in child
+      ) {
         processChildren(child as unknown as Parent, split);
       }
       next.push(child);
