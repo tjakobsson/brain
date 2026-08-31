@@ -763,6 +763,28 @@ test("mobile local graphs recompose clustered positions for their viewport", asy
   await page.mouse.wheel(0, -300);
   await page.waitForTimeout(1_000);
   expect(Number(await graph.getAttribute("data-fit-completions"))).toBe(completedLayouts);
+
+  const dragComponents = await graphNodeComponents(graph);
+  const dragTarget = [...dragComponents].sort((a, b) => a.pixels - b.pixels)[0];
+  const dragCanvas = graph.locator("canvas.sigma-nodes");
+  const dragBounds = (await dragCanvas.boundingBox())!;
+  const dragPixels = await dragCanvas.evaluate((canvas) => ({
+    width: (canvas as HTMLCanvasElement).width,
+    height: (canvas as HTMLCanvasElement).height,
+  }));
+  const dragPoint = {
+    x: dragBounds.x + (dragTarget.x / dragPixels.width) * dragBounds.width,
+    y: dragBounds.y + (1 - dragTarget.y / dragPixels.height) * dragBounds.height,
+  };
+  await page.mouse.move(dragPoint.x, dragPoint.y);
+  await page.mouse.down();
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.waitForTimeout(300);
+  expect(Number(await graph.getAttribute("data-fit-completions"))).toBe(completedLayouts);
+  await page.mouse.move(dragPoint.x + 20, dragPoint.y + 20, { steps: 3 });
+  await page.mouse.up();
+  await expect.poll(async () => Number(await graph.getAttribute("data-fit-completions")))
+    .toBeGreaterThan(completedLayouts);
 });
 
 test("local graphs resume interrupted motion when the page becomes visible", async ({ page }, testInfo) => {

@@ -977,7 +977,9 @@ export async function mountLocalGraphs(): Promise<void> {
         return () => camera.off("updated", listener);
       },
     );
-    let pendingMotion: "initial" | "resize" | "fit" | null = null;
+    let pendingMotion: "initial" | "resize" | "drag-resize" | "fit" | null = null;
+    let pendingPinnedId = slug;
+    let resizeDeferredDuringDrag = false;
     const motion = new GraphMotionController(
       renderer,
       graph,
@@ -999,8 +1001,15 @@ export async function mountLocalGraphs(): Promise<void> {
     };
     const settle = (trigger: "initial" | "resize") => {
       pendingMotion = trigger;
+      pendingPinnedId = slug;
       labelReveal.beginFit();
       motion.settle(trigger, graph.nodes(), slug);
+    };
+    const settleDraggedResize = (pinnedId: string) => {
+      pendingMotion = "drag-resize";
+      pendingPinnedId = pinnedId;
+      labelReveal.beginFit();
+      motion.settle("drag", graph.nodes(), pinnedId, undefined, true);
     };
     const resizeSettler = new ResizeSettler(
       host.clientWidth,
@@ -1018,7 +1027,13 @@ export async function mountLocalGraphs(): Promise<void> {
       stopCameraAnimation(renderer);
     };
     wireHoverAndClick(renderer, graph, state);
-    wireNodeDragging(renderer, graph, state, undefined, interruptAutomaticMotion);
+    wireNodeDragging(renderer, graph, state, (node) => {
+      if (!resizeDeferredDuringDrag) return;
+      resizeDeferredDuringDrag = false;
+      renderer.resize();
+      resizeSettler.reset(host.clientWidth, host.clientHeight);
+      settleDraggedResize(node);
+    }, interruptAutomaticMotion);
     wireTheme(renderer, state);
     const onFitView = () => {
       resizeSettler.reset(host.clientWidth, host.clientHeight);
@@ -1029,10 +1044,15 @@ export async function mountLocalGraphs(): Promise<void> {
       applyResponsiveLabelThreshold();
       renderer.resize();
       resizeSettler.reset(host.clientWidth, host.clientHeight);
+      if (state.dragged) {
+        resizeDeferredDuringDrag = true;
+        return;
+      }
       settle("resize");
     };
     const resizeObserver = new ResizeObserver(() => {
       if (state.dragged) {
+        resizeDeferredDuringDrag = true;
         resizeSettler.reset(host.clientWidth, host.clientHeight);
         return;
       }
@@ -1053,6 +1073,8 @@ export async function mountLocalGraphs(): Promise<void> {
         labelReveal.finishFitPlanning();
       } else if (pendingMotion === "fit") {
         fitView();
+      } else if (pendingMotion === "drag-resize") {
+        settleDraggedResize(pendingPinnedId);
       } else if (pendingMotion) {
         settle(pendingMotion);
       }
