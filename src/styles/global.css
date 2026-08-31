@@ -445,11 +445,18 @@ main.fluid {
 
 .brain-card__identity {
   display: flex;
+  min-height: 2.7em;
   align-items: center;
   gap: 0.5rem;
   padding-right: 5rem;
   color: var(--text-muted);
   font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.brain-card__identity > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .brain-card h3 {
@@ -869,6 +876,56 @@ a.wiki-link:focus-visible {
 
 .wiki-link--unknown-brain .brain-badge {
   border-style: dashed;
+}
+
+.potential-link {
+  position: relative;
+  color: inherit;
+  cursor: help;
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: color-mix(in srgb, var(--text-muted) 70%, transparent);
+  text-underline-offset: 0.18em;
+}
+
+.potential-link::after {
+  position: absolute;
+  z-index: 10;
+  bottom: calc(100% + 0.4rem);
+  left: 50%;
+  width: max-content;
+  max-width: min(18rem, calc(100vw - 2rem));
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  background: var(--bg-elevated);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  content: attr(data-potential-link-label);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.35;
+  opacity: 0;
+  pointer-events: none;
+  text-align: left;
+  text-decoration: none;
+  transform: translate(-50%, 0.2rem);
+  transition: opacity 120ms ease, transform 120ms ease, visibility 120ms;
+  visibility: hidden;
+  white-space: normal;
+}
+
+.potential-link:hover::after,
+.potential-link:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  visibility: visible;
+}
+
+.potential-link:focus-visible {
+  border-radius: 2px;
+  outline: 2px solid var(--text-muted);
+  outline-offset: 2px;
 }
 
 /* --- Callouts (remark-callout output) --------------------------------- */
@@ -1751,6 +1808,12 @@ div[data-callout] [data-callout-body] > :last-child {
     gap: 0.25rem;
   }
 
+}
+
+@media (max-width: 700px) {
+  .brain-card__identity {
+    min-height: 0;
+  }
 }
 
 @media (max-width: 700px), (pointer: coarse) {

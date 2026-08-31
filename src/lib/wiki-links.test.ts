@@ -121,11 +121,48 @@ describe("parseWikiLinks", () => {
     ]);
   });
 
+  it("normalizes soft-wrapped fields while preserving raw source offsets", () => {
+    const raw = "[[@product-design/Interaction\n  model#Deep\n Dive|the\n  model]]";
+    const source = `Before ${raw} after`;
+
+    expect(parseWikiLinks(source)).toEqual([{
+      raw,
+      target: "Interaction model",
+      targetBrainId: "product-design",
+      anchor: "Deep Dive",
+      alias: "the model",
+      index: 7,
+      length: raw.length,
+    }]);
+  });
+
   it.each([
-    "[[Note\nB]]",
-    "[[Note B#Deep\nDive]]",
-    "[[Note B|read\nthis]]",
-  ])("rejects a line break inside wiki-link delimiters: %j", (source) => {
+    ["[[Wrapped\nlocal target]]", "Wrapped local target"],
+    ["[[Future\nidea]]", "Future idea"],
+    ["[[Note#Deep\nsection]]", "Note"],
+    ["[[Note|read\nthis]]", "Note"],
+  ])("parses a soft-wrapped wiki-link: %j", (source, target) => {
+    expect(parseWikiLinks(source)).toMatchObject([{ raw: source, target }]);
+  });
+
+  it("continues to exclude soft-wrapped attachment embeds", () => {
+    expect(parseWikiLinks("![[diagram\n.svg|preview]] and [[Note\nTitle]]")).toMatchObject([
+      { raw: "[[Note\nTitle]]", target: "Note Title" },
+    ]);
+  });
+
+  it.each([
+    "[[Note\n\nTitle]]",
+    "[[Note\n  \nTitle]]",
+    "[[Note  \nTitle]]",
+    "[[Note\\\nTitle]]",
+    "[[Note\n# Heading]]",
+    "[[Note\n> quote]]",
+    "[[Note\n- list item]]",
+    "[[Note\n1. list item]]",
+    "[[Note\n    code]]",
+    "[[Note\n```code]]",
+  ])("rejects a wiki-link crossing a hard break or block boundary: %j", (source) => {
     expect(parseWikiLinks(source)).toEqual([]);
   });
 });
@@ -149,6 +186,12 @@ describe("wikiLinksToText", () => {
   it("leaves malformed namespaces literal while reducing later valid links", () => {
     expect(wikiLinksToText("[[@Bad/A]] then [[B]] and [[Email @ work]]")).toBe(
       "[[@Bad/A]] then B and Email @ work",
+    );
+  });
+
+  it("reduces soft-wrapped wiki-links to normalized display text", () => {
+    expect(wikiLinksToText("See [[Note\nTitle]] or [[Other|the\n  alias]].")).toBe(
+      "See Note Title or the alias.",
     );
   });
 });

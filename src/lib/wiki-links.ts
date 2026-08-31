@@ -26,8 +26,19 @@ export interface WikiLink {
   length: number;
 }
 
-const WIKI_LINK_RE = /(?<!!)\[\[([^\]|#\n]+?)(?:#([^\]|\n]+?))?(?:\|([^\]\n]+?))?\]\]/g;
+const WIKI_LINK_RE = /(?<!!)\[\[([^\]|#]+?)(?:#([^\]|]+?))?(?:\|([^\]]+?))?\]\]/g;
 const BRAIN_ID_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+function hasOnlySoftBreaks(value: string): boolean {
+  if (!value.includes("\n")) return true;
+  if (/\r(?!\n)/.test(value) || /\n[\t ]*\r?\n/.test(value)) return false;
+  if (/(?:[\t ]{2,}|\\)\r?\n/.test(value)) return false;
+  return !/\r?\n(?: {4}|\t| {0,3}(?:#{1,6}(?:[\t ]|$)|>|(?:[-+*]|\d+[.)])[\t ]+|`{3,}|~{3,}|<))/.test(value);
+}
+
+function normalizeField(value: string): string {
+  return value.replace(/[\t ]*\r?\n[\t ]*/g, " ").trim();
+}
 
 function parseTarget(value: string): Pick<WikiLink, "target" | "targetBrainId"> | null {
   const target = value.trim();
@@ -48,14 +59,15 @@ function parseTarget(value: string): Pick<WikiLink, "target" | "targetBrainId"> 
 export function parseWikiLinks(text: string): WikiLink[] {
   const links: WikiLink[] = [];
   for (const match of text.matchAll(WIKI_LINK_RE)) {
-    const target = parseTarget(match[1]);
+    if (!hasOnlySoftBreaks(match[0])) continue;
+    const target = parseTarget(normalizeField(match[1]));
     if (!target) continue;
 
     links.push({
       raw: match[0],
       ...target,
-      anchor: match[2]?.trim() ?? null,
-      alias: match[3]?.trim() ?? null,
+      anchor: match[2] === undefined ? null : normalizeField(match[2]),
+      alias: match[3] === undefined ? null : normalizeField(match[3]),
       index: match.index,
       length: match[0].length,
     });

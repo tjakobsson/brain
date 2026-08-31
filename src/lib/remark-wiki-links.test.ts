@@ -121,6 +121,13 @@ describe("remarkWikiLinks", () => {
     expect((para.children[2] as Text).value).toBe("\nafter");
   });
 
+  it("resolves a soft-wrapped local target with normalized display text", () => {
+    const para = run("See [[Note\n B]] now.", ["Note B"]);
+    const link = para.children[1] as Link;
+    expect(link.url).toBe("/notes/note-b");
+    expect((link.children[0] as Text).value).toBe("Note B");
+  });
+
   it("renders unwritten targets as a styled span", () => {
     const para = run("Someday [[Future idea]] maybe.", []);
     const html = para.children[1] as Html;
@@ -160,6 +167,93 @@ describe("remarkWikiLinks", () => {
       },
     ]);
     expect((design.children[0] as Link).url).toBe("/brains/design/notes/principles");
+  });
+
+  it("normalizes wrapped foreign targets, headings, and aliases once", () => {
+    const workspace = path.resolve("examples/demo-workspace/brains");
+    const paragraph = runWorkspace(
+      "[[@design/Interaction\n model#Decision\n rationale|design\n model]]",
+      path.join(workspace, "engineering", "Principles.md"),
+    );
+    const link = paragraph.children[0] as Link;
+
+    expect(paragraph.children).toHaveLength(1);
+    expect(link.url).toBe("/brains/design/notes/interaction-model#decision-rationale");
+    expect(link.data?.hProperties).toMatchObject({
+      className: ["wiki-link", "wiki-link--foreign"],
+      "data-brain-id": "design",
+    });
+    expect((link.children[0] as Text).value).toBe("design model");
+  });
+
+  it("renders a soft-wrapped unwritten target once with normalized text", () => {
+    const para = run("Someday [[Future\n idea]] maybe.", []);
+    const unwritten = para.children[1] as Html;
+    expect(para.children).toHaveLength(3);
+    expect(unwritten.value).toContain("wiki-link--unwritten");
+    expect(unwritten.value).toContain("Future idea");
+    expect(unwritten.value).not.toContain("Future\n idea");
+  });
+
+  it("marks indexed plain-text title matches as non-clickable potential links", () => {
+    const workspace = path.resolve("examples/demo-workspace/brains");
+    const paragraph = runWorkspace(
+      "These principles keep ownership visible.",
+      path.join(workspace, "design", "Interaction model.md"),
+    );
+
+    expect(paragraph.children.map((child) => child.type)).toEqual(["text", "html", "text"]);
+    expect((paragraph.children[1] as Html).value).toBe(
+      '<span class="potential-link" tabindex="0" aria-label="Potential link to Principles. This is plain text, not an authored link." data-potential-link-label="Potential link to Principles. This is plain text, not an authored link.">principles</span>',
+    );
+    expect(paragraph.children.some((child) => child.type === "link")).toBe(false);
+  });
+
+  it("does not mark already-linked pairs, authored links, code, or unrelated text", () => {
+    const snapshot = createWorkspaceSnapshot({
+      mode: "workspace",
+      vaultDir: path.resolve("examples/demo-vault"),
+      workspacePath: path.resolve("examples/demo-workspace/workspace.json"),
+      outputDir: path.resolve("dist"),
+      exclusions: [],
+      strictLinks: false,
+    });
+    const workspace = path.resolve("examples/demo-workspace/brains");
+    const tree: Root = {
+      type: "root",
+      children: [{
+        type: "paragraph",
+        children: [
+          { type: "text", value: "Principles before " },
+          { type: "link", url: "/manual", children: [{ type: "text", value: "Principles" }] },
+          { type: "text", value: " and " },
+          { type: "inlineCode", value: "Principles" },
+          { type: "text", value: " plus unrelated prose." },
+        ],
+      }],
+    };
+    remarkWikiLinks({ index: snapshot.index, brainAccents: new Map() })(
+      tree,
+      new VFile({ path: path.join(workspace, "design", "Interaction model.md") }),
+    );
+    const paragraph = tree.children[0] as Paragraph;
+
+    expect(paragraph.children.filter((child) => child.type === "html")).toHaveLength(1);
+    expect(paragraph.children.find((child) => child.type === "link")).toMatchObject({
+      url: "/manual",
+      children: [{ type: "text", value: "Principles" }],
+    });
+    expect(paragraph.children.find((child) => child.type === "inlineCode")).toMatchObject({
+      value: "Principles",
+    });
+
+    const alreadyLinked = runWorkspace(
+      "Delivery loops appears in plain text too.",
+      path.join(workspace, "engineering", "Principles.md"),
+    );
+    expect(alreadyLinked.children).toEqual([
+      { type: "text", value: "Delivery loops appears in plain text too." },
+    ]);
   });
 
   it("distinguishes missing foreign notes from unknown brains", () => {

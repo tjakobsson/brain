@@ -24,6 +24,10 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function findSource(index: LinkIndex, file: VFile, brainId?: string): VaultNote | undefined {
   const source = file.path ? path.resolve(file.path) : "";
   return index.notes.find(
@@ -131,6 +135,42 @@ function splitTextNode(
   return out;
 }
 
+function potentialTargets(index: LinkIndex, source: VaultNote | undefined): VaultNote[] {
+  if (!source) return [];
+  const targets: VaultNote[] = [];
+  for (const [targetId, sources] of index.unlinkedMentions) {
+    if (!sources.some((candidate) => candidate.id === source.id)) continue;
+    const target = index.byId.get(targetId);
+    if (target) targets.push(target);
+  }
+  return targets.sort((a, b) => b.title.length - a.title.length || a.title.localeCompare(b.title));
+}
+
+function splitPotentialLinks(node: Text, targets: readonly VaultNote[]): PhrasingContent[] {
+  if (targets.length === 0) return [node];
+  const byTitle = new Map(targets.map((target) => [target.title.toLowerCase(), target]));
+  const pattern = new RegExp(`\\b(${targets.map((target) => escapeRegExp(target.title)).join("|")})\\b`, "gi");
+  const matches = [...node.value.matchAll(pattern)];
+  if (matches.length === 0) return [node];
+
+  const out: PhrasingContent[] = [];
+  let cursor = 0;
+  for (const match of matches) {
+    const index = match.index;
+    const target = byTitle.get(match[0].toLowerCase());
+    if (!target) continue;
+    if (index > cursor) out.push({ type: "text", value: node.value.slice(cursor, index) });
+    const label = `Potential link to ${target.title}. This is plain text, not an authored link.`;
+    out.push({
+      type: "html",
+      value: `<span class="potential-link" tabindex="0" aria-label="${escapeHtml(label)}" data-potential-link-label="${escapeHtml(label)}">${escapeHtml(match[0])}</span>`,
+    });
+    cursor = index + match[0].length;
+  }
+  if (cursor < node.value.length) out.push({ type: "text", value: node.value.slice(cursor) });
+  return out;
+}
+
 export function remarkWikiLinks(options: RemarkWikiLinksOptions = {}) {
   const base = options.base ?? "";
   return (tree: Root, file: VFile) => {
@@ -140,5 +180,7 @@ export function remarkWikiLinks(options: RemarkWikiLinksOptions = {}) {
       getWorkspaceSnapshot().registry.brains.map((brain) => [brain.id, brain.accent]),
     );
     transformTextNodes(tree, (node) => splitTextNode(node, index, source, base, brainAccents));
+    const targets = potentialTargets(index, source);
+    transformTextNodes(tree, (node) => splitPotentialLinks(node, targets));
   };
 }

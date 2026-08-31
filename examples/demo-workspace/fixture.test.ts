@@ -9,7 +9,13 @@ describe("public multi-brain fixture", () => {
   it("covers hierarchy, exclusions, links, equal attachment paths, and metadata", () => {
     const workspace = loadWorkspaceManifest(fixture);
     expect(workspace.groups).toContainEqual({ id: "product", title: "Product", parent: "knowledge" });
-    expect(workspace.brains).toHaveLength(3);
+    expect(workspace.brains).toHaveLength(4);
+    expect(workspace.brains).toContainEqual(
+      expect.objectContaining({
+        id: "research-archive-and-synthesis-source-trails",
+        group: "discovery",
+      }),
+    );
     expect(workspace.brains.find((brain) => brain.id === "engineering")?.effectiveExclusions).toEqual([
       "shared-private/**",
       "drafts/**",

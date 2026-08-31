@@ -32,6 +32,13 @@
       "path": "./brains/research",
       "group": "discovery",
       "description": "Evidence and open questions"
+    },
+    {
+      "id": "research-archive-and-synthesis-source-trails",
+      "title": "Research Archive",
+      "path": "./brains/research-archive-and-synthesis-source-trails",
+      "group": "discovery",
+      "description": "Long-term synthesis and source trails"
     }
   ]
 }
