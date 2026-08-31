@@ -23,29 +23,32 @@ test("desktop chooser follows hierarchy and keeps brain context in navigation", 
     .toHaveAttribute("aria-label", "Switch brain, current: @engineering");
   await expect(page.locator("#global-graph canvas.sigma-nodes")).toBeVisible();
 
-  await page.locator(".nav-menu > summary").click();
-  await expect(page.locator(".nav-menu-panel").getByRole("link", { name: "Tags" }))
+  await page.getByRole("button", { name: "Navigation" }).click();
+  await expect(page.locator(".nav-actions").getByRole("link", { name: "Tags" }))
     .toHaveAttribute("href", "/workspace-demo/brains/engineering/tags");
-  await page.locator(".nav-menu > summary").click();
-
   await page.locator(".context-switcher > summary").click();
   await page.locator(".context-switcher__panel").getByRole("link", { name: "@design" }).click();
   await expect(page).toHaveURL(`${workspace}/brains/design`);
   await expect(page.locator(".context-switcher > summary"))
     .toHaveAttribute("title", "Switch brain, current: @design");
+  await page.getByRole("button", { name: "Navigation" }).click();
   await page.locator(".context-switcher > summary").click();
   await page.getByRole("link", { name: "Brain chooser" }).click();
   await expect(page).toHaveURL(`${workspace}/`);
 });
 
-test("active brain navigation is one ordered, viewport-safe vertical pill", async ({ page }) => {
+test("active brain navigation is one collapsed, ordered, viewport-safe pill", async ({ page }) => {
   await page.goto(`${workspace}/brains/engineering/notes/principles`);
 
   const header = page.locator(".site-header");
+  const launcher = header.getByRole("button", { name: "Navigation" });
   const context = header.getByRole("button", { name: "Switch brain, current: @engineering" });
   const graph = header.getByRole("link", { name: "Graph" });
   const search = header.getByRole("button", { name: "Search" });
-  const more = header.locator(".nav-menu > summary");
+  const reports = ["Tags", "Recent", "Orphans"].map((name) => header.getByRole("link", { name }));
+  await expect(launcher).toHaveAttribute("aria-expanded", "false");
+  await expect(header.locator(".nav-actions")).toHaveJSProperty("inert", true);
+  await launcher.click();
   await expect(context).toHaveAttribute("title", "Switch brain, current: @engineering");
   await expect(context).toHaveAttribute("aria-label", "Switch brain, current: @engineering");
   await expect(context).toHaveAttribute("aria-expanded", "false");
@@ -58,7 +61,7 @@ test("active brain navigation is one ordered, viewport-safe vertical pill", asyn
       pill.querySelector(".context-switcher > summary"),
       pill.querySelector(".graph-trigger"),
       pill.querySelector(".search-trigger"),
-      pill.querySelector(".nav-menu > summary"),
+      ...pill.querySelectorAll(".nav-direct-action"),
     ].map((control) => control!.getBoundingClientRect());
     const bounds = pill.getBoundingClientRect();
     const heading = document.querySelector("main h1")!;
@@ -74,14 +77,15 @@ test("active brain navigation is one ordered, viewport-safe vertical pill", asyn
   });
   expect(geometry).toEqual({ ordered: true, aligned: true, inViewport: true, overlapsHeading: false });
 
-  await context.focus();
+  await launcher.focus();
+  await page.keyboard.press("Tab");
   await expect(context).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(graph).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(search).toBeFocused();
   await page.keyboard.press("Tab");
-  await expect(more).toBeFocused();
+  await expect(reports[0]).toBeFocused();
 
   await context.click();
   await expect(context).toHaveAttribute("aria-expanded", "true");
@@ -98,9 +102,19 @@ test("active brain navigation is one ordered, viewport-safe vertical pill", asyn
   await context.click();
   await expect(context).toHaveAttribute("aria-expanded", "false");
 
-  await more.click();
-  await expect(header.locator(".nav-menu-panel").getByRole("link", { name: "Search" })).toHaveCount(0);
-  await expect(header.locator(".nav-menu-panel").getByRole("link", { name: "Tags" })).toBeVisible();
+  await expect(header.locator(".nav-menu")).toHaveCount(0);
+  for (const control of [launcher, context, graph, search, ...reports]) {
+    await expect(control).toHaveAttribute("title", await control.getAttribute("aria-label") ?? "");
+  }
+
+  await page.keyboard.press("Escape");
+  await expect(launcher).toBeFocused();
+  await launcher.click();
+  await search.click();
+  await expect(launcher).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByLabel("Search notes and tags")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(launcher).toBeFocused();
 });
 
 test("Brain identity reuses one mark and reserves accent boundaries for selection", async ({ page }) => {
@@ -148,6 +162,7 @@ test("Brain identity reuses one mark and reserves accent boundaries for selectio
   expect(await boundary(design)).toEqual(designBefore);
 
   await page.getByRole("link", { name: "Open Engineering" }).click();
+  await page.getByRole("button", { name: "Navigation" }).click();
   const currentMark = page.locator(".context-switcher > summary [data-brain-mark]");
   await expect(page.locator(".context-switcher > summary"))
     .toHaveAttribute("title", "Switch brain, current: @engineering");
@@ -210,15 +225,14 @@ test("mobile chooser and combined selection remain usable without horizontal ove
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   const launcher = page.getByRole("button", { name: "Navigation" });
   await expect(launcher).toHaveAttribute("aria-expanded", "false");
-  await expect(page.locator(".mobile-nav-actions")).toHaveJSProperty("inert", true);
+  await expect(page.locator(".nav-actions")).toHaveJSProperty("inert", true);
   await expect(page.locator(".context-switcher")).toHaveCSS("opacity", "0");
-  await expect(page.locator(".nav-menu")).toBeHidden();
   await launcher.click();
   await expect(launcher).toHaveAttribute("aria-expanded", "true");
   await expect(page.locator(".context-switcher > summary")).toBeVisible();
   await expect(page.getByRole("link", { name: "Graph" })).toBeHidden();
   await expect(page.getByRole("button", { name: "Search" })).toBeVisible();
-  await expect(page.locator(".mobile-direct-action")).toHaveCount(0);
+  await expect(page.locator(".nav-direct-action")).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(launcher).toBeFocused();
   await page.getByRole("checkbox", { name: "Select Engineering" }).check();
@@ -235,7 +249,7 @@ test("mobile chooser and combined selection remain usable without horizontal ove
   await expect(page.getByRole("link", { name: "Graph" }))
     .toHaveAttribute("href", `${workspace}/graph?brains=engineering%2Cresearch`);
   await expect(page.getByRole("button", { name: "Search" })).toBeVisible();
-  await expect(page.locator(".mobile-direct-action")).toHaveCount(0);
+  await expect(page.locator(".nav-direct-action")).toHaveCount(0);
 });
 
 test("active-brain mobile launcher has direct actions and predictable disclosure focus", async ({ page }) => {
@@ -271,7 +285,7 @@ test("active-brain mobile launcher has direct actions and predictable disclosure
     .toHaveAttribute("href", "/workspace-demo/brains/engineering/tags");
   await expect(header.getByRole("link", { name: "Recent" })).toBeVisible();
   await expect(header.getByRole("link", { name: "Orphans" })).toBeVisible();
-  await expect(header.locator(".nav-menu")).toBeHidden();
+  await expect(header.locator(".nav-menu")).toHaveCount(0);
 
   await context.click();
   const contextPanel = header.locator(".context-switcher__panel");
@@ -299,27 +313,27 @@ test("active-brain mobile launcher has direct actions and predictable disclosure
   await expect(launcher).toBeFocused();
 });
 
-test("mobile launcher is bounded in short viewports and disables motion when requested", async ({ page }) => {
+test("launcher is bounded in short viewports and disables motion when requested", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.setViewportSize({ width: 390, height: 240 });
   await page.goto(`${workspace}/brains/engineering/notes/principles`);
 
   const launcher = page.getByRole("button", { name: "Navigation" });
-  const actions = page.locator(".mobile-nav-actions");
+  const actions = page.locator(".nav-actions");
   const collapsed = await page.locator(".site-header").boundingBox();
   await launcher.click();
   await expect(actions).toHaveCSS("overflow-y", "auto");
   await expect(actions).toHaveCSS("transition-duration", "0s");
   await expect(actions.locator(":scope > *").first()).toHaveCSS("transition-duration", "0s");
   const geometry = await page.locator(".site-header").evaluate((header) => {
-    const launcherBounds = header.querySelector(".mobile-nav-launcher")!.getBoundingClientRect();
-    const actionsBounds = header.querySelector(".mobile-nav-actions")!.getBoundingClientRect();
+    const launcherBounds = header.querySelector(".nav-launcher")!.getBoundingClientRect();
+    const actionsBounds = header.querySelector(".nav-actions")!.getBoundingClientRect();
     const headerBounds = header.getBoundingClientRect();
     return {
       growsDown: actionsBounds.top >= launcherBounds.bottom,
       inViewport: headerBounds.top >= 0 && headerBounds.bottom <= innerHeight,
-      scrollHeight: (header.querySelector(".mobile-nav-actions") as HTMLElement).scrollHeight,
-      clientHeight: (header.querySelector(".mobile-nav-actions") as HTMLElement).clientHeight,
+      scrollHeight: (header.querySelector(".nav-actions") as HTMLElement).scrollHeight,
+      clientHeight: (header.querySelector(".nav-actions") as HTMLElement).clientHeight,
     };
   });
   expect(geometry.growsDown).toBe(true);
@@ -472,7 +486,7 @@ test("graph ownership legend remains non-color-readable on mobile", async ({ pag
   await expect(actions).toHaveCount(4);
   await expect(controls.getByRole("button", { name: "Filters" })).toBeVisible();
   await expect(controls.getByRole("button", { name: "Fit view" })).toBeVisible();
-  await expect(controls.getByRole("button", { name: "Related brains" })).toBeVisible();
+  await expect(controls.getByRole("button", { name: "Show related brains" })).toBeVisible();
   await expect(controls.getByRole("button", { name: "Legend" })).toBeVisible();
   const initialGeometry = await page.evaluate(() => {
     const controls = document.querySelector(".graph-controls")!.getBoundingClientRect();
@@ -494,6 +508,9 @@ test("graph ownership legend remains non-color-readable on mobile", async ({ pag
   expect(initialGeometry.actions.every(({ width, height }) => width >= 44 && height >= 44)).toBe(true);
   expect(initialGeometry).toMatchObject({ oneRow: true, alignedWithNavigation: true, sameHeightAsNavigation: true, inViewport: true, overlapsNavigation: false, noOverflow: true });
   expect(Math.abs(initialGeometry.controlsLeftInset - initialGeometry.navigationRightInset)).toBeLessThan(1);
+  for (const action of await actions.all()) {
+    await expect(action).toHaveAttribute("title", await action.getAttribute("aria-label") ?? "");
+  }
   await page.getByRole("button", { name: "Navigation" }).click();
   await filterToggle.click();
   await expect(page.getByRole("button", { name: "Navigation" })).toHaveAttribute("aria-expanded", "false");
@@ -503,6 +520,8 @@ test("graph ownership legend remains non-color-readable on mobile", async ({ pag
   await relatedBrains.click();
   await expect(graph).toHaveAttribute("data-foreign-nodes", "2");
   await expect(relatedBrains).toHaveText("Hide related brains");
+  await expect(relatedBrains).toHaveAttribute("aria-label", "Hide related brains");
+  await expect(relatedBrains).toHaveAttribute("title", "Hide related brains");
   await expect(relatedBrains).toHaveAttribute("aria-pressed", "true");
   expect(await actions.evaluateAll((buttons) => buttons.map((button) => {
     const { x, y, width, height } = button.getBoundingClientRect();
@@ -637,7 +656,7 @@ test("dense related notes use collision-selected labels in phone fits", async ({
   }));
   await page.goto(`${workspace}/brains/engineering`);
   const graph = page.locator("#global-graph");
-  await page.getByRole("button", { name: "Related brains" }).click();
+  await page.getByRole("button", { name: "Show related brains" }).click();
   await expect(graph).toHaveAttribute("data-foreign-nodes", "24");
   await page.waitForFunction(() => {
     const host = document.querySelector<HTMLElement>("#global-graph")!;
@@ -687,6 +706,7 @@ test("dense related notes use collision-selected labels in phone fits", async ({
 
 test("quick switcher defaults to active, selected, and all-brain scopes", async ({ page }) => {
   await page.goto(`${workspace}/brains/engineering/notes/principles`);
+  await page.getByRole("button", { name: "Navigation" }).click();
   await page.getByRole("button", { name: "Search" }).click();
   const activeScope = page.getByLabel("Quick switcher scope");
   const activeSearch = page.getByLabel("Search notes and tags");
@@ -708,6 +728,7 @@ test("quick switcher defaults to active, selected, and all-brain scopes", async 
   await page.keyboard.press("Escape");
 
   await page.goto(`${workspace}/graph?brains=engineering,design`);
+  await page.getByRole("button", { name: "Navigation" }).click();
   await page.getByRole("button", { name: "Search" }).click();
   await expect(page.getByLabel("Quick switcher scope")).toHaveValue("selected");
   await page.getByLabel("Search notes and tags").fill("Principles");

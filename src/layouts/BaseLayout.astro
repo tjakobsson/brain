@@ -49,10 +49,11 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
       <header class="site-header">
         <nav class="site-nav-pill" aria-label="Primary navigation">
           <button
-            class="nav-action mobile-nav-launcher"
+            class="nav-action nav-launcher"
             type="button"
             aria-label="Navigation"
-            aria-controls="mobile-nav-actions"
+            title="Navigation"
+            aria-controls="nav-actions"
             aria-expanded="false"
           >
             <svg class="nav-icon launcher-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -62,7 +63,7 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
               <circle cx="16" cy="16" r="1.5"></circle>
             </svg>
           </button>
-          <div id="mobile-nav-actions" class="mobile-nav-actions" inert aria-hidden="true">
+          <div id="nav-actions" class="nav-actions" inert aria-hidden="true">
             {isWorkspace && (
               <details class="context-switcher">
                 <summary
@@ -97,6 +98,7 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
               class="nav-action graph-trigger"
               href={url(graphRoute)}
               aria-label="Graph"
+              title="Graph"
               data-combined-route={combined ? "" : undefined}
               data-combined-graph-route={combined ? "" : undefined}
               data-combined-registry={combined ? JSON.stringify(brainRouteRegistry) : undefined}
@@ -115,6 +117,7 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
               data-open-switcher
               type="button"
               aria-label="Search"
+              title="Search"
               aria-haspopup="dialog"
               aria-controls="quick-switcher"
             >
@@ -124,7 +127,7 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
               </svg>
             </button>
             {hasContextReports && (
-              <a class="nav-action mobile-direct-action" href={url(contextualRoutes.tags)} aria-label="Tags">
+              <a class="nav-action nav-direct-action" href={url(contextualRoutes.tags)} aria-label="Tags" title="Tags">
                 <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M4 5.5V11l8.5 8.5 7-7L11 4H5.5A1.5 1.5 0 0 0 4 5.5Z"></path>
                   <circle cx="8" cy="8" r="1"></circle>
@@ -132,7 +135,7 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
               </a>
             )}
             {hasContextReports && (
-              <a class="nav-action mobile-direct-action" href={url(contextualRoutes.recent)} aria-label="Recent">
+              <a class="nav-action nav-direct-action" href={url(contextualRoutes.recent)} aria-label="Recent" title="Recent">
                 <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
                   <circle cx="12" cy="12" r="8"></circle>
                   <path d="M12 7v5l3.5 2"></path>
@@ -140,7 +143,7 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
               </a>
             )}
             {hasContextReports && (
-              <a class="nav-action mobile-direct-action" href={url(contextualRoutes.orphans)} aria-label="Orphans">
+              <a class="nav-action nav-direct-action" href={url(contextualRoutes.orphans)} aria-label="Orphans" title="Orphans">
                 <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
                   <circle cx="8" cy="8" r="2.5"></circle>
                   <circle cx="16" cy="16" r="2.5"></circle>
@@ -149,18 +152,6 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
               </a>
             )}
           </div>
-          <details class="nav-menu">
-            <summary class="nav-action" role="button" aria-label="More navigation" aria-expanded="false">
-              <svg class="nav-icon expand-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="m14.5 6-6 6 6 6"></path>
-              </svg>
-            </summary>
-            <div class="nav-menu-panel">
-              {hasContextReports && <a href={url(contextualRoutes.tags)}>Tags</a>}
-              {hasContextReports && <a href={url(contextualRoutes.recent)}>Recent</a>}
-              {hasContextReports && <a href={url(contextualRoutes.orphans)}>Orphans</a>}
-            </div>
-          </details>
         </nav>
       </header>
     </div>
@@ -170,46 +161,43 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
     <QuickSwitcher activeBrainId={activeBrainId} combined={combined} workspace={isWorkspace} />
     <script>
       const header = document.querySelector<HTMLElement>(".site-header")!;
-      const launcher = header.querySelector<HTMLButtonElement>(".mobile-nav-launcher")!;
-      const mobileActions = header.querySelector<HTMLElement>(".mobile-nav-actions")!;
-      const mobileQuery = window.matchMedia("(max-width: 700px), (pointer: coarse)");
-      let mobileExpanded = false;
+      const launcher = header.querySelector<HTMLButtonElement>(".nav-launcher")!;
+      const actions = header.querySelector<HTMLElement>(".nav-actions")!;
+      let expanded = false;
 
-      const applyMobileState = () => {
-        const mobile = mobileQuery.matches;
-        header.toggleAttribute("data-mobile", mobile);
-        header.toggleAttribute("data-mobile-expanded", mobile && mobileExpanded);
-        launcher.setAttribute("aria-expanded", String(mobile && mobileExpanded));
-        mobileActions.setAttribute("aria-hidden", String(mobile && !mobileExpanded));
-        mobileActions.inert = mobile && !mobileExpanded;
-        mobileActions.style.setProperty("--mobile-actions-height", `${mobileActions.scrollHeight}px`);
+      const applyNavigationState = () => {
+        header.toggleAttribute("data-nav-expanded", expanded);
+        launcher.setAttribute("aria-expanded", String(expanded));
+        actions.setAttribute("aria-hidden", String(!expanded));
+        actions.inert = !expanded;
+        actions.style.setProperty("--nav-actions-height", `${actions.scrollHeight}px`);
       };
-      const collapseMobile = (restoreFocus: boolean) => {
-        if (!mobileQuery.matches || !mobileExpanded) return;
-        mobileExpanded = false;
-        for (const details of mobileActions.querySelectorAll<HTMLDetailsElement>("details[open]")) {
+      const collapseNavigation = (restoreFocus: boolean) => {
+        if (!expanded) return;
+        expanded = false;
+        for (const details of actions.querySelectorAll<HTMLDetailsElement>("details[open]")) {
           details.open = false;
         }
-        applyMobileState();
+        applyNavigationState();
         if (restoreFocus) launcher.focus();
       };
 
       launcher.addEventListener("click", () => {
-        if (mobileExpanded) {
-          collapseMobile(false);
+        if (expanded) {
+          collapseNavigation(false);
           return;
         }
-        mobileExpanded = true;
-        applyMobileState();
+        expanded = true;
+        applyNavigationState();
       });
-      mobileActions.addEventListener("click", (event) => {
+      actions.addEventListener("click", (event) => {
         const target = event.target instanceof Element ? event.target : null;
-        if (target?.closest(".search-trigger")) collapseMobile(true);
-        else if (target?.closest("a")) collapseMobile(false);
+        if (target?.closest(".search-trigger")) collapseNavigation(true);
+        else if (target?.closest("a")) collapseNavigation(false);
       }, { capture: true });
       document.addEventListener("pointerdown", (event) => {
-        if (mobileExpanded && event.target instanceof Node && !header.contains(event.target)) {
-          collapseMobile(false);
+        if (expanded && event.target instanceof Node && !header.contains(event.target)) {
+          collapseNavigation(false);
           const interactiveTarget = event.target instanceof Element && event.target.closest(
             'a[href], button, input, select, textarea, summary, [contenteditable="true"], [tabindex]:not([tabindex="-1"])',
           );
@@ -217,19 +205,15 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
         }
       });
       document.addEventListener("keydown", (event) => {
-        if (event.key === "Escape" && mobileExpanded) {
+        if (event.key === "Escape" && expanded) {
           event.stopImmediatePropagation();
-          collapseMobile(true);
+          collapseNavigation(true);
         }
       });
-      mobileQuery.addEventListener("change", () => {
-        mobileExpanded = false;
-        applyMobileState();
-      });
-      new ResizeObserver(applyMobileState).observe(mobileActions);
-      applyMobileState();
+      new ResizeObserver(applyNavigationState).observe(actions);
+      applyNavigationState();
 
-      for (const details of document.querySelectorAll<HTMLDetailsElement>(".context-switcher, .nav-menu")) {
+      for (const details of document.querySelectorAll<HTMLDetailsElement>(".context-switcher")) {
         const summary = details.querySelector<HTMLElement>(":scope > summary")!;
         const updateExpanded = () => summary.setAttribute("aria-expanded", String(details.open));
         details.addEventListener("toggle", updateExpanded);

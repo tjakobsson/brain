@@ -1,7 +1,10 @@
 import Graph from "graphology";
 import { describe, expect, it, vi } from "vitest";
 import {
+  activeInspectionNode,
+  createLongPressController,
   createHoverReducers,
+  setPinnedInspection,
   stopCameraAnimation,
   wireGraphHover,
   type GraphHoverState,
@@ -44,8 +47,9 @@ function fixture() {
   };
   const state: GraphHoverState = {
     hovered: null,
+    pinned: null,
     neighbors: new Set(),
-    theme: { fadedEdge: "#eeeeee", fadedNode: "#dddddd" },
+    theme: { fadedEdge: "#eeeeee", fadedLabel: "#cccccc", fadedNode: "#dddddd" },
   };
   const frame = () => ({
     nodes: Object.fromEntries(
@@ -113,7 +117,11 @@ describe("graph hover interaction", () => {
 
     expect(nodeReducer("a", attrs)).toEqual(attrs);
     expect(nodeReducer("b", attrs)).toEqual(attrs);
-    expect(nodeReducer("d", attrs)).toEqual({ ...attrs, color: "#dddddd" });
+    expect(nodeReducer("d", attrs)).toEqual({
+      ...attrs,
+      color: "#dddddd",
+      labelColor: "#cccccc",
+    });
     expect(attrs).toEqual({
       x: 12,
       y: -4,
@@ -128,6 +136,24 @@ describe("graph hover interaction", () => {
     expect(edgeReducer("c-d", edgeAttrs)).toEqual({ ...edgeAttrs, color: "#eeeeee" });
   });
 
+  it("restores pinned inspection after pointer hover and ignores touch hover events", () => {
+    const { graph, renderer, emit, state } = fixture();
+    setPinnedInspection(graph, state, "a");
+    wireGraphHover(renderer as never, graph, state);
+
+    emit("enterNode", { node: "b", event: { original: { type: "touchmove" } } });
+    expect(activeInspectionNode(state)).toBe("a");
+    expect(state.neighbors).toEqual(new Set(["b"]));
+
+    emit("enterNode", { node: "c", event: { original: { type: "mousemove" } } });
+    expect(activeInspectionNode(state)).toBe("c");
+    expect(state.neighbors).toEqual(new Set(["b", "d"]));
+
+    emit("leaveNode", { node: "c", event: { original: { type: "mousemove" } } });
+    expect(activeInspectionNode(state)).toBe("a");
+    expect(state.neighbors).toEqual(new Set(["b"]));
+  });
+
   it("stops an active camera animation at its current state", () => {
     const { camera, renderer } = fixture();
     camera.isAnimated.mockReturnValue(true);
@@ -135,5 +161,45 @@ describe("graph hover interaction", () => {
     stopCameraAnimation(renderer as never);
 
     expect(camera.animate).toHaveBeenCalledWith(camera.getState(), { duration: 1 });
+  });
+});
+
+describe("graph long press", () => {
+  it("activates and consumes a held press after release", () => {
+    vi.useFakeTimers();
+    const activate = vi.fn();
+    const press = createLongPressController({ onActivate: activate, duration: 400 });
+
+    press.start("a", { x: 10, y: 10 });
+    press.move({ x: 12, y: 12 });
+    vi.advanceTimersByTime(400);
+    press.release();
+
+    expect(activate).toHaveBeenCalledWith("a");
+    expect(press.consumeActivatedPress()).toBe(true);
+    expect(press.consumeActivatedPress()).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it("cancels on early release, drag movement, and teardown", () => {
+    vi.useFakeTimers();
+    const activate = vi.fn();
+    const press = createLongPressController({ onActivate: activate, duration: 400, tolerance: 3 });
+
+    press.start("early", { x: 0, y: 0 });
+    press.release();
+    vi.advanceTimersByTime(400);
+
+    press.start("dragged", { x: 0, y: 0 });
+    press.move({ x: 4, y: 0 });
+    vi.advanceTimersByTime(400);
+
+    press.start("destroyed", { x: 0, y: 0 });
+    press.destroy();
+    vi.advanceTimersByTime(400);
+
+    expect(activate).not.toHaveBeenCalled();
+    expect(press.consumeActivatedPress()).toBe(false);
+    vi.useRealTimers();
   });
 });

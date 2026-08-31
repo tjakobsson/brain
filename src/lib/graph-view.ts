@@ -1,10 +1,14 @@
 import Graph from "graphology";
 import Sigma from "sigma";
-import { drawDiscNodeHover, drawDiscNodeLabel } from "sigma/rendering";
+import { drawDiscNodeLabel } from "sigma/rendering";
 import type { MouseCoords, TouchCoords, WheelCoords } from "sigma/types";
 import { BRAIN_MARK_PATH } from "./brain-mark";
 import {
+  activeInspectionNode,
+  createLongPressController,
   createHoverReducers,
+  GRAPH_DRAG_TOLERANCE,
+  setPinnedInspection,
   stopCameraAnimation,
   wireGraphHover,
   type GraphHoverState,
@@ -39,6 +43,7 @@ import { combinedRoutes, joinBase, routes, routesFor, type LogicalRoute } from "
 interface GraphTheme {
   edge: string;
   fadedEdge: string;
+  fadedLabel: string;
   fadedNode: string;
   label: string;
 }
@@ -46,6 +51,7 @@ interface GraphTheme {
 type NodeLabelData = Parameters<typeof drawDiscNodeLabel>[1] & {
   brainAccent?: string;
   foreign?: boolean;
+  labelColor?: string;
 };
 
 let brainMarkPath: Path2D | undefined;
@@ -106,38 +112,39 @@ const drawGraphNodeLabel: typeof drawDiscNodeLabel = (context, data, settings) =
     markX,
     data.y - markSize / 2,
     markSize,
-    graphData.brainAccent ?? color,
+    graphData.labelColor ?? graphData.brainAccent ?? color,
   );
   context.fillStyle = color;
   context.fillText(parts[2], markX + markSize + 3, baseline);
 };
 
-const drawGraphNodeHover: typeof drawDiscNodeHover = (context, data, settings) => {
+const drawGraphNodeHover: typeof drawDiscNodeLabel = (context, data, settings) => {
   const graphData = data as NodeLabelData;
-  if (!graphData.foreign || typeof data.label !== "string") {
-    drawDiscNodeHover(context, data, settings);
-    return;
-  }
-
   context.font = `${settings.labelWeight} ${settings.labelSize}px ${settings.labelFont}`;
-  context.fillStyle = "#FFF";
+  context.fillStyle = window.matchMedia("(prefers-color-scheme: dark)").matches ? "#24232a" : "#fff";
   context.shadowOffsetX = 0;
   context.shadowOffsetY = 0;
   context.shadowBlur = 8;
   context.shadowColor = "#000";
   const padding = 2;
-  const textWidth = context.measureText(data.label).width + settings.labelSize + 4;
+  const textWidth = typeof data.label === "string"
+    ? context.measureText(data.label).width + (graphData.foreign ? settings.labelSize + 4 : 0)
+    : 0;
   const boxWidth = Math.round(textWidth + 5);
   const boxHeight = Math.round(settings.labelSize + 2 * padding);
   const radius = Math.max(data.size, settings.labelSize / 2) + padding;
-  const angle = Math.asin(Math.min(1, boxHeight / 2 / radius));
-  const xOffset = Math.sqrt(Math.abs(radius ** 2 - (boxHeight / 2) ** 2));
   context.beginPath();
-  context.moveTo(data.x + xOffset, data.y + boxHeight / 2);
-  context.lineTo(data.x + radius + boxWidth, data.y + boxHeight / 2);
-  context.lineTo(data.x + radius + boxWidth, data.y - boxHeight / 2);
-  context.lineTo(data.x + xOffset, data.y - boxHeight / 2);
-  context.arc(data.x, data.y, radius, angle, -angle);
+  if (typeof data.label === "string") {
+    const angle = Math.asin(Math.min(1, boxHeight / 2 / radius));
+    const xOffset = Math.sqrt(Math.abs(radius ** 2 - (boxHeight / 2) ** 2));
+    context.moveTo(data.x + xOffset, data.y + boxHeight / 2);
+    context.lineTo(data.x + radius + boxWidth, data.y + boxHeight / 2);
+    context.lineTo(data.x + radius + boxWidth, data.y - boxHeight / 2);
+    context.lineTo(data.x + xOffset, data.y - boxHeight / 2);
+    context.arc(data.x, data.y, radius, angle, -angle);
+  } else {
+    context.arc(data.x, data.y, data.size + padding, 0, Math.PI * 2);
+  }
   context.closePath();
   context.fill();
   context.shadowOffsetX = 0;
@@ -150,14 +157,16 @@ function graphTheme(): GraphTheme {
   return window.matchMedia("(prefers-color-scheme: light)").matches
     ? {
         edge: "#716b7c",
-        fadedEdge: "#d4d0d8",
-        fadedNode: "#d4d0d8",
+        fadedEdge: "#e7e4ea",
+        fadedLabel: "#aaa4b0",
+        fadedNode: "#e1dde5",
         label: "#5f5a68",
       }
     : {
         edge: "#575360",
-        fadedEdge: "#29272e",
-        fadedNode: "#302d36",
+        fadedEdge: "#211f25",
+        fadedLabel: "#625e69",
+        fadedNode: "#29262e",
         label: "#a5a1ae",
       };
 }
@@ -200,7 +209,7 @@ function baseSettings(theme: GraphTheme, nodeCount: number) {
     labelSize: 13,
     labelWeight: "500",
     labelFont: "ui-sans-serif, system-ui, sans-serif",
-    labelColor: { color: theme.label },
+    labelColor: { color: theme.label, attribute: "labelColor" },
     labelRenderedSizeThreshold: largeGraph ? 14 : 4,
     labelDensity: largeGraph ? 0.08 : 1,
     labelGridCellSize: largeGraph ? 180 : 100,
@@ -268,22 +277,71 @@ function wireHoverAndClick(
     const route = graph.getNodeAttribute(node, "route") as LogicalRoute | undefined;
     if (route) window.location.assign(joinBase(import.meta.env.BASE_URL, route));
   };
+  const longPress = createLongPressController({
+    onActivate: (node) => {
+      onInteraction?.();
+      setPinnedInspection(graph, state, node);
+      renderer.getContainer().dataset.pinnedInspection = node;
+      renderer.refresh({ skipIndexation: true });
+    },
+  });
   wireGraphHover(renderer, graph, state, onInteraction, () => state.dragged !== null);
+  renderer.on("downNode", ({ node, event }) => {
+    if (event.original.type.startsWith("touch")) longPress.start(node, event);
+  });
+  renderer.on("downStage", ({ event }) => {
+    if (!event.original.type.startsWith("touch")) return;
+    const node = touchTargetNode(renderer, graph, event);
+    if (node) longPress.start(node, event);
+    else {
+      longPress.consumeActivatedPress();
+      if (state.pinned) {
+        setPinnedInspection(graph, state, null);
+        delete renderer.getContainer().dataset.pinnedInspection;
+        renderer.refresh({ skipIndexation: true });
+      }
+    }
+  });
   renderer.on("clickNode", ({ node }) => {
+    if (longPress.consumeActivatedPress()) return;
     if (state.draggedMoved) {
       state.draggedMoved = false;
       return;
     }
+    setPinnedInspection(graph, state, null);
+    delete renderer.getContainer().dataset.pinnedInspection;
     navigateToNode(node);
   });
   renderer.on("clickStage", ({ event }) => {
     if (!event.original.type.startsWith("touch")) return;
+    if (longPress.consumeActivatedPress()) return;
     if (state.draggedMoved) {
       state.draggedMoved = false;
       return;
     }
     const node = touchTargetNode(renderer, graph, event);
-    if (node) navigateToNode(node);
+    if (node) {
+      setPinnedInspection(graph, state, null);
+      delete renderer.getContainer().dataset.pinnedInspection;
+      navigateToNode(node);
+    } else if (state.pinned) {
+      setPinnedInspection(graph, state, null);
+      delete renderer.getContainer().dataset.pinnedInspection;
+      renderer.refresh({ skipIndexation: true });
+    }
+  });
+  const touch = renderer.getTouchCaptor();
+  const moveLongPress = (event: TouchCoords) => {
+    const point = event.touches[0];
+    if (point) longPress.move(point);
+  };
+  const releaseLongPress = () => longPress.release();
+  touch.on("touchmove", moveLongPress);
+  touch.on("touchup", releaseLongPress);
+  renderer.on("kill", () => {
+    touch.off("touchmove", moveLongPress);
+    touch.off("touchup", releaseLongPress);
+    longPress.destroy();
   });
 }
 
@@ -293,7 +351,7 @@ function wireTheme(renderer: Sigma, state: InteractionState): void {
     state.theme = graphTheme();
     renderer.setSettings({
       defaultEdgeColor: state.theme.edge,
-      labelColor: { color: state.theme.label },
+      labelColor: { color: state.theme.label, attribute: "labelColor" },
     });
     renderer.refresh();
   };
@@ -356,7 +414,7 @@ function wireNodeDragging(
     const current = renderer.viewportToGraph(point);
     const dx = current.x - startPointer.x;
     const dy = current.y - startPointer.y;
-    if (Math.hypot(point.x - startViewport.x, point.y - startViewport.y) > 3) {
+    if (Math.hypot(point.x - startViewport.x, point.y - startViewport.y) > GRAPH_DRAG_TOLERANCE) {
       state.draggedMoved = true;
     }
     for (const [node, start] of starts) {
@@ -445,11 +503,14 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     } catch {
       // Session storage can be unavailable in restricted browsing contexts.
     }
-    ui.relatedBrainsToggle?.setAttribute("aria-pressed", String(showRelatedBrains));
     if (ui.relatedBrainsToggle) {
-      ui.relatedBrainsToggle.querySelector<HTMLElement>("[data-control-label]")!.textContent = showRelatedBrains
+      const label = showRelatedBrains
         ? "Hide related brains"
         : "Show related brains";
+      ui.relatedBrainsToggle.setAttribute("aria-pressed", String(showRelatedBrains));
+      ui.relatedBrainsToggle.setAttribute("aria-label", label);
+      ui.relatedBrainsToggle.title = label;
+      ui.relatedBrainsToggle.querySelector<HTMLElement>("[data-control-label]")!.textContent = label;
     }
   }
   let selectedBrainIds = combined
@@ -546,6 +607,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   let contextEdges = new Set<string>();
   const state: InteractionState = {
     hovered: null,
+    pinned: null,
     neighbors: new Set(),
     dragged: null,
     draggedMoved: false,
@@ -614,6 +676,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   );
   function applyReducers(): void {
     renderer.setSetting("nodeReducer", (node, attrs) => {
+      const activeNode = activeInspectionNode(state);
       const res = { ...attrs } as Record<string, unknown>;
       if (hidden.has(node)) {
         res.hidden = true;
@@ -626,14 +689,15 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       if (
         narrowGraphQuery.matches &&
         !revealNarrowLabels &&
-        node !== state.hovered &&
+        node !== activeNode &&
+        !state.neighbors.has(node) &&
         !labelFitsNarrowViewport(attrs as Record<string, unknown>)
       ) {
         res.label = "";
         res.forceLabel = false;
       }
       if (revealNarrowLabels && res.label) res.forceLabel = true;
-      if (state.hovered) {
+      if (activeNode) {
         return hoverReducers.nodeReducer(node, res as typeof attrs);
       } else if (query && !label.includes(query)) {
         res.color = state.theme.fadedNode;
@@ -642,13 +706,14 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       return res as typeof attrs;
     });
     renderer.setSetting("edgeReducer", (edge, attrs) => {
+      const activeNode = activeInspectionNode(state);
       const res = { ...attrs } as Record<string, unknown>;
       const source = graph.source(edge);
       const target = graph.target(edge);
       if (!contextEdges.has(edgeKey(source, target)) || hidden.has(source) || hidden.has(target)) {
         res.hidden = true;
       }
-      else if (state.hovered) return hoverReducers.edgeReducer(edge, attrs);
+      else if (activeNode) return hoverReducers.edgeReducer(edge, attrs);
       return res as typeof attrs;
     });
     renderer.refresh();
@@ -719,11 +784,14 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     showRelatedBrains = !showRelatedBrains;
     relatedBrainsStatePending = Boolean(relatedBrainsStorageKey);
     motion.setSessionScope(motionScope());
-    ui.relatedBrainsToggle?.setAttribute("aria-pressed", String(showRelatedBrains));
     if (ui.relatedBrainsToggle) {
-      ui.relatedBrainsToggle.querySelector<HTMLElement>("[data-control-label]")!.textContent = showRelatedBrains
+      const label = showRelatedBrains
         ? "Hide related brains"
         : "Show related brains";
+      ui.relatedBrainsToggle.setAttribute("aria-pressed", String(showRelatedBrains));
+      ui.relatedBrainsToggle.setAttribute("aria-label", label);
+      ui.relatedBrainsToggle.title = label;
+      ui.relatedBrainsToggle.querySelector<HTMLElement>("[data-control-label]")!.textContent = label;
     }
     refresh();
     renderSearchResults();
@@ -935,6 +1003,7 @@ export async function mountLocalGraphs(): Promise<void> {
       ?.querySelector<HTMLButtonElement>("[data-fit-local-graph]");
     const state: InteractionState = {
       hovered: null,
+      pinned: null,
       neighbors: new Set(),
       dragged: null,
       draggedMoved: false,
@@ -1023,7 +1092,7 @@ export async function mountLocalGraphs(): Promise<void> {
       labelReveal.finishFitPlanning();
       stopCameraAnimation(renderer);
     };
-    wireHoverAndClick(renderer, graph, state);
+    wireHoverAndClick(renderer, graph, state, interruptAutomaticMotion);
     wireNodeDragging(renderer, graph, state, (node) => {
       if (!resizeDeferredDuringDrag) return;
       resizeDeferredDuringDrag = false;

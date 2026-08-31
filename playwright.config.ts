@@ -28,5 +28,10 @@ export default defineConfig({
       name: "chromium-custom-domain",
       use: { ...devices["Desktop Chrome"], baseURL: "http://notes.localhost:4330/" },
     },
+    {
+      name: "webkit-code-blocks-phone",
+      testMatch: "**/code-blocks.pw.ts",
+      use: { ...devices["iPhone 13"], baseURL: "http://127.0.0.1:4328/" },
+    },
   ],
 });

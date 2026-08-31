@@ -28,6 +28,7 @@ const brainAware = context === "brain" || context === "combined" || context === 
     class:list={["graph-control", { "graph-legend-trigger": globalControl }]}
     type="button"
     aria-label="Legend"
+    title={globalControl ? "Legend" : undefined}
     aria-controls={`${id}-panel`}
     aria-expanded="false"
     data-graph-legend-trigger
