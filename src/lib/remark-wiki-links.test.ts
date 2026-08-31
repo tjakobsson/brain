@@ -364,6 +364,37 @@ describe("remarkWikiLinks", () => {
     ]);
   });
 
+  it("marks prose after self-closing HTML with quoted greater-than signs", () => {
+    const snapshot = createWorkspaceSnapshot({
+      mode: "workspace",
+      vaultDir: path.resolve("examples/demo-vault"),
+      workspacePath: path.resolve("examples/demo-workspace/workspace.json"),
+      outputDir: path.resolve("dist"),
+      exclusions: [],
+      strictLinks: false,
+    });
+    const tree: Root = {
+      type: "root",
+      children: [{
+        type: "paragraph",
+        children: [
+          { type: "html", value: '<svg aria-label="1 > 0" />' },
+          { type: "text", value: " Principles" },
+        ],
+      }],
+    };
+
+    remarkPotentialLinks({ index: snapshot.index })(
+      tree,
+      new VFile({ path: path.resolve("examples/demo-workspace/brains/design/Interaction model.md") }),
+    );
+
+    expect((tree.children[0] as Paragraph).children.at(-1)).toMatchObject({
+      type: "html",
+      value: expect.stringContaining("potential-link"),
+    });
+  });
+
   it("renders wiki-links inside benign raw HTML wrappers", () => {
     const tree: Root = {
       type: "root",

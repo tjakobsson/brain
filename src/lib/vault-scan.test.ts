@@ -180,6 +180,13 @@ describe("scanVault", () => {
     expect(scanVault(dir).unlinkedMentions.get("principles")).toBeUndefined();
   });
 
+  it("keeps prose after self-closing HTML with quoted greater-than signs searchable", () => {
+    writeNote("Source.md", 'Intro <svg aria-label="1 > 0" /> Principles');
+    writeNote("Principles.md", "Mentioned after authored HTML.");
+
+    expect(scanVault(dir).unlinkedMentions.get("principles")).toHaveLength(1);
+  });
+
   it("does not treat nested callout type markers as unlinked mentions", () => {
     writeNote(
       "Source.md",
