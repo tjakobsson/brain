@@ -977,11 +977,13 @@ export async function mountLocalGraphs(): Promise<void> {
         return () => camera.off("updated", listener);
       },
     );
+    let pendingSettle: "initial" | "resize" | null = null;
     const motion = new GraphMotionController(
       renderer,
       graph,
       local,
       () => {
+        pendingSettle = null;
         host.dataset.fittedRatio = String(labelReveal.recordFit());
         host.dataset.fitCompletions = String(Number(host.dataset.fitCompletions ?? 0) + 1);
       },
@@ -990,11 +992,13 @@ export async function mountLocalGraphs(): Promise<void> {
       true,
     );
     const fitView = () => {
+      pendingSettle = null;
       stopCameraAnimation(renderer);
       labelReveal.beginFit();
       motion.fitView(graph.nodes());
     };
     const settle = (trigger: "initial" | "resize") => {
+      pendingSettle = trigger;
       labelReveal.beginFit();
       motion.settle(trigger, graph.nodes(), slug);
     };
@@ -1007,6 +1011,7 @@ export async function mountLocalGraphs(): Promise<void> {
       },
     );
     const interruptAutomaticMotion = () => {
+      pendingSettle = null;
       resizeSettler.reset(host.clientWidth, host.clientHeight);
       motion.cancel();
       labelReveal.finishFitPlanning();
@@ -1034,9 +1039,12 @@ export async function mountLocalGraphs(): Promise<void> {
     });
     resizeObserver.observe(host);
     const onVisibilityChange = () => {
-      if (!document.hidden) return;
-      motion.cancel();
-      labelReveal.finishFitPlanning();
+      if (document.hidden) {
+        motion.cancel();
+        labelReveal.finishFitPlanning();
+      } else if (pendingSettle) {
+        settle(pendingSettle);
+      }
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
     fitButton?.addEventListener("click", onFitView);

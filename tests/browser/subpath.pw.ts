@@ -756,6 +756,30 @@ test("mobile local graphs recompose clustered positions for their viewport", asy
   expect(Math.abs(stableInk.nodeBottom - settledInk.nodeBottom)).toBeLessThan(3);
 });
 
+test("local graphs resume an interrupted initial settle when the page becomes visible", async ({ page }, testInfo) => {
+  const { base } = deployment(testInfo);
+  await preserveGraphPixels(page);
+  await page.addInitScript(() => {
+    (window as typeof window & { __graphDocumentHidden: boolean }).__graphDocumentHidden = true;
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      get: () => (window as typeof window & { __graphDocumentHidden: boolean }).__graphDocumentHidden,
+    });
+  });
+  await page.goto(`${base}/notes/welcome`);
+
+  const graph = page.locator(".local-graph");
+  await expect(graph.locator("canvas.sigma-nodes")).toBeVisible();
+  await expect(graph).not.toHaveAttribute("data-fit-completions", /\d+/u);
+  await page.evaluate(() => {
+    (window as typeof window & { __graphDocumentHidden: boolean }).__graphDocumentHidden = false;
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+
+  await expect.poll(async () => Number(await graph.getAttribute("data-fit-completions"))).toBeGreaterThan(0);
+  await expect.poll(async () => (await graphNodeComponents(graph)).length).toBeGreaterThan(1);
+});
+
 test("touch layouts keep the local graph interactive", async ({ browser }, testInfo) => {
   const { origin, base } = deployment(testInfo);
   const context = await browser.newContext({ hasTouch: true, viewport: { width: 900, height: 600 } });
