@@ -1,3 +1,6 @@
+import type { Nodes, Parent } from "mdast";
+import { fromMarkdown } from "mdast-util-from-markdown";
+
 /**
  * Shared parser for Brain wiki-links:
  *   [[Note Title]]                     -> local target
@@ -111,7 +114,25 @@ export function wikiLinksToText(text: string): string {
 
 /** Remove fenced code blocks and inline code spans. */
 export function stripCode(text: string): string {
-  return text.replace(/```[\s\S]*?(?:```|$)/g, " ").replace(/`[^`\n]*`/g, " ");
+  const masked = text.split("");
+  const tree = fromMarkdown(text);
+
+  function visit(node: Nodes): void {
+    if (node.type === "code" || node.type === "inlineCode") {
+      const start = node.position?.start.offset ?? 0;
+      const end = node.position?.end.offset ?? start;
+      for (let index = start; index < end; index += 1) {
+        if (masked[index] !== "\n" && masked[index] !== "\r") masked[index] = " ";
+      }
+      return;
+    }
+    if ("children" in node) {
+      for (const child of (node as Parent).children) visit(child);
+    }
+  }
+
+  visit(tree);
+  return masked.join("");
 }
 
 /** Reduce markdown links/images to their visible text. */

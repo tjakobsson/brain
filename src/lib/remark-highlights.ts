@@ -1,12 +1,8 @@
-import type { Html, PhrasingContent, Root, Text } from "mdast";
+import type { Emphasis, PhrasingContent, Root, Text } from "mdast";
 import type { VFile } from "vfile";
 import { transformTextNodes } from "./mdast-text";
 
 const HIGHLIGHT_RE = /==([^=]+?)==/g;
-
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
 
 function splitHighlights(node: Text): PhrasingContent[] {
   const matches = [...node.value.matchAll(HIGHLIGHT_RE)];
@@ -19,7 +15,11 @@ function splitHighlights(node: Text): PhrasingContent[] {
     if (index > cursor) {
       out.push({ type: "text", value: node.value.slice(cursor, index) });
     }
-    const mark: Html = { type: "html", value: `<mark>${escapeHtml(match[1])}</mark>` };
+    const mark: Emphasis = {
+      type: "emphasis",
+      children: [{ type: "text", value: match[1] }],
+      data: { hName: "mark" },
+    };
     out.push(mark);
     cursor = index + match[0].length;
   }

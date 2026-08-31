@@ -1,4 +1,4 @@
-import type { Html, Link, Paragraph, Root, Text } from "mdast";
+import type { Emphasis, Html, Link, Paragraph, Root, Text } from "mdast";
 import { VFile } from "vfile";
 import { describe, expect, it } from "vitest";
 import { remarkWikiLinks } from "./remark-wiki-links";
@@ -8,6 +8,7 @@ import type { LinkIndex, VaultNote } from "./vault-scan";
 import { compositeNoteId, SINGLE_BRAIN_ID } from "./note-identity";
 import path from "node:path";
 import { createWorkspaceSnapshot } from "./vault-loader";
+import { remarkHighlights } from "./remark-highlights";
 
 function fakeNote(title: string): VaultNote {
   return {
@@ -207,6 +208,37 @@ describe("remarkWikiLinks", () => {
       '<span class="potential-link" tabindex="0" aria-label="Potential link to Principles. This is plain text, not an authored link." data-potential-link-label="Potential link to Principles. This is plain text, not an authored link.">principles</span>',
     );
     expect(paragraph.children.some((child) => child.type === "link")).toBe(false);
+  });
+
+  it("preserves highlights around potential links", () => {
+    const snapshot = createWorkspaceSnapshot({
+      mode: "workspace",
+      vaultDir: path.resolve("examples/demo-vault"),
+      workspacePath: path.resolve("examples/demo-workspace/workspace.json"),
+      outputDir: path.resolve("dist"),
+      exclusions: [],
+      strictLinks: false,
+    });
+    const workspace = path.resolve("examples/demo-workspace/brains");
+    const tree: Root = {
+      type: "root",
+      children: [{
+        type: "paragraph",
+        children: [{ type: "text", value: "Keep ==Principles== visible." }],
+      }],
+    };
+    const file = new VFile({ path: path.join(workspace, "design", "Interaction model.md") });
+
+    remarkHighlights()(tree, file);
+    remarkWikiLinks({ index: snapshot.index, brainAccents: new Map() })(tree, file);
+
+    const mark = (tree.children[0] as Paragraph).children[1];
+    expect(mark).toMatchObject({
+      type: "emphasis",
+      data: { hName: "mark" },
+      children: [{ type: "html" }],
+    });
+    expect(((mark as Emphasis).children[0] as Html).value).toContain("potential-link");
   });
 
   it("does not mark already-linked pairs, authored links, code, or unrelated text", () => {

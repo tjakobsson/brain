@@ -162,6 +162,11 @@ function scanBrain(input: BrainManifestInput, mode: InputMode): VaultNote[] {
       const { data, content } = matter(source);
       const title = path.basename(entry.path, path.extname(entry.path));
       const slug = slugify(title);
+      const linkSource = stripCode(content);
+      const links = parseWikiLinks(linkSource).filter((link) =>
+        linkSource.slice(link.index, link.index + link.length) ===
+        content.slice(link.index, link.index + link.length)
+      );
       return {
         id: noteId(mode, input.brainId, slug),
         brainId: input.brainId,
@@ -172,7 +177,7 @@ function scanBrain(input: BrainManifestInput, mode: InputMode): VaultNote[] {
         filePath: entry.absolutePath,
         meta: readMeta(data),
         body: content,
-        links: parseWikiLinks(content),
+        links,
         vaultPath: entry.path,
         source,
         frontmatter: data,

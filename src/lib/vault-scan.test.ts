@@ -92,6 +92,21 @@ describe("scanVault", () => {
     expect(scanVault(dir).unlinkedMentions.get("note-b")).toBeUndefined();
   });
 
+  it("ignores soft-wrapped wiki-links inside fenced and inline code", () => {
+    writeNote(
+      "Note A.md",
+      "```\n[[Note\nB]]\n```\n\n`ignored [[Note\nB]]`\n\nRecords [[Note\nC]].",
+    );
+    writeNote("Note B.md", "Not linked.");
+    writeNote("Note C.md", "Linked.");
+
+    const index = scanVault(dir);
+    expect(index.edges).toMatchObject([{ source: "note-a", target: "note-c" }]);
+    expect(index.edges.some((edge) => edge.target === "note-b")).toBe(false);
+    expect(index.backlinks.get("note-b")).toBeUndefined();
+    expect(index.unresolved).toEqual([]);
+  });
+
   it("ignores very short titles for mention detection", () => {
     writeNote("Note A.md", "This body says Pi several times.");
     writeNote("Pi.md", "Short title.");

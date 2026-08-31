@@ -28,8 +28,8 @@ export default defineConfig({
     processor: unified({
       remarkPlugins: [
         [remarkAttachments, { base: internalSettings.base }],
-        [remarkWikiLinks, { base: internalSettings.base }],
         remarkHighlights,
+        [remarkWikiLinks, { base: internalSettings.base }],
         remarkCallout,
       ],
     }),

@@ -213,13 +213,17 @@ describe("wikiLinksToText", () => {
 });
 
 describe("stripCode", () => {
-  it("removes fenced blocks and inline code", () => {
-    const text = "before ```\ncode [[Not a link]]\n``` middle `inline [[x]]` after";
+  it("masks fenced and multiline inline code while preserving offsets", () => {
+    const text = "before ```\ncode [[Not a link]]\n``` middle `inline\n[[x]]` after";
     const stripped = stripCode(text);
     expect(stripped).not.toContain("Not a link");
     expect(stripped).not.toContain("inline");
     expect(stripped).toContain("before");
     expect(stripped).toContain("after");
+    expect(stripped).toHaveLength(text.length);
+    expect([...stripped].flatMap((value, index) => value === "\n" ? [index] : [])).toEqual(
+      [...text].flatMap((value, index) => value === "\n" ? [index] : []),
+    );
   });
 });
 
