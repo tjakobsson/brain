@@ -252,10 +252,10 @@ describe("stripMarkdownLinks", () => {
 
 describe("stripAuthoredLinks", () => {
   it("masks wiki and Markdown links while preserving surrounding prose", () => {
-    const text = "Before [[Other|Principles]], [Principles](/other), and <a href=\"/other\">Principles</a> after.";
+    const text = "Before [[Other|Principles]], [Principles](/other), <a href=\"/other\">Principles</a>, and <script>Principles</script> after.";
     const stripped = stripAuthoredLinks(text);
     expect(stripped).toHaveLength(text.length);
-    expect(stripped).toMatch(/^Before\s+,\s+, and\s+after\.$/);
+    expect(stripped).toMatch(/^Before\s+,\s+,\s+, and\s+after\.$/);
     expect(stripped).not.toContain("Principles");
   });
 });

@@ -34,6 +34,12 @@ export interface WikiLink {
 const WIKI_LINK_RE = /(?<!!)\[\[([^\]|#]+?)(?:#([^\]|]+?))?(?:\|([^\]]+?))?\]\]/g;
 const BRAIN_ID_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
+interface TextRange {
+  start: number;
+  end: number;
+  quoteDepth: number;
+}
+
 function parseMarkdown(text: string): Root {
   return fromMarkdown(text, {
     extensions: [gfm()],
@@ -99,7 +105,7 @@ function parseTarget(value: string): Pick<WikiLink, "target" | "targetBrainId"> 
 
 function parseWikiLinksInRanges(
   text: string,
-  textRanges: readonly { start: number; end: number }[] | null,
+  textRanges: readonly TextRange[] | null,
 ): WikiLink[] {
   const links: WikiLink[] = [];
   let searchIndex = 0;
@@ -108,16 +114,16 @@ function parseWikiLinksInRanges(
     const match = WIKI_LINK_RE.exec(text);
     if (!match) break;
     searchIndex = match.index + match[0].length;
-    const lineStart = text.lastIndexOf("\n", match.index) + 1;
-    const quoteDepth = blockquoteDepth(text.slice(lineStart, match.index));
-    const candidate = stripBlockquotePrefixes(match[0], quoteDepth);
     const matchEnd = match.index + match[0].length;
-    const insideTextNode = textRanges?.some(({ start, end }) =>
+    const textRange = textRanges?.find(({ start, end }) =>
       start <= match.index && end >= matchEnd
-    ) ?? false;
+    );
+    const lineStart = text.lastIndexOf("\n", match.index) + 1;
+    const quoteDepth = textRange?.quoteDepth ?? blockquoteDepth(text.slice(lineStart, match.index));
+    const candidate = stripBlockquotePrefixes(match[0], quoteDepth);
 
     if (
-      (textRanges !== null && !insideTextNode) ||
+      (textRanges !== null && !textRange) ||
       (textRanges === null && !hasOnlySoftBreaks(candidate))
     ) {
       const nestedOffset = match[0].indexOf("[[", 2);
@@ -154,10 +160,10 @@ export function parseWikiLinks(text: string): WikiLink[] {
 
 /** Parse only source ranges that Astro's GFM parser exposes as renderable text nodes. */
 export function parseMarkdownWikiLinks(text: string): WikiLink[] {
-  const ranges: { start: number; end: number }[] = [];
+  const ranges: TextRange[] = [];
   const tree = parseMarkdown(text);
 
-  function visit(node: Nodes): void {
+  function visit(node: Nodes, quoteDepth: number): void {
     if (
       node.type === "link" ||
       node.type === "image" ||
@@ -169,15 +175,20 @@ export function parseMarkdownWikiLinks(text: string): WikiLink[] {
       node.position?.start.offset !== undefined &&
       node.position.end.offset !== undefined
     ) {
-      ranges.push({ start: node.position.start.offset, end: node.position.end.offset });
+      ranges.push({
+        start: node.position.start.offset,
+        end: node.position.end.offset,
+        quoteDepth,
+      });
       return;
     }
     if ("children" in node) {
-      for (const child of (node as Parent).children) visit(child);
+      const childQuoteDepth = quoteDepth + (node.type === "blockquote" ? 1 : 0);
+      for (const child of (node as Parent).children) visit(child, childQuoteDepth);
     }
   }
 
-  visit(tree);
+  visit(tree, 0);
   return parseWikiLinksInRanges(text, ranges);
 }
 
@@ -234,7 +245,7 @@ export function stripAuthoredLinks(text: string): string {
     }
   }
 
-  for (const match of text.matchAll(/<a\b[^>]*>[\s\S]*?<\/a\s*>/gi)) {
+  for (const match of text.matchAll(/<([A-Za-z][\w:-]*)\b[^>]*>[\s\S]*?<\/\1\s*>/gi)) {
     mask(match.index, match.index + match[0].length);
   }
 

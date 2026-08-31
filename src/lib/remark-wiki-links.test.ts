@@ -329,6 +329,41 @@ describe("remarkWikiLinks", () => {
     ]);
   });
 
+  it("does not mark text inside authored raw HTML containers", () => {
+    const snapshot = createWorkspaceSnapshot({
+      mode: "workspace",
+      vaultDir: path.resolve("examples/demo-vault"),
+      workspacePath: path.resolve("examples/demo-workspace/workspace.json"),
+      outputDir: path.resolve("dist"),
+      exclusions: [],
+      strictLinks: false,
+    });
+    const tree: Root = {
+      type: "root",
+      children: [{
+        type: "paragraph",
+        children: [
+          { type: "text", value: "Intro " },
+          { type: "html", value: "<script>" },
+          { type: "text", value: "Principles" },
+          { type: "html", value: "</script>" },
+        ],
+      }],
+    };
+
+    remarkPotentialLinks({ index: snapshot.index })(
+      tree,
+      new VFile({ path: path.resolve("examples/demo-workspace/brains/design/Interaction model.md") }),
+    );
+
+    expect((tree.children[0] as Paragraph).children).toEqual([
+      { type: "text", value: "Intro " },
+      { type: "html", value: "<script>" },
+      { type: "text", value: "Principles" },
+      { type: "html", value: "</script>" },
+    ]);
+  });
+
   it("distinguishes missing foreign notes from unknown brains", () => {
     const source = path.resolve(
       "examples/demo-workspace/brains/engineering/Principles.md",

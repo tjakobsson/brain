@@ -92,6 +92,13 @@ describe("scanVault", () => {
     expect(scanVault(dir).edges).toMatchObject([{ source: "note-a", target: "note-b" }]);
   });
 
+  it("indexes wrapped links in blockquotes nested under list items", () => {
+    writeNote("Note A.md", "- > [[Note\n  > B]]");
+    writeNote("Note B.md", "Linked from a nested blockquote.");
+
+    expect(scanVault(dir).edges).toMatchObject([{ source: "note-a", target: "note-b" }]);
+  });
+
   it("does not index wiki-link delimiters spanning GFM table rows", () => {
     writeNote("Source.md", "| Value |\n| --- |\n| [[Note\n| shown]] |");
     writeNote("Note.md", "Not linked across table rows.");
@@ -111,7 +118,7 @@ describe("scanVault", () => {
   it("does not treat authored link labels as unlinked mentions", () => {
     writeNote(
       "Source.md",
-      "[[Other|Principles]], [Principles](/other), [Principles][ref], and <a href=\"/other\">Principles</a>.\n\n[ref]: /other \"Principles\"",
+      "[[Other|Principles]], [Principles](/other), [Principles][ref], <a href=\"/other\">Principles</a>, and <script>Principles</script>.\n\n[ref]: /other \"Principles\"",
     );
     writeNote("Other.md", "Linked by its alias.");
     writeNote("Principles.md", "Only present in authored link labels.");
