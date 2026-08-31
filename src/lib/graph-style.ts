@@ -42,6 +42,10 @@ export function foreignLabelMarkWidth(labelSize: number): number {
   return labelSize + 4;
 }
 
+export function graphHoverSurface(prefersLight: boolean): string {
+  return prefersLight ? "#fff" : "#24232a";
+}
+
 export function responsiveLabelSettings(
   narrow: boolean,
   desktopThreshold: number,

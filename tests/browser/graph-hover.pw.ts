@@ -149,16 +149,20 @@ test(`a hovered graph node stays emphasized and clickable in ${colorScheme} mode
       const element = canvas as HTMLCanvasElement;
       const pixels = element.getContext("2d")!.getImageData(0, 0, element.width, element.height).data;
       let visible = 0;
-      let nearWhite = 0;
+      let darkSurface = 0;
       for (let index = 0; index < pixels.length; index += 4) {
         if (pixels[index + 3] === 0) continue;
         visible += 1;
-        if (pixels[index] > 240 && pixels[index + 1] > 240 && pixels[index + 2] > 240) nearWhite += 1;
+        if (
+          Math.abs(pixels[index] - 36) <= 4 &&
+          Math.abs(pixels[index + 1] - 35) <= 4 &&
+          Math.abs(pixels[index + 2] - 42) <= 4
+        ) darkSurface += 1;
       }
-      return { visible, nearWhite };
+      return { visible, darkSurface };
     });
     expect(hoverInk.visible).toBeGreaterThan(0);
-    expect(hoverInk.nearWhite / hoverInk.visible).toBeLessThan(0.15);
+    expect(hoverInk.darkSurface / hoverInk.visible).toBeGreaterThan(0.15);
   }
   await graph.evaluate((host) => {
     const scope = window as unknown as {
@@ -278,7 +282,24 @@ test("touch long press pins and clears graph inspection", async ({ browser }, te
     });
     await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   };
+  const addSecondTouch = async (point: { x: number; y: number }) => {
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: point.x, y: point.y }],
+    });
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [
+        { x: point.x, y: point.y },
+        { x: point.x + 20, y: point.y + 20 },
+      ],
+    });
+    await page.waitForTimeout(550);
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  };
 
+  await addSecondTouch(target);
+  await expect(graph).not.toHaveAttribute("data-pinned-inspection");
   await touch(target, 550);
   await expect(page).toHaveURL(new RegExp(`${base}/?$`));
   await expect(graph).toHaveAttribute("data-pinned-inspection");

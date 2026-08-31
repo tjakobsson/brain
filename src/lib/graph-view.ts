@@ -30,6 +30,7 @@ import {
   forceLabelsOnNarrowZoom,
   foreignLabelMarkWidth,
   graphEdgeAttributes,
+  graphHoverSurface,
   graphNodeAttributes,
   responsiveLabelSettings,
 } from "./graph-style";
@@ -122,7 +123,7 @@ const drawGraphNodeLabel: typeof drawDiscNodeLabel = (context, data, settings) =
 const drawGraphNodeHover: typeof drawDiscNodeLabel = (context, data, settings) => {
   const graphData = data as NodeLabelData;
   context.font = `${settings.labelWeight} ${settings.labelSize}px ${settings.labelFont}`;
-  context.fillStyle = window.matchMedia("(prefers-color-scheme: dark)").matches ? "#24232a" : "#fff";
+  context.fillStyle = graphHoverSurface(window.matchMedia("(prefers-color-scheme: light)").matches);
   context.shadowOffsetX = 0;
   context.shadowOffsetY = 0;
   context.shadowBlur = 8;
@@ -287,6 +288,14 @@ function wireHoverAndClick(
     },
   });
   let emptyStageTouch: { x: number; y: number } | null = null;
+  const cancelMultiTouch = (event: TouchEvent) => {
+    if (event.touches.length <= 1) return;
+    longPress.release();
+    emptyStageTouch = null;
+  };
+  const container = renderer.getContainer();
+  container.addEventListener("touchstart", cancelMultiTouch, { passive: true });
+  container.addEventListener("touchmove", cancelMultiTouch, { passive: true });
   wireGraphHover(renderer, graph, state, onInteraction, () => state.dragged !== null);
   renderer.on("downNode", ({ node, event }) => {
     emptyStageTouch = null;
@@ -331,11 +340,15 @@ function wireHoverAndClick(
   });
   const touch = renderer.getTouchCaptor();
   const moveLongPress = (event: TouchCoords) => {
+    if (event.touches.length !== 1) {
+      longPress.release();
+      emptyStageTouch = null;
+      return;
+    }
     const point = event.touches[0];
     if (point) longPress.move(point);
     if (
       !point ||
-      event.touches.length !== 1 ||
       (emptyStageTouch && Math.hypot(point.x - emptyStageTouch.x, point.y - emptyStageTouch.y) > 8)
     ) {
       emptyStageTouch = null;
@@ -355,6 +368,8 @@ function wireHoverAndClick(
   renderer.on("kill", () => {
     touch.off("touchmove", moveLongPress);
     touch.off("touchup", releaseLongPress);
+    container.removeEventListener("touchstart", cancelMultiTouch);
+    container.removeEventListener("touchmove", cancelMultiTouch);
     longPress.destroy();
   });
 }
