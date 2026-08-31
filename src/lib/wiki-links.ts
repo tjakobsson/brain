@@ -72,7 +72,7 @@ function decodeMarkdownField(value: string): string {
     tree.children[0].children.length === 1 &&
     tree.children[0].children[0].type === "text"
   ) {
-    return tree.children[0].children[0].value.slice(2, -2);
+    return normalizeField(tree.children[0].children[0].value.slice(2, -2));
   }
   return value;
 }
@@ -88,12 +88,16 @@ function blockquoteDepth(linePrefix: string): number {
   }
 }
 
-function stripBlockquotePrefixes(value: string, depth: number): string {
+function stripBlockquotePrefixes(
+  value: string,
+  depth: number,
+  allowListIndent = false,
+): string {
   if (depth === 0 || !value.includes("\n")) return value;
   return value.replace(/\r?\n([^\r\n]*)/g, (lineBreak, line: string) => {
     let rest = line;
     for (let level = 0; level < depth; level += 1) {
-      const marker = /^ {0,3}>[\t ]?/.exec(rest);
+      const marker = (allowListIndent ? /^[\t ]*>[\t ]?/ : /^ {0,3}>[\t ]?/).exec(rest);
       if (!marker) return lineBreak;
       rest = rest.slice(marker[0].length);
     }
@@ -134,9 +138,11 @@ function parseWikiLinksInRanges(
     );
     const lineStart = text.lastIndexOf("\n", match.index) + 1;
     const quoteDepth = textRange?.quoteDepth ?? blockquoteDepth(text.slice(lineStart, match.index));
-    const candidate = stripBlockquotePrefixes(match[0], quoteDepth);
+    const candidate = stripBlockquotePrefixes(match[0], quoteDepth, Boolean(textRange));
     const field = (value: string): string => {
-      const normalized = normalizeField(stripBlockquotePrefixes(value, quoteDepth));
+      const normalized = normalizeField(
+        stripBlockquotePrefixes(value, quoteDepth, Boolean(textRange)),
+      );
       return textRange ? decodeMarkdownField(normalized) : normalized;
     };
 

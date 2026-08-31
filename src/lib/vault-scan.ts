@@ -281,17 +281,30 @@ export function buildWorkspaceLinkIndex(
   const unlinkedMentions = new Map<string, VaultNote[]>();
   const mentionable = notes.filter((n) => n.title.length >= MIN_MENTION_TITLE_LENGTH);
   const textById = new Map(notes.map((n) => [n.id, searchableText(n.body)]));
-  for (const target of mentionable) {
-    const pattern = new RegExp(`\\b${escapeRegExp(target.title)}\\b`, "i");
-    for (const candidate of notes) {
-      if (candidate.brainId !== target.brainId || candidate.id === target.id) continue;
-      if (linkedPairs.has(JSON.stringify([candidate.id, target.id]))) continue;
-      if (pattern.test(textById.get(candidate.id) ?? "")) {
-        unlinkedMentions.set(target.id, [
-          ...(unlinkedMentions.get(target.id) ?? []),
-          candidate,
-        ]);
+  for (const candidate of notes) {
+    const targets = mentionable
+      .filter((target) =>
+        candidate.brainId === target.brainId &&
+        candidate.id !== target.id &&
+        !linkedPairs.has(JSON.stringify([candidate.id, target.id]))
+      )
+      .sort((a, b) => b.title.length - a.title.length || a.title.localeCompare(b.title));
+    if (targets.length === 0) continue;
+
+    const byTitle = new Map(targets.map((target) => [target.title.toLowerCase(), target]));
+    const pattern = new RegExp(
+      `\\b(${targets.map((target) => escapeRegExp(target.title)).join("|")})\\b`,
+      "gi",
+    );
+    for (const match of (textById.get(candidate.id) ?? "").matchAll(pattern)) {
+      const target = byTitle.get(match[0].toLowerCase());
+      if (!target || unlinkedMentions.get(target.id)?.some((source) => source.id === candidate.id)) {
+        continue;
       }
+      unlinkedMentions.set(target.id, [
+        ...(unlinkedMentions.get(target.id) ?? []),
+        candidate,
+      ]);
     }
   }
 

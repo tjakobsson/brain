@@ -108,6 +108,13 @@ describe("scanVault", () => {
     expect(scanVault(dir).edges).toMatchObject([{ source: "note-a", target: "note-b" }]);
   });
 
+  it("indexes wrapped links in blockquotes nested two list levels deep", () => {
+    writeNote("Note A.md", "- outer\n  - > [[Note\n    > B]]");
+    writeNote("Note B.md", "Linked from a deeply nested blockquote.");
+
+    expect(scanVault(dir).edges).toMatchObject([{ source: "note-a", target: "note-b" }]);
+  });
+
   it("indexes wiki-links inside benign inline HTML wrappers", () => {
     writeNote("Note A.md", "<span>[[Note B]]</span>");
     writeNote("Note B.md", "Linked from an inline wrapper.");
@@ -138,6 +145,15 @@ describe("scanVault", () => {
     expect(index.unresolved).toEqual([]);
   });
 
+  it("normalizes whitespace introduced by decoded character references", () => {
+    writeNote("Source.md", "See [[Research&NewLine;Development]].");
+    writeNote("Research Development.md", "Decoded target.");
+
+    expect(scanVault(dir).edges).toMatchObject([
+      { source: "source", target: "research-development" },
+    ]);
+  });
+
   it("does not index wiki-link delimiters spanning GFM table rows", () => {
     writeNote("Source.md", "| Value |\n| --- |\n| [[Note\n| shown]] |");
     writeNote("Note.md", "Not linked across table rows.");
@@ -152,6 +168,16 @@ describe("scanVault", () => {
     writeNote("Zettelkasten method.md", "The canonical note.");
     const mentions = scanVault(dir).unlinkedMentions.get("zettelkasten-method");
     expect(mentions?.map((n) => n.slug)).toEqual(["note-a"]);
+  });
+
+  it("indexes only the longest non-overlapping potential title", () => {
+    writeNote("Source.md", "A Data Model clarifies this.");
+    writeNote("Data.md", "Short title.");
+    writeNote("Data Model.md", "Long title.");
+
+    const index = scanVault(dir);
+    expect(index.unlinkedMentions.get("data")).toBeUndefined();
+    expect(index.unlinkedMentions.get("data-model")?.map((note) => note.id)).toEqual(["source"]);
   });
 
   it("does not treat authored link labels as unlinked mentions", () => {
