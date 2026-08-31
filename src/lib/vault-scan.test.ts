@@ -78,6 +78,15 @@ describe("scanVault", () => {
     expect(backlinks?.[0].context).toBe("This builds on Note B in practice.");
   });
 
+  it("normalizes list-wrapped links in backlink context", () => {
+    writeNote("Note A.md", "10. This builds on [[Note\n    B]] in practice.");
+    writeNote("Note B.md", "Nothing.");
+
+    expect(scanVault(dir).backlinks.get("note-b")?.[0].context).toBe(
+      "This builds on Note B in practice.",
+    );
+  });
+
   it("indexes wrapped links with explicit blockquote continuation prefixes", () => {
     writeNote("Note A.md", "> [[Note\n> B]]");
     writeNote("Note B.md", "Linked from a blockquote.");
@@ -111,6 +120,13 @@ describe("scanVault", () => {
     writeNote("Note B.md", "Not linked from executable text.");
 
     expect(scanVault(dir).edges).toEqual([]);
+  });
+
+  it("indexes wiki-links after tag-like text in HTML comments", () => {
+    writeNote("Note A.md", "Intro <!-- <script> --> [[Note B]]");
+    writeNote("Note B.md", "Linked after a comment.");
+
+    expect(scanVault(dir).edges).toMatchObject([{ source: "note-a", target: "note-b" }]);
   });
 
   it("does not index wiki-link delimiters spanning GFM table rows", () => {

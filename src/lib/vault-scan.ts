@@ -3,11 +3,11 @@ import path from "node:path";
 import matter from "gray-matter";
 import { VAULT_DIR } from "./vault-path";
 import {
+  markdownWikiLinksToText,
   parseMarkdownWikiLinks,
   stripAuthoredLinks,
   stripCode,
   stripMarkdownLinks,
-  wikiLinksToText,
   type WikiLink,
 } from "./wiki-links";
 import { slugify } from "./slugify";
@@ -141,8 +141,8 @@ function extractContext(body: string, link: WikiLink): string {
   const lineStart = body.lastIndexOf("\n", link.index) + 1;
   const lineEndIdx = body.indexOf("\n", link.index + link.length);
   const lineEnd = lineEndIdx === -1 ? body.length : lineEndIdx;
-  return wikiLinksToText(stripMarkdownLinks(body.slice(lineStart, lineEnd)))
-    .replace(/^[\s>*-]+/, "")
+  return markdownWikiLinksToText(stripMarkdownLinks(body.slice(lineStart, lineEnd)))
+    .replace(/^(?:\s{0,3}(?:>\s*|[-+*]\s+|\d+[.)]\s+))+/, "")
     .trim();
 }
 

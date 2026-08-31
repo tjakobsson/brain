@@ -389,6 +389,30 @@ describe("remarkWikiLinks", () => {
     ]);
   });
 
+  it("ignores tag-like text inside HTML comments", () => {
+    const tree: Root = {
+      type: "root",
+      children: [{
+        type: "paragraph",
+        children: [
+          { type: "text", value: "Intro " },
+          { type: "html", value: "<!-- <script> -->" },
+          { type: "text", value: " [[Note B]]" },
+        ],
+      }],
+    };
+
+    remarkWikiLinks({ index: fakeIndex(["Note B"]), brainAccents: new Map() })(
+      tree,
+      new VFile({ path: "/vault/Source Note.md" }),
+    );
+
+    expect((tree.children[0] as Paragraph).children.at(-1)).toMatchObject({
+      type: "link",
+      url: "/notes/note-b",
+    });
+  });
+
   it("distinguishes missing foreign notes from unknown brains", () => {
     const source = path.resolve(
       "examples/demo-workspace/brains/engineering/Principles.md",

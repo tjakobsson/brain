@@ -18,7 +18,11 @@ const UNSAFE_RAW_HTML_ELEMENTS = new Set([
 ]);
 
 export function updateRawHtmlStack(value: string, stack: string[]): void {
-  for (const match of value.matchAll(/<\s*(\/)?\s*([A-Za-z][\w:-]*)\b[^>]*>/g)) {
+  const tokens = value.matchAll(
+    /<!--[\s\S]*?(?:-->|$)|<!\[CDATA\[[\s\S]*?(?:\]\]>|$)|<![^>]*>|<\?[\s\S]*?(?:\?>|$)|<\s*(\/)?\s*([A-Za-z][\w:-]*)\b[^>]*>/g,
+  );
+  for (const match of tokens) {
+    if (!match[2]) continue;
     const tag = match[2].toLowerCase();
     if (match[1]) {
       const openingIndex = stack.lastIndexOf(tag);

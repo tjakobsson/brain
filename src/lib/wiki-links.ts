@@ -208,8 +208,7 @@ export function displayText(link: WikiLink): string {
 }
 
 /** Replace every wiki-link with its display text (what a reader sees). */
-export function wikiLinksToText(text: string): string {
-  const links = parseWikiLinks(text);
+function replaceWikiLinksWithText(text: string, links: readonly WikiLink[]): string {
   if (links.length === 0) return text;
 
   let result = "";
@@ -219,6 +218,14 @@ export function wikiLinksToText(text: string): string {
     cursor = link.index + link.length;
   }
   return result + text.slice(cursor);
+}
+
+export function wikiLinksToText(text: string): string {
+  return replaceWikiLinksWithText(text, parseWikiLinks(text));
+}
+
+export function markdownWikiLinksToText(text: string): string {
+  return replaceWikiLinksWithText(text, parseMarkdownWikiLinks(text));
 }
 
 /** Remove code and raw HTML nodes skipped by remark text transforms. */
