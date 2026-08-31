@@ -152,7 +152,7 @@ function escapeRegExp(s: string): string {
 
 /** Plain prose a mention can hide in, excluding code and authored links. */
 function searchableText(body: string): string {
-  return stripAuthoredLinks(stripCode(body));
+  return stripCode(stripAuthoredLinks(body));
 }
 
 function scanBrain(input: BrainManifestInput, mode: InputMode): VaultNote[] {

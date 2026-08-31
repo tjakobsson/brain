@@ -87,7 +87,10 @@ describe("scanVault", () => {
   });
 
   it("does not treat authored link labels as unlinked mentions", () => {
-    writeNote("Source.md", "[[Other|Principles]] and [Principles](/other).");
+    writeNote(
+      "Source.md",
+      "[[Other|Principles]], [Principles](/other), and <a href=\"/other\">Principles</a>.",
+    );
     writeNote("Other.md", "Linked by its alias.");
     writeNote("Principles.md", "Only present in authored link labels.");
 
@@ -103,7 +106,7 @@ describe("scanVault", () => {
   it("ignores soft-wrapped wiki-links inside fenced and inline code", () => {
     writeNote(
       "Note A.md",
-      "```\n[[Note\nB]]\n```\n\n`ignored [[Note\nB]]`\n\nRecords [[Note\nC]].",
+      "```\n[[Note\nB]]\n```\n\n`ignored [[Note\nB]]`\n\n<div>\n[[Note\nB]]\n</div>\n\nRecords [[Note\nC]].",
     );
     writeNote("Note B.md", "Not linked.");
     writeNote("Note C.md", "Linked.");

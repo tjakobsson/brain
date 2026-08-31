@@ -112,13 +112,13 @@ export function wikiLinksToText(text: string): string {
   return result + text.slice(cursor);
 }
 
-/** Remove fenced code blocks and inline code spans. */
+/** Remove code and raw HTML nodes skipped by remark text transforms. */
 export function stripCode(text: string): string {
   const masked = text.split("");
   const tree = fromMarkdown(text);
 
   function visit(node: Nodes): void {
-    if (node.type === "code" || node.type === "inlineCode") {
+    if (node.type === "code" || node.type === "inlineCode" || node.type === "html") {
       const start = node.position?.start.offset ?? 0;
       const end = node.position?.end.offset ?? start;
       for (let index = start; index < end; index += 1) {
@@ -144,6 +144,10 @@ export function stripAuthoredLinks(text: string): string {
     for (let index = start; index < end; index += 1) {
       if (masked[index] !== "\n" && masked[index] !== "\r") masked[index] = " ";
     }
+  }
+
+  for (const match of text.matchAll(/<a\b[^>]*>[\s\S]*?<\/a\s*>/gi)) {
+    mask(match.index, match.index + match[0].length);
   }
 
   function visit(node: Nodes): void {

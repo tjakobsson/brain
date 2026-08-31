@@ -214,11 +214,12 @@ describe("wikiLinksToText", () => {
 });
 
 describe("stripCode", () => {
-  it("masks fenced and multiline inline code while preserving offsets", () => {
-    const text = "before ```\ncode [[Not a link]]\n``` middle `inline\n[[x]]` after";
+  it("masks code and raw HTML blocks while preserving offsets", () => {
+    const text = "before ```\ncode [[Not a link]]\n``` middle `inline\n[[x]]`\n<div>\n[[y]]\n</div>\n\nafter";
     const stripped = stripCode(text);
     expect(stripped).not.toContain("Not a link");
     expect(stripped).not.toContain("inline");
+    expect(stripped).not.toContain("[[y]]");
     expect(stripped).toContain("before");
     expect(stripped).toContain("after");
     expect(stripped).toHaveLength(text.length);
@@ -236,10 +237,10 @@ describe("stripMarkdownLinks", () => {
 
 describe("stripAuthoredLinks", () => {
   it("masks wiki and Markdown links while preserving surrounding prose", () => {
-    const text = "Before [[Other|Principles]] and [Principles](/other) after.";
+    const text = "Before [[Other|Principles]], [Principles](/other), and <a href=\"/other\">Principles</a> after.";
     const stripped = stripAuthoredLinks(text);
     expect(stripped).toHaveLength(text.length);
-    expect(stripped).toMatch(/^Before\s+and\s+after\.$/);
+    expect(stripped).toMatch(/^Before\s+,\s+, and\s+after\.$/);
     expect(stripped).not.toContain("Principles");
   });
 });
