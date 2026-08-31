@@ -126,6 +126,52 @@ describe("buildWorkspaceLinkIndex", () => {
     ]);
   });
 
+  it("indexes only soft-wrapped wiki-links using normalized semantics", () => {
+    write(
+      "engineering",
+      "Source.md",
+      [
+        "Local [[Delivery\n loops|delivery\n loops]].",
+        "Foreign [[@design/Interaction\n model#Decision\n rationale|design\n model]].",
+        "Missing [[Future\n runbook]]. Attachment ![[diagram\n.svg]].",
+        "",
+        "Rejected [[Delivery\n\nloops]].",
+      ].join("\n"),
+    );
+    write("engineering", "Delivery loops.md", "Delivery loops are useful.");
+    write("design", "Interaction model.md", "Interaction model details.");
+    write("research", "Evidence.md", "Evidence.");
+
+    const index = build();
+    const source = index.byId.get("engineering/source");
+    expect(source?.links).toMatchObject([
+      {
+        raw: "[[Delivery\n loops|delivery\n loops]]",
+        target: "Delivery loops",
+        alias: "delivery loops",
+      },
+      {
+        targetBrainId: "design",
+        target: "Interaction model",
+        anchor: "Decision rationale",
+        alias: "design model",
+      },
+      { target: "Future runbook" },
+    ]);
+    expect(source?.links).toHaveLength(3);
+    expect(index.edges).toMatchObject([
+      { source: "engineering/source", target: "engineering/delivery-loops" },
+      { source: "engineering/source", target: "design/interaction-model", crossBrain: true },
+    ]);
+    expect(index.backlinks.get("engineering/delivery-loops")?.[0].context).toBe(
+      "Local delivery loops.",
+    );
+    expect(index.unlinkedMentions.get("engineering/delivery-loops")).toBeUndefined();
+    expect(index.unresolved).toMatchObject([
+      { targetBrainId: "engineering", target: "Future runbook" },
+    ]);
+  });
+
   it("enforces title uniqueness within each brain only", () => {
     write("engineering", "A/Same.md", "One.");
     write("engineering", "B/Same.md", "Two.");

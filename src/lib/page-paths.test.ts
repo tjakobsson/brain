@@ -55,6 +55,7 @@ describe("static page paths", () => {
       "engineering",
       "design",
       "research",
+      "research-archive-and-synthesis-source-trails",
     ]);
     for (const { params } of brainPaths) {
       const routes = routesFor({ mode: "workspace", brainId: params.brainId });

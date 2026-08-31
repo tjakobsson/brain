@@ -13,7 +13,7 @@ test("desktop chooser follows hierarchy and keeps brain context in navigation", 
   await expect(page.getByRole("heading", { name: "Knowledge" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Product" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Discovery" })).toBeVisible();
-  await expect(page.locator(".brain-card")).toHaveCount(3);
+  await expect(page.locator(".brain-card")).toHaveCount(4);
   await expect(page.locator(".context-switcher > summary"))
     .toHaveAttribute("title", "Switch brain, current: Workspace");
 
@@ -123,8 +123,8 @@ test("Brain identity reuses one mark and reserves accent boundaries for selectio
 
   const cards = page.locator(".brain-card");
   const chooserMarks = cards.locator("[data-brain-mark]");
-  await expect(cards).toHaveCount(3);
-  await expect(chooserMarks).toHaveCount(3);
+  await expect(cards).toHaveCount(4);
+  await expect(chooserMarks).toHaveCount(4);
   await expect(page.getByRole("heading", { name: "Engineering" })).toBeVisible();
   await expect(cards.filter({ hasText: "@engineering" })).toHaveCount(1);
 
@@ -170,8 +170,8 @@ test("Brain identity reuses one mark and reserves accent boundaries for selectio
   await expect(currentMark).toHaveCSS("width", "16px");
   await expect(currentMark.locator("path")).toHaveAttribute("d", markGeometry!);
   await page.locator(".context-switcher > summary").click();
-  for (const id of ["engineering", "design", "research"]) {
-    const entry = page.locator(".context-switcher__panel").getByRole("link", { name: `@${id}` });
+  for (const id of ["engineering", "design", "research", "research-archive-and-synthesis-source-trails"]) {
+    const entry = page.locator(`.context-switcher__panel a[href="/workspace-demo/brains/${id}"]`);
     await expect(entry).toBeVisible();
     await expect(entry.locator("[data-brain-mark] path")).toHaveAttribute("d", markGeometry!);
   }
@@ -192,6 +192,47 @@ test("Brain identity reuses one mark and reserves accent boundaries for selectio
   expect(favicon.path).toBe(markGeometry);
   expect(favicon.source).toContain("prefers-color-scheme: dark");
   expect(favicon.source).not.toContain("M50.4 78.5");
+});
+
+test("chooser cards align wrapped identities on desktop and retain natural phone flow", async ({ page }) => {
+  const longId = "research-archive-and-synthesis-source-trails";
+  await page.setViewportSize({ width: 1280, height: 1100 });
+  await page.goto(`${workspace}/`);
+
+  const shortCard = page.locator('.brain-card:has(input[value="research"])');
+  const longCard = page.locator(`.brain-card:has(input[value="${longId}"])`);
+  const geometry = async () => Promise.all([shortCard, longCard].map((card) => card.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    const rect = (selector: string) => {
+      const target = element.querySelector(selector)!;
+      const targetBounds = target.getBoundingClientRect();
+      return { top: targetBounds.top, bottom: targetBounds.bottom, height: targetBounds.height };
+    };
+    return {
+      card: { top: bounds.top, right: bounds.right, bottom: bounds.bottom },
+      identity: rect(".brain-card__identity"),
+      title: rect("h3"),
+      description: rect("p"),
+      action: rect(":scope > a"),
+    };
+  })));
+  const [shortDesktop, longDesktop] = await geometry();
+  expect(longDesktop.card.top).toBe(shortDesktop.card.top);
+  expect(longDesktop.card.bottom).toBe(shortDesktop.card.bottom);
+  expect(longDesktop.identity).toEqual(shortDesktop.identity);
+  expect(longDesktop.title.top).toBe(shortDesktop.title.top);
+  expect(longDesktop.description.top).toBe(shortDesktop.description.top);
+  expect(longDesktop.action).toEqual(shortDesktop.action);
+  await expect(longCard.locator(".brain-card__identity > span")).toHaveText(`@${longId}`);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  const [shortPhone, longPhone] = await geometry();
+  expect(longPhone.identity.height).toBeGreaterThan(shortPhone.identity.height);
+  expect(longPhone.card.right).toBeLessThanOrEqual(390);
+  await expect(longCard.locator(".brain-card__identity > span")).toHaveText(`@${longId}`);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
 test("combined selection is canonical, shareable, reloadable, and rejects unknown brains", async ({ page }) => {
@@ -237,7 +278,7 @@ test("mobile chooser and combined selection remain usable without horizontal ove
   await page.keyboard.press("Escape");
   await expect(launcher).toBeFocused();
   await page.getByRole("checkbox", { name: "Select Engineering" }).check();
-  await page.getByRole("checkbox", { name: "Select Research" }).check();
+  await page.getByRole("checkbox", { name: "Select Research", exact: true }).check();
   const action = page.locator(".brain-selection__action");
   await expect(action).toBeVisible();
   await action.getByRole("button", { name: "Open combined graph" }).click();
@@ -382,6 +423,70 @@ test("foreign links and backlinks expose owner text, shape markers, accents, and
   await expect(unknown).toHaveAttribute("title", "Unknown brain: missing-brain");
 });
 
+test("mention sections precede the connection map and empty regions stay omitted", async ({ page }) => {
+  await page.goto(`${workspace}/brains/design/notes/principles`);
+  await expect(page.getByRole("heading", { name: "Linked mentions", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Potential links", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Connection map" })).toBeVisible();
+  expect(await page.locator("main > .mentions, main > .local-graph-panel").evaluateAll((regions) =>
+    regions.map((region) => region.querySelector("h2")?.textContent?.trim())
+  )).toEqual(["Linked mentions", "Potential links", "Connection map"]);
+
+  await page.goto(`${workspace}/brains/research-archive-and-synthesis-source-trails/notes/synthesis-trails`);
+  await expect(page.locator(".mentions")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Connection map" })).toBeVisible();
+
+  await page.goto(`${workspace}/brains/research-archive-and-synthesis-source-trails/notes/archive-boundaries`);
+  await expect(page.locator(".mentions")).toHaveCount(0);
+  await expect(page.locator(".local-graph-panel")).toHaveCount(0);
+});
+
+test("potential links are static, subtle, and non-clickable", async ({ browser }) => {
+  const context = await browser.newContext({
+    javaScriptEnabled: false,
+    viewport: { width: 390, height: 844 },
+  });
+  const page = await context.newPage();
+  await page.goto(`${workspace}/brains/design/notes/interaction-model`);
+
+  const potential = page.locator("article .potential-link", { hasText: "principles" });
+  await expect(potential).toHaveCount(1);
+  const explanation = "Potential link to Principles. This is plain text, not an authored link.";
+  await expect(potential).toHaveAttribute("aria-label", explanation);
+  await expect(potential).toHaveAttribute("data-potential-link-label", explanation);
+  await expect(potential).toHaveAttribute("tabindex", "0");
+  await expect(potential).toHaveCSS("text-decoration-style", "dotted");
+  await expect(potential).toHaveCSS("cursor", "help");
+  expect(await potential.evaluate((element) => element.tagName)).toBe("SPAN");
+  await expect(potential.locator("a")).toHaveCount(0);
+  expect(await potential.evaluate((element) =>
+    getComputedStyle(element).color === getComputedStyle(element.parentElement!).color
+  )).toBe(true);
+  expect(await potential.evaluate((element) => getComputedStyle(element, "::after").opacity)).toBe("0");
+  expect(await potential.evaluate((element) => {
+    const tooltip = getComputedStyle(element, "::after");
+    return [tooltip.position, tooltip.left, tooltip.right, tooltip.bottom];
+  })).toEqual(["fixed", "16px", "16px", "16px"]);
+  await potential.hover();
+  await expect.poll(() => potential.evaluate((element) => getComputedStyle(element, "::after").opacity)).toBe("1");
+  await potential.focus();
+  await expect(potential).toBeFocused();
+  await expect.poll(() => potential.evaluate((element) => getComputedStyle(element, "::after").opacity)).toBe("1");
+
+  await page.setViewportSize({ width: 800, height: 900 });
+  await page.reload();
+  const tabletPotential = page.locator("article .potential-link", { hasText: "principles" });
+  expect(await tabletPotential.evaluate((element) => {
+    const tooltip = getComputedStyle(element, "::after");
+    return [tooltip.position, tooltip.left, tooltip.right, tooltip.bottom];
+  })).toEqual(["fixed", "16px", "16px", "16px"]);
+
+  await page.goto(`${workspace}/brains/design/notes/principles`);
+  const section = page.getByRole("heading", { name: "Potential links", exact: true }).locator("..");
+  await expect(section.getByRole("link", { name: "Interaction model" })).toBeVisible();
+  await context.close();
+});
+
 test("foreign wiki links remain static with JavaScript disabled", async ({ browser }) => {
   const context = await browser.newContext({ javaScriptEnabled: false });
   const page = await context.newPage();
@@ -477,7 +582,7 @@ test("graph payload and scoped views keep ownership boundaries and canonical bra
   await expect(graph).toHaveAttribute("data-visible-nodes", "5");
   const filterToggle = page.locator("#graph-filter-toggle");
   if (await filterToggle.getAttribute("aria-expanded") === "false") await filterToggle.click();
-  await page.getByRole("checkbox", { name: "@research" }).uncheck();
+  await page.getByRole("checkbox", { name: "@research", exact: true }).uncheck();
   await expect(page).toHaveURL(`${workspace}/graph?brains=engineering,design`);
   await expect(graph).toHaveAttribute("data-visible-brain-ids", "engineering,design");
   await expect(graph).toHaveAttribute("data-visible-nodes", "4");

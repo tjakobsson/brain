@@ -2,7 +2,7 @@ import { defineConfig } from "astro/config";
 import path from "node:path";
 import remarkCallout from "@r4ai/remark-callout";
 import { unified } from "@astrojs/markdown-remark";
-import { remarkWikiLinks } from "./src/lib/remark-wiki-links";
+import { remarkPotentialLinks, remarkWikiLinks } from "./src/lib/remark-wiki-links";
 import { remarkHighlights } from "./src/lib/remark-highlights";
 import { joinBase, routes } from "./src/lib/routes";
 import { internalSettings } from "./src/lib/internal-settings";
@@ -31,6 +31,7 @@ export default defineConfig({
         [remarkWikiLinks, { base: internalSettings.base }],
         remarkHighlights,
         remarkCallout,
+        remarkPotentialLinks,
       ],
     }),
   },

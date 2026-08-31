@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   displayText,
+  parseMarkdownWikiLinks,
   parseWikiLinks,
+  stripAuthoredLinks,
   stripCode,
   stripMarkdownLinks,
   wikiLinksToText,
@@ -121,12 +123,191 @@ describe("parseWikiLinks", () => {
     ]);
   });
 
+  it("normalizes soft-wrapped fields while preserving raw source offsets", () => {
+    const raw = "[[@product-design/Interaction\n  model#Deep\n Dive|the\n  model]]";
+    const source = `Before ${raw} after`;
+
+    expect(parseWikiLinks(source)).toEqual([{
+      raw,
+      target: "Interaction model",
+      targetBrainId: "product-design",
+      anchor: "Deep Dive",
+      alias: "the model",
+      index: 7,
+      length: raw.length,
+    }]);
+  });
+
+  it("normalizes explicit blockquote continuation prefixes", () => {
+    const source = "> [[Note\n> Title|read\n> this]]";
+    expect(parseWikiLinks(source)).toMatchObject([{
+      raw: "[[Note\n> Title|read\n> this]]",
+      target: "Note Title",
+      alias: "read this",
+      index: 2,
+    }]);
+  });
+
   it.each([
-    "[[Note\nB]]",
-    "[[Note B#Deep\nDive]]",
-    "[[Note B|read\nthis]]",
-  ])("rejects a line break inside wiki-link delimiters: %j", (source) => {
+    ["[[Wrapped\nlocal target]]", "Wrapped local target"],
+    ["[[Future\nidea]]", "Future idea"],
+    ["[[Note#Deep\nsection]]", "Note"],
+    ["[[Note|read\nthis]]", "Note"],
+    ["[[Note|love\n<3]]", "Note"],
+  ])("parses a soft-wrapped wiki-link: %j", (source, target) => {
+    expect(parseWikiLinks(source)).toMatchObject([{ raw: source, target }]);
+  });
+
+  it("continues to exclude soft-wrapped attachment embeds", () => {
+    expect(parseWikiLinks("![[diagram\n.svg|preview]] and [[Note\nTitle]]")).toMatchObject([
+      { raw: "[[Note\nTitle]]", target: "Note Title" },
+    ]);
+  });
+
+  it.each([
+    "[[Note\n\nTitle]]",
+    "[[Note\n  \nTitle]]",
+    "[[Note  \nTitle]]",
+    "[[Note\\\nTitle]]",
+    "[[Note\n# Heading]]",
+    "[[Note\n> quote]]",
+    "[[Note\n- list item]]",
+    "[[Note\n1. list item]]",
+    "[[Note\n    code]]",
+    "[[Note\n```code]]",
+    "[[Note\n---\nTitle]]",
+    "[[Note\n* * *\nTitle]]",
+    "[[Note\n___\nTitle]]",
+    "[[Note\n===\nTitle]]",
+    "[[Note\n[ref]: /url\nTitle]]",
+    "[[Note\n<div>\nTitle]]",
+    "[[Note\n> Title]]",
+  ])("rejects a wiki-link crossing a hard break or block boundary: %j", (source) => {
     expect(parseWikiLinks(source)).toEqual([]);
+  });
+
+  it.each([
+    "[[unfinished\n\nSee [[Good]]",
+    "[[unfinished\n---\nSee [[Good]]",
+    "[[unfinished\n[ref]: /url\nSee [[Good]]",
+    "[[@Bad/unfinished [[Good]]",
+  ])("preserves a valid nested link after rejecting its enclosing candidate: %j", (source) => {
+    expect(parseWikiLinks(source)).toMatchObject([{
+      raw: "[[Good]]",
+      target: "Good",
+      index: source.indexOf("[[Good]]"),
+    }]);
+  });
+});
+
+describe("parseMarkdownWikiLinks", () => {
+  it("decodes character references while preserving raw source offsets", () => {
+    const raw = "[[Research &amp;\nDevelopment#R&amp;D|research &amp;\ndevelopment]]";
+    const source = `See ${raw}.`;
+
+    expect(parseMarkdownWikiLinks(source)).toMatchObject([{
+      raw,
+      target: "Research & Development",
+      anchor: "R&D",
+      alias: "research & development",
+      index: 4,
+      length: raw.length,
+    }]);
+  });
+
+  it.each([
+    ["[[Note&vert;label]]", "Note", null, "label"],
+    ["[[Note&num;Heading&vert;label]]", "Note", "Heading", "label"],
+    ["[[Note&NewLine;Title]]", "Note Title", null, null],
+    ["&lbrack;&lbrack;Note&rbrack;&rbrack;", "Note", null, null],
+    ["\\[\\[Note&rbrack;&rbrack;", "Note", null, null],
+  ])(
+    "tokenizes decoded wiki-link syntax while preserving the source span: %s",
+    (raw, target, anchor, alias) => {
+      const source = `Before ${raw} after`;
+      expect(parseMarkdownWikiLinks(source)).toEqual([{
+        raw,
+        target,
+        targetBrainId: null,
+        anchor,
+        alias,
+        index: 7,
+        length: raw.length,
+      }]);
+    },
+  );
+
+  it("maps a closing character reference without consuming following source text", () => {
+    const raw = "[[Note&rbrack;&rbrack;";
+    const source = `Before ${raw} trailing]] after`;
+
+    expect(parseMarkdownWikiLinks(source)).toMatchObject([{
+      raw,
+      target: "Note",
+      index: 7,
+      length: raw.length,
+    }]);
+  });
+
+  it("maps links after parser-normalized NUL characters without hanging", { timeout: 1_000 }, () => {
+    const raw = "[[Note]]";
+    const source = `Before\0${raw} after`;
+
+    expect(parseMarkdownWikiLinks(source)).toEqual([{
+      raw,
+      target: "Note",
+      targetBrainId: null,
+      anchor: null,
+      alias: null,
+      index: 7,
+      length: raw.length,
+    }]);
+  });
+
+  it("maps parser-normalized NUL characters inside a link to their raw source span", () => {
+    const raw = "[[No\0te]]";
+    const source = `Before ${raw} after`;
+
+    expect(parseMarkdownWikiLinks(source)).toEqual([{
+      raw,
+      target: "No\uFFFDte",
+      targetBrainId: null,
+      anchor: null,
+      alias: null,
+      index: 7,
+      length: raw.length,
+    }]);
+  });
+
+  it("preserves a link span after a lone carriage return", { timeout: 1_000 }, () => {
+    const raw = "[[Note]]";
+    const source = `Before\r${raw} after`;
+
+    expect(parseMarkdownWikiLinks(source)).toMatchObject([{
+      raw,
+      target: "Note",
+      index: 7,
+      length: raw.length,
+    }]);
+  });
+
+  it("maps CRLF, omitted container prefixes, escapes, and entities to the exact raw span", () => {
+    const raw = "[[Research \\& &amp;\r\n> Notes]]";
+    const source = `> ${raw} trailing`;
+
+    expect(parseMarkdownWikiLinks(source)).toEqual([{
+      raw,
+      target: "Research & & Notes",
+      targetBrainId: null,
+      anchor: null,
+      alias: null,
+      index: 2,
+      length: raw.length,
+    }]);
+  });
+
+  it("rejects decoded line breaks that split a wiki-link across blocks", () => {
+    expect(parseMarkdownWikiLinks("[[Note&NewLine;&NewLine;Title]]")).toEqual([]);
   });
 });
 
@@ -151,21 +332,51 @@ describe("wikiLinksToText", () => {
       "[[@Bad/A]] then B and Email @ work",
     );
   });
+
+  it("reduces soft-wrapped wiki-links to normalized display text", () => {
+    expect(wikiLinksToText("See [[Note\nTitle]] or [[Other|the\n  alias]].")).toBe(
+      "See Note Title or the alias.",
+    );
+  });
 });
 
 describe("stripCode", () => {
-  it("removes fenced blocks and inline code", () => {
-    const text = "before ```\ncode [[Not a link]]\n``` middle `inline [[x]]` after";
+  it("masks code and raw HTML blocks while preserving offsets", () => {
+    const text = "before ```\ncode [[Not a link]]\n``` middle `inline\n[[x]]`\n<div>\n[[y]]\n</div>\n\nafter";
     const stripped = stripCode(text);
     expect(stripped).not.toContain("Not a link");
     expect(stripped).not.toContain("inline");
+    expect(stripped).not.toContain("[[y]]");
     expect(stripped).toContain("before");
     expect(stripped).toContain("after");
+    expect(stripped).toHaveLength(text.length);
+    expect([...stripped].flatMap((value, index) => value === "\n" ? [index] : [])).toEqual(
+      [...text].flatMap((value, index) => value === "\n" ? [index] : []),
+    );
   });
 });
 
 describe("stripMarkdownLinks", () => {
   it("keeps visible text, drops URLs and images", () => {
     expect(stripMarkdownLinks("a [shown](page.md) ![alt](img.png)")).toBe("a shown alt");
+  });
+});
+
+describe("stripAuthoredLinks", () => {
+  it("masks wiki and Markdown links while preserving surrounding prose", () => {
+    const text = "Before [[Other|Principles]], [Principles](/other), <a href=\"/other\">Principles</a>, and <script>Principles</script> after.";
+    const stripped = stripAuthoredLinks(text);
+    expect(stripped).toHaveLength(text.length);
+    expect(stripped).toMatch(/^Before\s+,\s+,\s+, and\s+after\.$/);
+    expect(stripped).not.toContain("Principles");
+  });
+
+  it("masks nested raw HTML containers and context-aware wiki-links", () => {
+    const text = "10. [[Other\n    target|Principles]]\n\n<span><span>ignored</span>Principles</span>";
+    const stripped = stripAuthoredLinks(text);
+
+    expect(stripped).toHaveLength(text.length);
+    expect(stripped).not.toContain("Principles");
+    expect(stripped).not.toContain("ignored");
   });
 });

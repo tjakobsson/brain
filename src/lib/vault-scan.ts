@@ -1,12 +1,15 @@
 import fs from "node:fs";
 import path from "node:path";
+import type { Nodes, Parent } from "mdast";
+import { fromMarkdown } from "mdast-util-from-markdown";
 import matter from "gray-matter";
 import { VAULT_DIR } from "./vault-path";
 import {
-  parseWikiLinks,
+  markdownWikiLinksToText,
+  parseMarkdownWikiLinks,
+  stripAuthoredLinks,
   stripCode,
   stripMarkdownLinks,
-  wikiLinksToText,
   type WikiLink,
 } from "./wiki-links";
 import { slugify } from "./slugify";
@@ -140,8 +143,8 @@ function extractContext(body: string, link: WikiLink): string {
   const lineStart = body.lastIndexOf("\n", link.index) + 1;
   const lineEndIdx = body.indexOf("\n", link.index + link.length);
   const lineEnd = lineEndIdx === -1 ? body.length : lineEndIdx;
-  return wikiLinksToText(stripMarkdownLinks(body.slice(lineStart, lineEnd)))
-    .replace(/^[\s>*-]+/, "")
+  return markdownWikiLinksToText(stripMarkdownLinks(body.slice(lineStart, lineEnd)))
+    .replace(/^(?:\s{0,3}(?:>\s*|[-+*]\s+|\d+[.)]\s+))+/, "")
     .trim();
 }
 
@@ -149,9 +152,35 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** Plain prose a mention can hide in: no code, wiki syntax reduced to display text. */
+/** Plain prose a mention can hide in, excluding code and authored links. */
 function searchableText(body: string): string {
-  return stripMarkdownLinks(wikiLinksToText(stripCode(body)));
+  const searchable = stripCode(stripAuthoredLinks(body)).split("");
+  const tree = fromMarkdown(body);
+
+  function visit(node: Nodes): void {
+    if (node.type === "blockquote") {
+      const paragraph = node.children[0];
+      const firstText = paragraph?.type === "paragraph" ? paragraph.children[0] : undefined;
+      if (
+        paragraph?.type === "paragraph" &&
+        node.position?.start.line === paragraph.position?.start.line &&
+        firstText?.type === "text"
+      ) {
+        const firstLine = firstText.value.split("\n", 1)[0];
+        const marker = firstLine.match(/^(\[![^\]\r]+\])(?:[+-])?(?: .*)?$/)?.[1];
+        const start = firstText.position?.start.offset;
+        if (marker && start !== undefined) {
+          searchable.fill(" ", start, start + marker.length);
+        }
+      }
+    }
+    if ("children" in node) {
+      for (const child of (node as Parent).children) visit(child);
+    }
+  }
+
+  visit(tree);
+  return searchable.join("");
 }
 
 function scanBrain(input: BrainManifestInput, mode: InputMode): VaultNote[] {
@@ -162,6 +191,7 @@ function scanBrain(input: BrainManifestInput, mode: InputMode): VaultNote[] {
       const { data, content } = matter(source);
       const title = path.basename(entry.path, path.extname(entry.path));
       const slug = slugify(title);
+      const links = parseMarkdownWikiLinks(content);
       return {
         id: noteId(mode, input.brainId, slug),
         brainId: input.brainId,
@@ -172,7 +202,7 @@ function scanBrain(input: BrainManifestInput, mode: InputMode): VaultNote[] {
         filePath: entry.absolutePath,
         meta: readMeta(data),
         body: content,
-        links: parseWikiLinks(content),
+        links,
         vaultPath: entry.path,
         source,
         frontmatter: data,
@@ -276,17 +306,30 @@ export function buildWorkspaceLinkIndex(
   const unlinkedMentions = new Map<string, VaultNote[]>();
   const mentionable = notes.filter((n) => n.title.length >= MIN_MENTION_TITLE_LENGTH);
   const textById = new Map(notes.map((n) => [n.id, searchableText(n.body)]));
-  for (const target of mentionable) {
-    const pattern = new RegExp(`\\b${escapeRegExp(target.title)}\\b`, "i");
-    for (const candidate of notes) {
-      if (candidate.brainId !== target.brainId || candidate.id === target.id) continue;
-      if (linkedPairs.has(JSON.stringify([candidate.id, target.id]))) continue;
-      if (pattern.test(textById.get(candidate.id) ?? "")) {
-        unlinkedMentions.set(target.id, [
-          ...(unlinkedMentions.get(target.id) ?? []),
-          candidate,
-        ]);
+  for (const candidate of notes) {
+    const targets = mentionable
+      .filter((target) =>
+        candidate.brainId === target.brainId &&
+        candidate.id !== target.id &&
+        !linkedPairs.has(JSON.stringify([candidate.id, target.id]))
+      )
+      .sort((a, b) => b.title.length - a.title.length || a.title.localeCompare(b.title));
+    if (targets.length === 0) continue;
+
+    const byTitle = new Map(targets.map((target) => [target.title.toLowerCase(), target]));
+    const pattern = new RegExp(
+      `\\b(${targets.map((target) => escapeRegExp(target.title)).join("|")})\\b`,
+      "gi",
+    );
+    for (const match of (textById.get(candidate.id) ?? "").matchAll(pattern)) {
+      const target = byTitle.get(match[0].toLowerCase());
+      if (!target || unlinkedMentions.get(target.id)?.some((source) => source.id === candidate.id)) {
+        continue;
       }
+      unlinkedMentions.set(target.id, [
+        ...(unlinkedMentions.get(target.id) ?? []),
+        candidate,
+      ]);
     }
   }
 

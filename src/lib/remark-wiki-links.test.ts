@@ -1,13 +1,14 @@
-import type { Html, Link, Paragraph, Root, Text } from "mdast";
+import type { Emphasis, Html, Link, Paragraph, Root, Text } from "mdast";
 import { VFile } from "vfile";
 import { describe, expect, it } from "vitest";
-import { remarkWikiLinks } from "./remark-wiki-links";
+import { remarkPotentialLinks, remarkWikiLinks } from "./remark-wiki-links";
 import { slugify } from "./slugify";
 import { routes } from "./routes";
 import type { LinkIndex, VaultNote } from "./vault-scan";
 import { compositeNoteId, SINGLE_BRAIN_ID } from "./note-identity";
 import path from "node:path";
 import { createWorkspaceSnapshot } from "./vault-loader";
+import { remarkHighlights } from "./remark-highlights";
 
 function fakeNote(title: string): VaultNote {
   return {
@@ -70,10 +71,13 @@ function runWorkspace(text: string, source: string): Paragraph {
     type: "root",
     children: [{ type: "paragraph", children: [{ type: "text", value: text }] }],
   };
-  remarkWikiLinks({
+  const options = {
     index: snapshot.index,
     brainAccents: new Map(snapshot.registry.brains.map((brain) => [brain.id, brain.accent])),
-  })(tree, new VFile({ path: source }));
+  };
+  const file = new VFile({ path: source });
+  remarkWikiLinks(options)(tree, file);
+  remarkPotentialLinks(options)(tree, file);
   return tree.children[0] as Paragraph;
 }
 
@@ -121,6 +125,13 @@ describe("remarkWikiLinks", () => {
     expect((para.children[2] as Text).value).toBe("\nafter");
   });
 
+  it("resolves a soft-wrapped local target with normalized display text", () => {
+    const para = run("See [[Note\n B]] now.", ["Note B"]);
+    const link = para.children[1] as Link;
+    expect(link.url).toBe("/notes/note-b");
+    expect((link.children[0] as Text).value).toBe("Note B");
+  });
+
   it("renders unwritten targets as a styled span", () => {
     const para = run("Someday [[Future idea]] maybe.", []);
     const html = para.children[1] as Html;
@@ -160,6 +171,284 @@ describe("remarkWikiLinks", () => {
       },
     ]);
     expect((design.children[0] as Link).url).toBe("/brains/design/notes/principles");
+  });
+
+  it("normalizes wrapped foreign targets, headings, and aliases once", () => {
+    const workspace = path.resolve("examples/demo-workspace/brains");
+    const paragraph = runWorkspace(
+      "[[@design/Interaction\n model#Decision\n rationale|design\n model]]",
+      path.join(workspace, "engineering", "Principles.md"),
+    );
+    const link = paragraph.children[0] as Link;
+
+    expect(paragraph.children).toHaveLength(1);
+    expect(link.url).toBe("/brains/design/notes/interaction-model#decision-rationale");
+    expect(link.data?.hProperties).toMatchObject({
+      className: ["wiki-link", "wiki-link--foreign"],
+      "data-brain-id": "design",
+    });
+    expect((link.children[0] as Text).value).toBe("design model");
+  });
+
+  it("renders a soft-wrapped unwritten target once with normalized text", () => {
+    const para = run("Someday [[Future\n idea]] maybe.", []);
+    const unwritten = para.children[1] as Html;
+    expect(para.children).toHaveLength(3);
+    expect(unwritten.value).toContain("wiki-link--unwritten");
+    expect(unwritten.value).toContain("Future idea");
+    expect(unwritten.value).not.toContain("Future\n idea");
+  });
+
+  it("marks indexed plain-text title matches as non-clickable potential links", () => {
+    const workspace = path.resolve("examples/demo-workspace/brains");
+    const paragraph = runWorkspace(
+      "These principles keep ownership visible.",
+      path.join(workspace, "design", "Interaction model.md"),
+    );
+
+    expect(paragraph.children.map((child) => child.type)).toEqual(["text", "html", "text"]);
+    expect((paragraph.children[1] as Html).value).toBe(
+      '<span class="potential-link" tabindex="0" aria-label="Potential link to Principles. This is plain text, not an authored link." data-potential-link-label="Potential link to Principles. This is plain text, not an authored link.">principles</span>',
+    );
+    expect(paragraph.children.some((child) => child.type === "link")).toBe(false);
+  });
+
+  it("preserves highlights around potential links", () => {
+    const snapshot = createWorkspaceSnapshot({
+      mode: "workspace",
+      vaultDir: path.resolve("examples/demo-vault"),
+      workspacePath: path.resolve("examples/demo-workspace/workspace.json"),
+      outputDir: path.resolve("dist"),
+      exclusions: [],
+      strictLinks: false,
+    });
+    const workspace = path.resolve("examples/demo-workspace/brains");
+    const tree: Root = {
+      type: "root",
+      children: [{
+        type: "paragraph",
+        children: [{ type: "text", value: "Keep ==Principles== visible." }],
+      }],
+    };
+    const file = new VFile({ path: path.join(workspace, "design", "Interaction model.md") });
+
+    remarkWikiLinks({ index: snapshot.index, brainAccents: new Map() })(tree, file);
+    remarkHighlights()(tree, file);
+    remarkPotentialLinks({ index: snapshot.index })(tree, file);
+
+    const mark = (tree.children[0] as Paragraph).children[1];
+    expect(mark).toMatchObject({
+      type: "emphasis",
+      data: { hName: "mark" },
+      children: [{ type: "html" }],
+    });
+    expect(((mark as Emphasis).children[0] as Html).value).toContain("potential-link");
+  });
+
+  it("resolves authored links before parsing highlight delimiters", () => {
+    const tree: Root = {
+      type: "root",
+      children: [{
+        type: "paragraph",
+        children: [{ type: "text", value: "[[Note B|==label==]] and [[A == B]]" }],
+      }],
+    };
+    const file = new VFile({ path: "/vault/Source Note.md" });
+    const options = { index: fakeIndex(["Note B", "A == B"]), brainAccents: new Map() };
+
+    remarkWikiLinks(options)(tree, file);
+    remarkHighlights()(tree, file);
+    remarkPotentialLinks(options)(tree, file);
+
+    const paragraph = tree.children[0] as Paragraph;
+    expect(paragraph.children.filter((child) => child.type === "link")).toMatchObject([
+      {
+        url: "/notes/note-b",
+        children: [{
+          type: "emphasis",
+          data: { hName: "mark" },
+          children: [{ type: "text", value: "label" }],
+        }],
+      },
+      { url: "/notes/a-b", children: [{ type: "text", value: "A == B" }] },
+    ]);
+  });
+
+  it("does not mark already-linked pairs, authored links, code, or unrelated text", () => {
+    const snapshot = createWorkspaceSnapshot({
+      mode: "workspace",
+      vaultDir: path.resolve("examples/demo-vault"),
+      workspacePath: path.resolve("examples/demo-workspace/workspace.json"),
+      outputDir: path.resolve("dist"),
+      exclusions: [],
+      strictLinks: false,
+    });
+    const workspace = path.resolve("examples/demo-workspace/brains");
+    const tree: Root = {
+      type: "root",
+      children: [{
+        type: "paragraph",
+        children: [
+          { type: "text", value: "Principles before " },
+          { type: "link", url: "/manual", children: [{ type: "text", value: "Principles" }] },
+          { type: "text", value: " and " },
+          {
+            type: "linkReference",
+            identifier: "ref",
+            label: "ref",
+            referenceType: "full",
+            children: [{ type: "text", value: "Principles" }],
+          },
+          { type: "text", value: " and " },
+          { type: "inlineCode", value: "Principles" },
+          { type: "text", value: " plus unrelated prose." },
+        ],
+      }],
+    };
+    remarkWikiLinks({ index: snapshot.index, brainAccents: new Map() })(
+      tree,
+      new VFile({ path: path.join(workspace, "design", "Interaction model.md") }),
+    );
+    remarkPotentialLinks({ index: snapshot.index })(
+      tree,
+      new VFile({ path: path.join(workspace, "design", "Interaction model.md") }),
+    );
+    const paragraph = tree.children[0] as Paragraph;
+
+    expect(paragraph.children.filter((child) => child.type === "html")).toHaveLength(1);
+    expect(paragraph.children.find((child) => child.type === "link")).toMatchObject({
+      url: "/manual",
+      children: [{ type: "text", value: "Principles" }],
+    });
+    expect(paragraph.children.find((child) => child.type === "linkReference")).toMatchObject({
+      children: [{ type: "text", value: "Principles" }],
+    });
+    expect(paragraph.children.find((child) => child.type === "inlineCode")).toMatchObject({
+      value: "Principles",
+    });
+
+    const alreadyLinked = runWorkspace(
+      "Delivery loops appears in plain text too.",
+      path.join(workspace, "engineering", "Principles.md"),
+    );
+    expect(alreadyLinked.children).toEqual([
+      { type: "text", value: "Delivery loops appears in plain text too." },
+    ]);
+  });
+
+  it("does not mark text inside authored raw HTML containers", () => {
+    const snapshot = createWorkspaceSnapshot({
+      mode: "workspace",
+      vaultDir: path.resolve("examples/demo-vault"),
+      workspacePath: path.resolve("examples/demo-workspace/workspace.json"),
+      outputDir: path.resolve("dist"),
+      exclusions: [],
+      strictLinks: false,
+    });
+    const tree: Root = {
+      type: "root",
+      children: [{
+        type: "paragraph",
+        children: [
+          { type: "text", value: "Intro " },
+          { type: "html", value: "<script>" },
+          { type: "text", value: "Principles" },
+          { type: "html", value: "</script>" },
+        ],
+      }],
+    };
+
+    remarkPotentialLinks({ index: snapshot.index })(
+      tree,
+      new VFile({ path: path.resolve("examples/demo-workspace/brains/design/Interaction model.md") }),
+    );
+
+    expect((tree.children[0] as Paragraph).children).toEqual([
+      { type: "text", value: "Intro " },
+      { type: "html", value: "<script>" },
+      { type: "text", value: "Principles" },
+      { type: "html", value: "</script>" },
+    ]);
+  });
+
+  it("marks prose after self-closing HTML with quoted greater-than signs", () => {
+    const snapshot = createWorkspaceSnapshot({
+      mode: "workspace",
+      vaultDir: path.resolve("examples/demo-vault"),
+      workspacePath: path.resolve("examples/demo-workspace/workspace.json"),
+      outputDir: path.resolve("dist"),
+      exclusions: [],
+      strictLinks: false,
+    });
+    const tree: Root = {
+      type: "root",
+      children: [{
+        type: "paragraph",
+        children: [
+          { type: "html", value: '<svg aria-label="1 > 0" />' },
+          { type: "text", value: " Principles" },
+        ],
+      }],
+    };
+
+    remarkPotentialLinks({ index: snapshot.index })(
+      tree,
+      new VFile({ path: path.resolve("examples/demo-workspace/brains/design/Interaction model.md") }),
+    );
+
+    expect((tree.children[0] as Paragraph).children.at(-1)).toMatchObject({
+      type: "html",
+      value: expect.stringContaining("potential-link"),
+    });
+  });
+
+  it("renders wiki-links inside benign raw HTML wrappers", () => {
+    const tree: Root = {
+      type: "root",
+      children: [{
+        type: "paragraph",
+        children: [
+          { type: "html", value: "<span>" },
+          { type: "text", value: "[[Note B]]" },
+          { type: "html", value: "</span>" },
+        ],
+      }],
+    };
+
+    remarkWikiLinks({ index: fakeIndex(["Note B"]), brainAccents: new Map() })(
+      tree,
+      new VFile({ path: "/vault/Source Note.md" }),
+    );
+
+    expect((tree.children[0] as Paragraph).children).toMatchObject([
+      { type: "html", value: "<span>" },
+      { type: "link", url: "/notes/note-b" },
+      { type: "html", value: "</span>" },
+    ]);
+  });
+
+  it("ignores tag-like text inside HTML comments", () => {
+    const tree: Root = {
+      type: "root",
+      children: [{
+        type: "paragraph",
+        children: [
+          { type: "text", value: "Intro " },
+          { type: "html", value: "<!-- <script> -->" },
+          { type: "text", value: " [[Note B]]" },
+        ],
+      }],
+    };
+
+    remarkWikiLinks({ index: fakeIndex(["Note B"]), brainAccents: new Map() })(
+      tree,
+      new VFile({ path: "/vault/Source Note.md" }),
+    );
+
+    expect((tree.children[0] as Paragraph).children.at(-1)).toMatchObject({
+      type: "link",
+      url: "/notes/note-b",
+    });
   });
 
   it("distinguishes missing foreign notes from unknown brains", () => {

@@ -25,8 +25,14 @@ describe("workspace snapshot", () => {
       "engineering",
       "design",
       "research",
+      "research-archive-and-synthesis-source-trails",
     ]);
-    expect([...snapshot.manifests.keys()]).toEqual(["engineering", "design", "research"]);
+    expect([...snapshot.manifests.keys()]).toEqual([
+      "engineering",
+      "design",
+      "research",
+      "research-archive-and-synthesis-source-trails",
+    ]);
     expect(snapshot.index.notes.filter((note) => note.title === "Principles").map((note) => note.id))
       .toEqual(["engineering/principles", "design/principles"]);
     expect(snapshot.index.notes.map((note) => note.vaultPath)).not.toContain("drafts/Private rollout.md");

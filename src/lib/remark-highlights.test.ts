@@ -1,4 +1,4 @@
-import type { Html, Paragraph, Root, Text } from "mdast";
+import type { Emphasis, Paragraph, Root, Text } from "mdast";
 import { VFile } from "vfile";
 import { describe, expect, it } from "vitest";
 import { remarkHighlights } from "./remark-highlights";
@@ -15,40 +15,110 @@ function run(text: string): Paragraph {
 describe("remarkHighlights", () => {
   it("renders ==text== as a mark element", () => {
     const para = run("this ==matters a lot== here");
-    expect(para.children.map((c) => c.type)).toEqual(["text", "html", "text"]);
-    expect((para.children[1] as Html).value).toBe("<mark>matters a lot</mark>");
+    expect(para.children.map((c) => c.type)).toEqual(["text", "emphasis", "text"]);
+    expect(para.children[1]).toMatchObject({
+      type: "emphasis",
+      children: [{ type: "text", value: "matters a lot" }],
+      data: { hName: "mark" },
+    });
     expect((para.children[0] as Text).value).toBe("this ");
   });
 
   it("handles multiple highlights", () => {
     const para = run("==one== and ==two==");
-    const htmls = para.children.filter((c) => c.type === "html") as Html[];
-    expect(htmls.map((h) => h.value)).toEqual(["<mark>one</mark>", "<mark>two</mark>"]);
+    const marks = para.children.filter((c) => c.type === "emphasis") as Emphasis[];
+    expect(marks.map((mark) => (mark.children[0] as Text).value)).toEqual(["one", "two"]);
   });
 
   it("renders highlights across soft line breaks", () => {
     const para = run("before ==first line\nsecond line\nthird line== after");
-    expect(para.children.map((c) => c.type)).toEqual(["text", "html", "text"]);
+    expect(para.children.map((c) => c.type)).toEqual(["text", "emphasis", "text"]);
     expect((para.children[0] as Text).value).toBe("before ");
-    expect((para.children[1] as Html).value).toBe(
-      "<mark>first line\nsecond line\nthird line</mark>",
+    expect(((para.children[1] as Emphasis).children[0] as Text).value).toBe(
+      "first line\nsecond line\nthird line",
     );
     expect((para.children[2] as Text).value).toBe(" after");
   });
 
-  it("escapes HTML inside multiline highlights", () => {
+  it("keeps HTML-sensitive content in a text node", () => {
     const para = run("==first <tag>\nsecond & final==");
-    expect((para.children[0] as Html).value).toBe(
-      "<mark>first &lt;tag&gt;\nsecond &amp; final</mark>",
+    expect(((para.children[0] as Emphasis).children[0] as Text).value).toBe(
+      "first <tag>\nsecond & final",
     );
+  });
+
+  it("renders inside authored anchors and other rendered HTML containers", () => {
+    const tree: Root = {
+      type: "root",
+      children: [{
+        type: "paragraph",
+        children: [
+          { type: "html", value: '<a href="/other">' },
+          { type: "text", value: "==important==" },
+          { type: "html", value: "</a>" },
+          { type: "html", value: "<button>" },
+          { type: "text", value: "==action==" },
+          { type: "html", value: "</button>" },
+        ],
+      }],
+    };
+
+    remarkHighlights()(tree, new VFile({ path: "x.md" }));
+
+    const children = (tree.children[0] as Paragraph).children;
+    expect(children.filter((child) => child.type === "emphasis")).toHaveLength(2);
+  });
+
+  it("renders inside Markdown links", () => {
+    const tree: Root = {
+      type: "root",
+      children: [{
+        type: "paragraph",
+        children: [{
+          type: "link",
+          url: "/other",
+          children: [{ type: "text", value: "==important==" }],
+        }],
+      }],
+    };
+
+    remarkHighlights()(tree, new VFile({ path: "x.md" }));
+
+    const link = (tree.children[0] as Paragraph).children[0];
+    expect(link).toMatchObject({
+      type: "link",
+      children: [{ type: "emphasis", data: { hName: "mark" } }],
+    });
+  });
+
+  it("skips raw-text and non-rendered HTML containers", () => {
+    const children: Paragraph["children"] = [];
+    const tags = [
+      "datalist", "head", "iframe", "noembed", "noframes", "noscript", "option", "plaintext",
+      "script", "select", "style", "template", "textarea", "title", "xmp",
+    ];
+    for (const tag of tags) {
+      children.push(
+        { type: "html", value: `<${tag}>` },
+        { type: "text", value: `==${tag}==` },
+        { type: "html", value: `</${tag}>` },
+      );
+    }
+    const tree: Root = { type: "root", children: [{ type: "paragraph", children }] };
+
+    remarkHighlights()(tree, new VFile({ path: "x.md" }));
+
+    const transformed = (tree.children[0] as Paragraph).children;
+    expect(transformed.some((child) => child.type === "emphasis")).toBe(false);
+    expect(transformed.filter((child) => child.type === "text")).toHaveLength(tags.length);
   });
 
   it("handles adjacent single-line and multiline highlights", () => {
     const para = run("==one====two\ncontinued==");
-    const htmls = para.children.filter((c) => c.type === "html") as Html[];
-    expect(htmls.map((h) => h.value)).toEqual([
-      "<mark>one</mark>",
-      "<mark>two\ncontinued</mark>",
+    const marks = para.children.filter((c) => c.type === "emphasis") as Emphasis[];
+    expect(marks.map((mark) => (mark.children[0] as Text).value)).toEqual([
+      "one",
+      "two\ncontinued",
     ]);
   });
 

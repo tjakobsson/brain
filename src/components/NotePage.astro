@@ -69,6 +69,7 @@ const url = (route: import("../lib/routes").LogicalRoute) =>
     />
     <Content />
   </article>
+  <NoteMentions noteId={entry.id} brainId={note.brainId} />
   {nearbyNotes.length > 0 && (
     <section class="local-graph-panel" aria-labelledby="local-graph-heading">
       <header class="local-graph-panel__header">
@@ -103,7 +104,6 @@ const url = (route: import("../lib/routes").LogicalRoute) =>
       </nav>
     </section>
   )}
-  <NoteMentions noteId={entry.id} brainId={note.brainId} />
 </BaseLayout>
 
 <script>
