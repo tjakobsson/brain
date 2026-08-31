@@ -5,6 +5,7 @@ import {
   forceLabelsOnNarrowZoom,
   forceLocalLabelsOnNarrowZoom,
   graphEdgeAttributes,
+  graphHoverSurface,
   graphNodeAttributes,
   responsiveLabelSettings,
 } from "./graph-style";
@@ -67,6 +68,11 @@ describe("brain-aware graph rendering data", () => {
     expect(forceLabelsOnNarrowZoom(true, 0.75)).toBe(true);
     expect(forceLabelsOnNarrowZoom(true, 0.76)).toBe(false);
     expect(forceLabelsOnNarrowZoom(false, 0.5)).toBe(false);
+  });
+
+  it("uses the dark hover surface unless light mode is preferred", () => {
+    expect(graphHoverSurface(true)).toBe("#fff");
+    expect(graphHoverSurface(false)).toBe("#24232a");
   });
 
   it("reveals local labels relative to each graph's fitted view", () => {

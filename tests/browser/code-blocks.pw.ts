@@ -120,6 +120,32 @@ test("code blocks render statically with responsive light and dark styles", asyn
 
   await page.setViewportSize({ width: 390, height: 844 });
   expectCompactCopyLayout(await copyLayout());
+  const typography = await highlighted.evaluate((block) => {
+    const code = block.querySelector("code");
+    const line = code?.querySelector(".line");
+    if (!(code instanceof HTMLElement) || !(line instanceof HTMLElement)) {
+      throw new Error("Expected highlighted code typography");
+    }
+    const blockStyle = getComputedStyle(block);
+    const codeStyle = getComputedStyle(code);
+    const lineStyle = getComputedStyle(line);
+    const numberStyle = getComputedStyle(line, "::before");
+    return {
+      blockFontSize: Number.parseFloat(blockStyle.fontSize),
+      codeFontSize: codeStyle.fontSize,
+      lineFontSize: lineStyle.fontSize,
+      numberFontSize: numberStyle.fontSize,
+      lineHeight: lineStyle.lineHeight,
+      numberLineHeight: numberStyle.lineHeight,
+      numberTextAlign: numberStyle.textAlign,
+    };
+  });
+  expect(typography.blockFontSize).toBeCloseTo(14.08, 2);
+  expect(typography.codeFontSize).toBe(`${typography.blockFontSize}px`);
+  expect(typography.lineFontSize).toBe(typography.codeFontSize);
+  expect(typography.numberFontSize).toBe(typography.lineFontSize);
+  expect(typography.numberLineHeight).toBe(typography.lineHeight);
+  expect(typography.numberTextAlign).toBe("right");
   await expect(highlighted).toHaveCSS("overflow-x", "auto");
   const overflow = await highlighted.evaluate((block) => {
     block.scrollLeft = block.scrollWidth;
@@ -144,7 +170,20 @@ test("code blocks render statically with responsive light and dark styles", asyn
 
 test("copy controls copy exact code with keyboard feedback", async ({ context, page }, testInfo) => {
   const { origin, base } = deployment(testInfo);
-  await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin });
+  if (testInfo.project.name === "webkit-code-blocks-phone") {
+    await page.addInitScript(() => {
+      let copiedText = "";
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          readText: async () => copiedText,
+          writeText: async (text: string) => { copiedText = text; },
+        },
+      });
+    });
+  } else {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin });
+  }
   await page.goto(`${base}/notes/welcome`);
 
   const blocks = page.locator("article .code-block");

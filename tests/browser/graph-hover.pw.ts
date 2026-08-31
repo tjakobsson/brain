@@ -1,4 +1,4 @@
-import { expect, test, type TestInfo } from "@playwright/test";
+import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
 
 function deployment(testInfo: TestInfo) {
   const url = new URL(String(testInfo.project.use.baseURL));
@@ -59,33 +59,8 @@ const graphData = {
   ],
 };
 
-test("a hovered graph node stays under the pointer and remains the click target", async ({ page }, testInfo) => {
-  const { base } = deployment(testInfo);
-  await page.route("**/graph-data.json", (route) =>
-    route.fulfill({ contentType: "application/json", body: JSON.stringify(graphData) }),
-  );
-  await page.goto(`${base}/`);
-
-  const graph = page.locator("#global-graph");
-  const mouseCanvas = graph.locator("canvas.sigma-mouse");
-  const nodesCanvas = graph.locator("canvas.sigma-nodes");
-  await expect(nodesCanvas).toBeVisible();
-  await expect
-    .poll(() =>
-      page.evaluate((id) =>
-        Object.entries(sessionStorage).some(([key, raw]) => {
-          if (!key.startsWith("graph-motion:")) return false;
-          try {
-            return Object.hasOwn(JSON.parse(raw).positions ?? {}, id);
-          } catch {
-            return false;
-          }
-        }), targetId),
-    )
-    .toBe(true);
-  await page.waitForTimeout(400);
-
-  const label = await graph.locator("canvas.sigma-labels").evaluate((canvas) => {
+async function longestLabelAnchor(labelsCanvas: Locator) {
+  return labelsCanvas.evaluate((canvas) => {
     const element = canvas as HTMLCanvasElement;
     const context = element.getContext("2d")!;
     const pixels = context.getImageData(0, 0, element.width, element.height).data;
@@ -119,20 +94,76 @@ test("a hovered graph node stays under the pointer and remains the click target"
       y: bounds.top + ((longest.top + longest.bottom) / 2 / element.height) * bounds.height,
     };
   });
+}
 
-  let target: { x: number; y: number } | null = null;
+async function nodeLeftOfLabel(page: Page, graph: Locator, label: { left: number; y: number }) {
   for (let offset = 2; offset <= 90; offset += 2) {
     const point = { x: label.left - offset, y: label.y };
     await page.mouse.move(point.x, point.y);
-    if ((await graph.evaluate((host) => host.style.cursor)) === "pointer") {
-      target = point;
-      break;
-    }
+    if ((await graph.evaluate((host) => host.style.cursor)) === "pointer") return point;
   }
-  expect(target).not.toBeNull();
+  throw new Error("Could not find graph node left of its label");
+}
+
+for (const colorScheme of ["light", "dark"] as const) {
+test(`a hovered graph node stays emphasized and clickable in ${colorScheme} mode`, async ({ page }, testInfo) => {
+  const { base } = deployment(testInfo);
+  await page.emulateMedia({ colorScheme });
+  await page.route("**/graph-data.json", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(graphData) }),
+  );
+  await page.goto(`${base}/`);
+
+  const graph = page.locator("#global-graph");
+  const mouseCanvas = graph.locator("canvas.sigma-mouse");
+  const nodesCanvas = graph.locator("canvas.sigma-nodes");
+  const labelsCanvas = graph.locator("canvas.sigma-labels");
+  await expect(nodesCanvas).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate((id) =>
+        Object.entries(sessionStorage).some(([key, raw]) => {
+          if (!key.startsWith("graph-motion:")) return false;
+          try {
+            return Object.hasOwn(JSON.parse(raw).positions ?? {}, id);
+          } catch {
+            return false;
+          }
+        }), targetId),
+    )
+    .toBe(true);
+  await page.waitForTimeout(400);
+  const normalNodes = await nodesCanvas.screenshot();
+  const normalLabels = await labelsCanvas.screenshot();
+
+  const label = await longestLabelAnchor(labelsCanvas);
+  const target = await nodeLeftOfLabel(page, graph, label);
   await page.waitForTimeout(50);
 
-  const before = await nodesCanvas.screenshot();
+  const emphasizedNodes = await nodesCanvas.screenshot();
+  const emphasizedLabels = await labelsCanvas.screenshot();
+  expect(emphasizedNodes.equals(normalNodes)).toBe(false);
+  expect(emphasizedLabels.equals(normalLabels)).toBe(false);
+  if (colorScheme === "dark") {
+    const hoverInk = await graph.locator("canvas.sigma-hovers").evaluate((canvas) => {
+      const element = canvas as HTMLCanvasElement;
+      const pixels = element.getContext("2d")!.getImageData(0, 0, element.width, element.height).data;
+      let visible = 0;
+      let darkSurface = 0;
+      for (let index = 0; index < pixels.length; index += 4) {
+        if (pixels[index + 3] === 0) continue;
+        visible += 1;
+        if (
+          Math.abs(pixels[index] - 36) <= 4 &&
+          Math.abs(pixels[index + 1] - 35) <= 4 &&
+          Math.abs(pixels[index + 2] - 42) <= 4
+        ) darkSurface += 1;
+      }
+      return { visible, darkSurface };
+    });
+    expect(hoverInk.visible).toBeGreaterThan(0);
+    expect(hoverInk.darkSurface / hoverInk.visible).toBeGreaterThan(0.15);
+  }
   await graph.evaluate((host) => {
     const scope = window as unknown as {
       hoverStyleChanges: number;
@@ -145,7 +176,7 @@ test("a hovered graph node stays under the pointer and remains the click target"
     scope.hoverStyleObserver.observe(host, { attributes: true, attributeFilter: ["style"] });
   });
   for (let index = 0; index < 12; index += 1) {
-    await page.mouse.move(target!.x, target!.y);
+    await page.mouse.move(target.x, target.y);
     await expect(graph).toHaveCSS("cursor", "pointer");
     await page.waitForTimeout(25);
   }
@@ -158,9 +189,130 @@ test("a hovered graph node stays under the pointer and remains the click target"
     return scope.hoverStyleChanges;
   });
   expect(styleChanges).toBe(0);
-  expect((await nodesCanvas.screenshot()).equals(before)).toBe(true);
+  expect((await nodesCanvas.screenshot()).equals(emphasizedNodes)).toBe(true);
 
-  await page.mouse.click(target!.x, target!.y);
+  await page.mouse.click(target.x, target.y);
   await expect(page).toHaveURL(new RegExp(`${base}/notes/welcome/?$`));
   await expect(mouseCanvas).toHaveCount(0);
+});
+}
+
+const localGraphData = {
+  nodes: [
+    { ...graphData.nodes[0], id: "welcome" },
+    { ...graphData.nodes[1], id: "portable-notes" },
+    graphData.nodes[2],
+  ],
+  edges: [
+    { source: "welcome", target: "portable-notes" },
+    { source: "portable-notes", target: "unrelated-a" },
+  ],
+};
+
+for (const colorScheme of ["light", "dark"] as const) {
+test(`local graph inspection fades unrelated content in ${colorScheme} mode`, async ({ page }, testInfo) => {
+  const { base } = deployment(testInfo);
+  await page.emulateMedia({ colorScheme });
+  await page.route("**/graph-data.json", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(localGraphData) }),
+  );
+  await page.goto(`${base}/notes/welcome`);
+
+  const graph = page.locator(".local-graph");
+  const nodesCanvas = graph.locator("canvas.sigma-nodes");
+  const labelsCanvas = graph.locator("canvas.sigma-labels");
+  await expect(nodesCanvas).toBeVisible();
+  await page.waitForTimeout(800);
+  const normalNodes = await nodesCanvas.screenshot();
+  const normalLabels = await labelsCanvas.screenshot();
+  const target = await nodeLeftOfLabel(page, graph, await longestLabelAnchor(labelsCanvas));
+  await page.mouse.move(target.x, target.y);
+  await expect(graph).toHaveCSS("cursor", "pointer");
+  await page.waitForTimeout(50);
+
+  expect((await nodesCanvas.screenshot()).equals(normalNodes)).toBe(false);
+  expect((await labelsCanvas.screenshot()).equals(normalLabels)).toBe(false);
+  await page.mouse.move(0, 0);
+  await expect(graph).toHaveCSS("cursor", "auto");
+  await expect(page).toHaveURL(new RegExp(`${base}/notes/welcome/?$`));
+});
+}
+
+test("touch long press pins and clears graph inspection", async ({ browser }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium-root", "Trusted touch dispatch uses Chromium CDP once.");
+  const { base } = deployment(testInfo);
+  const context = await browser.newContext({
+    baseURL: String(testInfo.project.use.baseURL),
+    hasTouch: true,
+    viewport: { width: 390, height: 844 },
+  });
+  const page = await context.newPage();
+  await page.route("**/graph-data.json", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(graphData) }),
+  );
+  await page.goto(`${base}/`);
+
+  const graph = page.locator("#global-graph");
+  const nodesCanvas = graph.locator("canvas.sigma-nodes");
+  const labelsCanvas = graph.locator("canvas.sigma-labels");
+  await expect(nodesCanvas).toBeVisible();
+  await page.waitForTimeout(800);
+  const target = await nodeLeftOfLabel(page, graph, await longestLabelAnchor(labelsCanvas));
+  await page.mouse.move(0, 0);
+  await page.waitForTimeout(50);
+  const normal = await nodesCanvas.screenshot();
+
+  const cdp = await context.newCDPSession(page);
+  const touch = async (point: { x: number; y: number }, hold = 0) => {
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: point.x, y: point.y }],
+    });
+    if (hold) await page.waitForTimeout(hold);
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  };
+  const drag = async (start: { x: number; y: number }, end: { x: number; y: number }) => {
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: start.x, y: start.y }],
+    });
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ x: end.x, y: end.y }],
+    });
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  };
+  const addSecondTouch = async (point: { x: number; y: number }) => {
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: point.x, y: point.y }],
+    });
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [
+        { x: point.x, y: point.y },
+        { x: point.x + 20, y: point.y + 20 },
+      ],
+    });
+    await page.waitForTimeout(550);
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  };
+
+  await addSecondTouch(target);
+  await expect(graph).not.toHaveAttribute("data-pinned-inspection");
+  await touch(target, 550);
+  await expect(page).toHaveURL(new RegExp(`${base}/?$`));
+  await expect(graph).toHaveAttribute("data-pinned-inspection");
+  const pinned = await nodesCanvas.screenshot();
+  expect(pinned.equals(normal)).toBe(false);
+
+  const bounds = (await graph.boundingBox())!;
+  const empty = { x: bounds.x + bounds.width - 12, y: bounds.y + bounds.height - 12 };
+  await drag(empty, { x: empty.x - 50, y: empty.y - 50 });
+  await expect(graph).toHaveAttribute("data-pinned-inspection");
+
+  await touch(empty);
+  await expect(graph).not.toHaveAttribute("data-pinned-inspection");
+  expect((await nodesCanvas.screenshot()).equals(pinned)).toBe(false);
+  await context.close();
 });

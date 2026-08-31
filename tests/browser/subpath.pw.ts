@@ -197,6 +197,9 @@ test("all site features stay within the deployment base", async ({ page }, testI
       const pill = document.querySelector(".site-header")!.getBoundingClientRect();
       return {
         viewportHeight: Math.round(shell.getBoundingClientRect().height) === innerHeight,
+        alignedTop: Math.abs(controls.top - pill.top) < 0.5,
+        equalHeight: controls.height === 48 && pill.height === 48,
+        symmetricInsets: Math.abs(controls.left - (innerWidth - pill.right)) < 0.5,
         overlapsPill: !(
           controls.right <= pill.left ||
           controls.left >= pill.right ||
@@ -205,13 +208,36 @@ test("all site features stay within the deployment base", async ({ page }, testI
         ),
       };
     }),
-  ).toEqual({ viewportHeight: true, overlapsPill: false });
+  ).toEqual({
+    viewportHeight: true,
+    alignedTop: true,
+    equalHeight: true,
+    symmetricInsets: true,
+    overlapsPill: false,
+  });
 
+  const desktopControls = page.locator(".graph-controls");
+  const desktopActions = desktopControls.getByRole("button");
+  await expect(desktopActions).toHaveCount(3);
+  expect(await desktopActions.evaluateAll((buttons) => buttons.map((button) => {
+    const { width, height } = button.getBoundingClientRect();
+    return { width, height };
+  }))).toEqual([
+    { width: 44, height: 44 },
+    { width: 44, height: 44 },
+    { width: 44, height: 44 },
+  ]);
+  for (const action of await desktopActions.all()) {
+    await expect(action).toHaveAttribute("title", await action.getAttribute("aria-label") ?? "");
+  }
+  const controlsLeftClosed = (await desktopControls.boundingBox())!.x;
   const filterToggle = page.getByRole("button", { name: "Filters" });
   await expect(filterToggle).toHaveAttribute("aria-expanded", "false");
   await expect(page.locator("#graph-sidebar")).toBeHidden();
   await filterToggle.click();
   await expect(page.locator("#graph-sidebar")).toBeVisible();
+  expect((await desktopControls.boundingBox())!.x).toBeGreaterThan(controlsLeftClosed);
+  await expect(page.getByRole("button", { name: "Close filters" })).toHaveAttribute("title", "Close filters");
   await page.waitForTimeout(1_200);
   await page.getByRole("button", { name: "Fit view" }).click();
   await page.waitForTimeout(500);
@@ -275,11 +301,13 @@ test("all site features stay within the deployment base", async ({ page }, testI
   const indexResponse = page.waitForResponse((response) =>
     response.url().endsWith(`${base}/search-index.json`),
   );
+  await page.getByRole("button", { name: "Navigation" }).click();
   await page.getByRole("button", { name: /Search/ }).click();
   await indexResponse;
   await page.keyboard.press("Escape");
   await expect(page.locator("#quick-switcher")).toBeHidden();
   await expect(page.locator("#graph-sidebar")).toBeVisible();
+  await page.getByRole("button", { name: "Navigation" }).click();
   await page.getByRole("button", { name: /Search/ }).click();
   await page.setViewportSize({ width: 900, height: 240 });
   const switcherInput = page.locator(".switcher input");
@@ -338,31 +366,31 @@ test("all site features stay within the deployment base", async ({ page }, testI
   await page.emulateMedia({ colorScheme: "dark" });
 
   const noteHeader = page.locator(".site-header");
+  const launcher = noteHeader.getByRole("button", { name: "Navigation" });
   await page.evaluate(() => window.scrollTo(0, 0));
   const pillBeforeScroll = await noteHeader.boundingBox();
   await expect(noteHeader).toHaveCSS("width", "48px");
-  await expect(noteHeader.getByRole("link", { name: "Graph" })).toBeVisible();
-  await expect(noteHeader.getByRole("button", { name: "Search" })).toBeVisible();
-  const compactMenu = noteHeader.locator(".nav-menu > summary");
-  await expect(compactMenu).toBeVisible();
-  await expect(compactMenu).toHaveAttribute("aria-label", "More navigation");
-  await expect(noteHeader.locator(".menu-icon")).toHaveCount(0);
+  await expect(launcher).toBeVisible();
+  await expect(launcher).toHaveAttribute("aria-expanded", "false");
+  await expect(noteHeader.locator(".nav-actions")).toHaveJSProperty("inert", true);
   await page.evaluate(() => window.scrollTo(0, 400));
   expect(await noteHeader.boundingBox()).toEqual(pillBeforeScroll);
-  await compactMenu.focus();
+  await launcher.focus();
   await page.keyboard.press("Enter");
-  await expect(noteHeader.locator(".nav-menu")).toHaveJSProperty("open", true);
-  await expect(compactMenu).toHaveAttribute("aria-expanded", "true");
-  await expect(noteHeader.locator(".nav-menu-panel").getByRole("link", { name: "Search" })).toHaveCount(0);
+  await expect(launcher).toHaveAttribute("aria-expanded", "true");
+  await expect(noteHeader.getByRole("link", { name: "Graph" })).toBeVisible();
+  await expect(noteHeader.getByRole("button", { name: "Search" })).toBeVisible();
+  await expect(noteHeader.locator(".nav-menu")).toHaveCount(0);
   await page.setViewportSize({ width: 900, height: 200 });
-  const compactMenuPanel = noteHeader.locator(".nav-menu-panel");
-  await expect(compactMenuPanel).toHaveCSS("overflow-y", "auto");
+  const navActions = noteHeader.locator(".nav-actions");
+  await expect(navActions).toHaveCSS("overflow-y", "auto");
   expect(
-    await compactMenuPanel.evaluate((panel) => panel.getBoundingClientRect().bottom <= innerHeight),
+    await navActions.evaluate((panel) => panel.getBoundingClientRect().bottom <= innerHeight),
   ).toBe(true);
-  await compactMenu.click();
+  await launcher.click();
   await page.setViewportSize({ width: 1280, height: 720 });
   const compactSearch = noteHeader.locator(".search-trigger");
+  await launcher.click();
   await compactSearch.click();
   await expect(page.locator("#quick-switcher")).toBeVisible();
   await expect(page.locator("#quick-switcher input")).toBeFocused();
@@ -372,7 +400,7 @@ test("all site features stay within the deployment base", async ({ page }, testI
   await page.keyboard.press("Tab");
   await expect(page.locator("#quick-switcher input")).toBeFocused();
   await page.keyboard.press("Escape");
-  await expect(compactSearch).toBeFocused();
+  await expect(launcher).toBeFocused();
   await expect(page.locator(".site-header-slot")).toHaveJSProperty("inert", false);
   await expect(page.locator("main")).toHaveJSProperty("inert", false);
   await expect(page.locator("body")).not.toHaveCSS("overflow", "hidden");
@@ -387,11 +415,12 @@ test("all site features stay within the deployment base", async ({ page }, testI
     if (!response.ok) throw new Error(`attachment: HTTP ${response.status}`);
   });
 
+  await launcher.click();
   await page.getByRole("link", { name: "Graph", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`${base}/?$`));
   await page.goto(`${base}/notes/welcome`);
-  await page.locator(".nav-menu > summary").click();
-  await page.locator(".nav-menu-panel").getByRole("link", { name: "Tags" }).click();
+  await page.getByRole("button", { name: "Navigation" }).click();
+  await page.locator(".nav-actions").getByRole("link", { name: "Tags" }).click();
   await expect(page).toHaveURL(new RegExp(`${base}/tags/?$`));
   await page.getByRole("link", { name: "#demo" }).click();
   await expect(page).toHaveURL(new RegExp(`${base}/tags/demo/?$`));
@@ -598,13 +627,13 @@ test("mobile navigation stays within the deployment base", async ({ page }, test
   await expect(page.locator(".site-header-slot")).toHaveCSS("height", "0px");
   await expect(noteHeader).toHaveCSS("width", "48px");
   await launcher.click();
-  await expect(noteHeader.locator(".nav-menu")).toBeHidden();
+  await expect(noteHeader.locator(".nav-menu")).toHaveCount(0);
   await expect(noteHeader.getByRole("link", { name: "Graph" })).toHaveAttribute("href", `${base}/`);
   await expect(noteHeader.getByRole("link", { name: "Tags" })).toHaveAttribute("href", `${base}/tags`);
   await expect(noteHeader.getByRole("link", { name: "Recent" })).toHaveAttribute("href", `${base}/recent`);
   await expect(noteHeader.getByRole("link", { name: "Orphans" })).toHaveAttribute("href", `${base}/orphans`);
   const controlPositions = await noteHeader.evaluate((header) => {
-    const controls = [...header.querySelectorAll(".mobile-nav-actions > .nav-action")]
+    const controls = [...header.querySelectorAll(".nav-actions > .nav-action")]
       .filter((control) => !(control as HTMLElement).hidden)
       .map((control) => control.getBoundingClientRect());
     const rail = header.getBoundingClientRect();
@@ -868,7 +897,7 @@ test("touch layouts keep the local graph interactive", async ({ browser }, testI
   await expect(page.locator(".site-header-slot")).toHaveCSS("position", "fixed");
   await expect(page.locator(".site-header")).toHaveCSS("width", "48px");
   await expect(page.getByRole("button", { name: "Navigation" })).toBeVisible();
-  await expect(page.locator(".mobile-nav-actions")).toHaveJSProperty("inert", true);
+  await expect(page.locator(".nav-actions")).toHaveJSProperty("inert", true);
   await page.goto(`${origin}${base}/tags`);
   await expect(page.locator(".site-header")).toHaveCSS("width", "48px");
   await expect(page.getByRole("button", { name: "Navigation" })).toBeVisible();
