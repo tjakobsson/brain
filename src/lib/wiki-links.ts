@@ -33,7 +33,7 @@ function hasOnlySoftBreaks(value: string): boolean {
   if (!value.includes("\n")) return true;
   if (/\r(?!\n)/.test(value) || /\n[\t ]*\r?\n/.test(value)) return false;
   if (/(?:[\t ]{2,}|\\)\r?\n/.test(value)) return false;
-  return !/\r?\n(?: {4}|\t| {0,3}(?:#{1,6}(?:[\t ]|$)|>|(?:[-+*]|\d+[.)])[\t ]+|`{3,}|~{3,}|<))/.test(value);
+  return !/\r?\n(?: {4}|\t| {0,3}(?:#{1,6}(?:[\t ]|$)|>|(?:[-+*]|\d+[.)])[\t ]+|(?:(?:\*[\t ]*){3,}|(?:_[\t ]*){3,}|(?:-[\t ]*){3,})(?=\r?\n|$)|(?:=+|-+)[\t ]*(?=\r?\n|$)|`{3,}|~{3,}|<))/.test(value);
 }
 
 function normalizeField(value: string): string {
@@ -58,10 +58,24 @@ function parseTarget(value: string): Pick<WikiLink, "target" | "targetBrainId"> 
 
 export function parseWikiLinks(text: string): WikiLink[] {
   const links: WikiLink[] = [];
-  for (const match of text.matchAll(WIKI_LINK_RE)) {
-    if (!hasOnlySoftBreaks(match[0])) continue;
+  let searchIndex = 0;
+  while (searchIndex < text.length) {
+    WIKI_LINK_RE.lastIndex = searchIndex;
+    const match = WIKI_LINK_RE.exec(text);
+    if (!match) break;
+    searchIndex = match.index + match[0].length;
+
+    if (!hasOnlySoftBreaks(match[0])) {
+      const nestedOffset = match[0].indexOf("[[", 2);
+      if (nestedOffset >= 0) searchIndex = match.index + nestedOffset;
+      continue;
+    }
     const target = parseTarget(normalizeField(match[1]));
-    if (!target) continue;
+    if (!target) {
+      const nestedOffset = match[0].indexOf("[[", 2);
+      if (nestedOffset >= 0) searchIndex = match.index + nestedOffset;
+      continue;
+    }
 
     links.push({
       raw: match[0],
@@ -72,6 +86,7 @@ export function parseWikiLinks(text: string): WikiLink[] {
       length: match[0].length,
     });
   }
+  WIKI_LINK_RE.lastIndex = 0;
   return links;
 }
 

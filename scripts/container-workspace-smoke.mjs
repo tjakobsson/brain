@@ -42,6 +42,8 @@ function mounts(outputDirectory, workDirectory, tmpDirectory) {
     "--mount",
     `type=bind,src=${path.join(fixture, "brains", "research")},dst=/workspace/brains/research,readonly`,
     "--mount",
+    `type=bind,src=${path.join(fixture, "brains", "research-archive-and-synthesis-source-trails")},dst=/workspace/brains/research-archive-and-synthesis-source-trails,readonly`,
+    "--mount",
     `type=bind,src=${outputDirectory},dst=/output`,
     "--mount",
     `type=bind,src=${workDirectory},dst=/work`,

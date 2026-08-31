@@ -162,8 +162,24 @@ describe("parseWikiLinks", () => {
     "[[Note\n1. list item]]",
     "[[Note\n    code]]",
     "[[Note\n```code]]",
+    "[[Note\n---\nTitle]]",
+    "[[Note\n* * *\nTitle]]",
+    "[[Note\n___\nTitle]]",
+    "[[Note\n===\nTitle]]",
   ])("rejects a wiki-link crossing a hard break or block boundary: %j", (source) => {
     expect(parseWikiLinks(source)).toEqual([]);
+  });
+
+  it.each([
+    "[[unfinished\n\nSee [[Good]]",
+    "[[unfinished\n---\nSee [[Good]]",
+    "[[@Bad/unfinished [[Good]]",
+  ])("preserves a valid nested link after rejecting its enclosing candidate: %j", (source) => {
+    expect(parseWikiLinks(source)).toMatchObject([{
+      raw: "[[Good]]",
+      target: "Good",
+      index: source.indexOf("[[Good]]"),
+    }]);
   });
 });
 
