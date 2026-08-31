@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   displayText,
+  parseMarkdownWikiLinks,
   parseWikiLinks,
   stripAuthoredLinks,
   stripCode,
@@ -195,6 +196,22 @@ describe("parseWikiLinks", () => {
       raw: "[[Good]]",
       target: "Good",
       index: source.indexOf("[[Good]]"),
+    }]);
+  });
+});
+
+describe("parseMarkdownWikiLinks", () => {
+  it("decodes character references while preserving raw source offsets", () => {
+    const raw = "[[Research &amp;\nDevelopment#R&amp;D|research &amp;\ndevelopment]]";
+    const source = `See ${raw}.`;
+
+    expect(parseMarkdownWikiLinks(source)).toMatchObject([{
+      raw,
+      target: "Research & Development",
+      anchor: "R&D",
+      alias: "research & development",
+      index: 4,
+      length: raw.length,
     }]);
   });
 });

@@ -64,6 +64,19 @@ function normalizeField(value: string): string {
   return value.replace(/[\t ]*\r?\n[\t ]*/g, " ").trim();
 }
 
+function decodeMarkdownField(value: string): string {
+  const tree = parseMarkdown(`[[${value}]]`);
+  if (
+    tree.children.length === 1 &&
+    tree.children[0].type === "paragraph" &&
+    tree.children[0].children.length === 1 &&
+    tree.children[0].children[0].type === "text"
+  ) {
+    return tree.children[0].children[0].value.slice(2, -2);
+  }
+  return value;
+}
+
 function blockquoteDepth(linePrefix: string): number {
   let depth = 0;
   let rest = linePrefix;
@@ -122,6 +135,10 @@ function parseWikiLinksInRanges(
     const lineStart = text.lastIndexOf("\n", match.index) + 1;
     const quoteDepth = textRange?.quoteDepth ?? blockquoteDepth(text.slice(lineStart, match.index));
     const candidate = stripBlockquotePrefixes(match[0], quoteDepth);
+    const field = (value: string): string => {
+      const normalized = normalizeField(stripBlockquotePrefixes(value, quoteDepth));
+      return textRange ? decodeMarkdownField(normalized) : normalized;
+    };
 
     if (
       (textRanges !== null && !textRange) ||
@@ -131,7 +148,7 @@ function parseWikiLinksInRanges(
       if (nestedOffset >= 0) searchIndex = match.index + nestedOffset;
       continue;
     }
-    const target = parseTarget(normalizeField(stripBlockquotePrefixes(match[1], quoteDepth)));
+    const target = parseTarget(field(match[1]));
     if (!target) {
       const nestedOffset = match[0].indexOf("[[", 2);
       if (nestedOffset >= 0) searchIndex = match.index + nestedOffset;
@@ -143,10 +160,10 @@ function parseWikiLinksInRanges(
       ...target,
       anchor: match[2] === undefined
         ? null
-        : normalizeField(stripBlockquotePrefixes(match[2], quoteDepth)),
+        : field(match[2]),
       alias: match[3] === undefined
         ? null
-        : normalizeField(stripBlockquotePrefixes(match[3], quoteDepth)),
+        : field(match[3]),
       index: match.index,
       length: match[0].length,
     });

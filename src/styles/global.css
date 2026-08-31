@@ -445,7 +445,6 @@ main.fluid {
 
 .brain-card__identity {
   display: flex;
-  min-height: 2.7em;
   align-items: center;
   gap: 0.5rem;
   padding-right: 5rem;
@@ -475,6 +474,31 @@ main.fluid {
   align-self: flex-start;
   margin-top: auto;
   font-weight: 650;
+}
+
+@media (min-width: 701px) {
+  .brain-card {
+    display: grid;
+    grid-row: span 4;
+    grid-template-rows: subgrid;
+    row-gap: 0;
+  }
+
+  .brain-card__identity {
+    grid-row: 1;
+  }
+
+  .brain-card h3 {
+    grid-row: 2;
+  }
+
+  .brain-card p {
+    grid-row: 3;
+  }
+
+  .brain-card > a {
+    grid-row: 4;
+  }
 }
 
 .brain-selection__action {
@@ -1811,10 +1835,6 @@ div[data-callout] [data-callout-body] > :last-child {
 }
 
 @media (max-width: 700px) {
-  .brain-card__identity {
-    min-height: 0;
-  }
-
   .potential-link::after {
     position: fixed;
     right: 1rem;

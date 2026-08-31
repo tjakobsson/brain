@@ -129,6 +129,15 @@ describe("scanVault", () => {
     expect(scanVault(dir).edges).toMatchObject([{ source: "note-a", target: "note-b" }]);
   });
 
+  it("resolves wrapped wiki-link targets containing character references", () => {
+    writeNote("Source.md", "See [[Research &amp;\nDevelopment]].");
+    writeNote("Research & Development.md", "Decoded target.");
+
+    const index = scanVault(dir);
+    expect(index.edges).toMatchObject([{ source: "source", target: "research-development" }]);
+    expect(index.unresolved).toEqual([]);
+  });
+
   it("does not index wiki-link delimiters spanning GFM table rows", () => {
     writeNote("Source.md", "| Value |\n| --- |\n| [[Note\n| shown]] |");
     writeNote("Note.md", "Not linked across table rows.");
