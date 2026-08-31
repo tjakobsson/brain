@@ -764,6 +764,12 @@ test("mobile local graphs recompose clustered positions for their viewport", asy
   await page.waitForTimeout(1_000);
   expect(Number(await graph.getAttribute("data-fit-completions"))).toBe(completedLayouts);
 
+  await page.setViewportSize({ width: 391, height: 844 });
+  await page.waitForTimeout(80);
+  await page.mouse.wheel(0, -300);
+  await page.waitForTimeout(1_000);
+  expect(Number(await graph.getAttribute("data-fit-completions"))).toBe(completedLayouts);
+
   const dragComponents = await graphNodeComponents(graph);
   const dragTarget = [...dragComponents].sort((a, b) => a.pixels - b.pixels)[0];
   const dragCanvas = graph.locator("canvas.sigma-nodes");

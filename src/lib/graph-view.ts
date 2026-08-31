@@ -1060,6 +1060,7 @@ export async function mountLocalGraphs(): Promise<void> {
     });
     resizeObserver.observe(host);
     const interruptViewportMotion = () => {
+      resizeSettler.reset(host.clientWidth, host.clientHeight);
       if (pendingMotion) interruptAutomaticMotion();
     };
     const mouse = renderer.getMouseCaptor();
