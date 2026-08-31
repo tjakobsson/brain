@@ -36,10 +36,13 @@ GitHub Actions can rebuild and publish the site whenever you push changes to you
 
 1. Create a GitHub repository for your Brain directory and push the files to its `main` branch.
 2. Open the repository's **Settings > Pages** and set **Source** to **GitHub Actions**.
-3. Add [`pages-major.yml`](docs/examples/pages-major.yml) to the Brain repository as `.github/workflows/pages.yml`.
-4. Commit and push the workflow. Follow the **Publish second brain** run in the repository's **Actions** tab; its deploy job links to the published site.
+3. Add [`pages-major.yml`](docs/examples/pages-major.yml) as `.github/workflows/pages.yml`.
+4. Add [`validate-pr.yml`](docs/examples/validate-pr.yml) as `.github/workflows/validate.yml`.
+5. Commit and push the workflows. Follow the **Publish second brain** run in the repository's **Actions** tab; its deploy job links to the published site.
 
-The workflow grants only the permissions needed to read the source and publish GitHub Pages. For an immutable deployment, replace `tjakobsson/brain@v1` with a full Brain commit SHA.
+The Pages workflow deploys only after changes reach `main`. The validation workflow builds pull requests with strict link checking, grants only `contents: read`, and uploads the generated site as a seven-day workflow artifact. In the repository's branch ruleset, require **Validate second brain / Build site** before merging to prevent invalid Brain content from reaching `main`.
+
+For an immutable toolchain, replace `tjakobsson/brain@v1` in both workflows with a reviewed full Brain commit SHA.
 
 ## Brain Markdown format
 
@@ -251,6 +254,8 @@ The Pages examples derive both values from GitHub Pages configuration, including
 The Linux composite Action creates caller-owned directories, runs the immutable release image as the runner UID/GID, and returns `output-path`. `exclusions` is newline-delimited. Supply either `vault` for one Brain directory or `workspace` for a manifest, never both.
 
 Use `tjakobsson/brain@v1` for maintained v1 updates or replace `v1` with a reviewed full commit SHA for an immutable toolchain. See [`docs/examples/build-action-major.yml`](docs/examples/build-action-major.yml) for one Brain and [`build-action-workspace-major.yml`](docs/examples/build-action-workspace-major.yml) for caller-prepared multi-repository checkouts.
+
+For pull requests, copy [`validate-pr.yml`](docs/examples/validate-pr.yml) to `.github/workflows/validate.yml`. It runs the Action with `strict-links: true`, uses no deployment permissions, and uploads the generated site for inspection. Keep Pages deployment in a separate workflow triggered by pushes to `main`, then make **Validate second brain / Build site** a required check in the branch ruleset.
 
 For a workspace spanning repositories, the caller must check out every repository before invoking the Action. See [GitHub Action checkouts](docs/workspaces.md#github-action-checkouts).
 

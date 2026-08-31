@@ -10,6 +10,7 @@ const examples = [
   "docs/examples/pages-major.yml",
   "docs/examples/pages-reusable-major.yml",
   "docs/examples/pages-workspace-major.yml",
+  "docs/examples/validate-pr.yml",
 ];
 const actionExamples = examples.filter(
   (file) => !file.endsWith("pages-reusable-major.yml") && !file.endsWith("pages-workspace-major.yml"),
@@ -90,4 +91,23 @@ describe("documented consumer workflows", () => {
       });
     },
   );
+
+  it("keeps pull-request validation read-only and separate from deployment", () => {
+    const workflow = parse(
+      fs.readFileSync(path.resolve("docs/examples/validate-pr.yml"), "utf8"),
+    );
+    const uses = workflow.jobs.build.steps
+      .map((step: { uses?: string }) => step.uses)
+      .filter(Boolean);
+
+    expect(workflow.on).toEqual({ pull_request: null });
+    expect(workflow.permissions).toEqual({ contents: "read" });
+    expect(uses).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^actions\/checkout@[a-f0-9]{40}$/u),
+        expect.stringMatching(/^actions\/upload-artifact@[a-f0-9]{40}$/u),
+      ]),
+    );
+    expect(uses.some((value: string) => value.startsWith("actions/deploy-pages@"))).toBe(false);
+  });
 });
