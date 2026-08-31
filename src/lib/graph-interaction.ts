@@ -21,6 +21,11 @@ export function activeInspectionNode(state: GraphHoverState): string | null {
   return state.hovered ?? state.pinned;
 }
 
+export function isInspectionNeighborhoodNode(state: GraphHoverState, node: string): boolean {
+  const active = activeInspectionNode(state);
+  return active !== null && (active === node || state.neighbors.has(node));
+}
+
 function updateInspectionNeighbors(graph: Graph, state: GraphHoverState): void {
   const active = activeInspectionNode(state);
   state.neighbors = new Set(active ? graph.neighbors(active) : []);

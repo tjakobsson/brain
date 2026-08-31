@@ -8,6 +8,7 @@ import {
   createLongPressController,
   createHoverReducers,
   GRAPH_DRAG_TOLERANCE,
+  isInspectionNeighborhoodNode,
   setPinnedInspection,
   stopCameraAnimation,
   wireGraphHover,
@@ -709,7 +710,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
         res.label = "";
         res.forceLabel = false;
       }
-      const inspectedNeighborhood = activeNode === node || state.neighbors.has(node);
+      const inspectedNeighborhood = isInspectionNeighborhoodNode(state, node);
       if ((revealNarrowLabels || inspectedNeighborhood) && res.label) res.forceLabel = true;
       if (activeNode) {
         return hoverReducers.nodeReducer(node, res as typeof attrs);
@@ -1032,7 +1033,8 @@ export async function mountLocalGraphs(): Promise<void> {
           const brainAware = reduced.foreign
             ? { ...reduced, forceLabel: forceForeignLabel(true, narrowGraphQuery.matches) }
             : reduced;
-          return revealNarrowLabels && brainAware.label
+          const inspectedNeighborhood = isInspectionNeighborhoodNode(state, node);
+          return (revealNarrowLabels || inspectedNeighborhood) && brainAware.label
             ? { ...brainAware, forceLabel: true }
             : brainAware;
         },

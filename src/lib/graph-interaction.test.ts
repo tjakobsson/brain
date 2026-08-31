@@ -4,6 +4,7 @@ import {
   activeInspectionNode,
   createLongPressController,
   createHoverReducers,
+  isInspectionNeighborhoodNode,
   setPinnedInspection,
   stopCameraAnimation,
   wireGraphHover,
@@ -139,6 +140,9 @@ describe("graph hover interaction", () => {
   it("restores pinned inspection after pointer hover and ignores touch hover events", () => {
     const { graph, renderer, emit, state } = fixture();
     setPinnedInspection(graph, state, "a");
+    expect(isInspectionNeighborhoodNode(state, "a")).toBe(true);
+    expect(isInspectionNeighborhoodNode(state, "b")).toBe(true);
+    expect(isInspectionNeighborhoodNode(state, "c")).toBe(false);
     wireGraphHover(renderer as never, graph, state);
 
     emit("enterNode", { node: "b", event: { original: { type: "touchmove" } } });
@@ -152,6 +156,10 @@ describe("graph hover interaction", () => {
     emit("leaveNode", { node: "c", event: { original: { type: "mousemove" } } });
     expect(activeInspectionNode(state)).toBe("a");
     expect(state.neighbors).toEqual(new Set(["b"]));
+
+    setPinnedInspection(graph, state, null);
+    expect(isInspectionNeighborhoodNode(state, "a")).toBe(false);
+    expect(isInspectionNeighborhoodNode(state, "b")).toBe(false);
   });
 
   it("stops an active camera animation at its current state", () => {
