@@ -904,19 +904,22 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     height: ui.host.clientHeight,
     policy: narrowGraphQuery.matches,
   });
+  const applyResponsiveState = ({ width, height, policy }: ReturnType<typeof responsiveState>) => {
+    incrementGraphCounter(ui.host, "responsiveUpdates");
+    ui.host.dataset.responsiveDimensions = `${width}:${height}`;
+    ui.host.dataset.responsivePolicy = policy ? "narrow" : "wide";
+    renderer.resize();
+    applyResponsiveLabelThreshold(policy);
+    revealNarrowLabels = forceLabelsOnNarrowZoom(
+      policy,
+      renderer.getCamera().getState().ratio,
+    );
+    applyReducers();
+  };
   const responsiveScheduler = new ResponsiveGraphScheduler(
     responsiveState(),
-    ({ width, height, policy }) => {
-      incrementGraphCounter(ui.host, "responsiveUpdates");
-      ui.host.dataset.responsiveDimensions = `${width}:${height}`;
-      ui.host.dataset.responsivePolicy = policy ? "narrow" : "wide";
-      renderer.resize();
-      applyResponsiveLabelThreshold(policy);
-      revealNarrowLabels = forceLabelsOnNarrowZoom(
-        policy,
-        renderer.getCamera().getState().ratio,
-      );
-      applyReducers();
+    (responsive) => {
+      applyResponsiveState(responsive);
       requestSettle("resize", visibleIds());
     },
   );
@@ -994,9 +997,10 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
 
   function focusNode(id: string): void {
     cancelFilterSettle();
-    responsiveScheduler.reset(responsiveState());
     motion.cancel();
     resolveCanceledRelatedBrainsState();
+    responsiveScheduler.defer(responsiveState());
+    responsiveScheduler.flush(applyResponsiveState);
     const displayData = renderer.getNodeDisplayData(id);
     if (displayData) {
       renderer
@@ -1013,7 +1017,9 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
 
   const onFitView = () => {
     cancelFilterSettle();
-    responsiveScheduler.reset(responsiveState());
+    motion.cancel();
+    responsiveScheduler.defer(responsiveState());
+    responsiveScheduler.flush(applyResponsiveState);
     incrementGraphCounter(ui.host, "fitRequests");
     motion.fitView(visibleIds());
   };

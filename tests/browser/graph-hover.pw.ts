@@ -366,6 +366,55 @@ test("global inspection flushes a pending fractional breakpoint change", async (
   await context.close();
 });
 
+test("global camera actions apply pending responsive state without a resize settle", async ({ browser }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium-root", "Fractional scale coverage runs once in Chromium.");
+  test.setTimeout(60_000);
+  const { base } = deployment(testInfo);
+  const context = await browser.newContext({
+    baseURL: String(testInfo.project.use.baseURL),
+    deviceScaleFactor: 1.25,
+    viewport: { width: 702, height: 760 },
+  });
+
+  for (const action of ["fit", "search"] as const) {
+    const page = await context.newPage();
+    await page.route("**/graph-data.json", (route) =>
+      route.fulfill({ contentType: "application/json", body: JSON.stringify(localGraphData) }),
+    );
+    await page.goto(`${base}/`);
+    const graph = page.locator("#global-graph");
+    await expect(graph.locator("canvas.sigma-nodes")).toBeVisible();
+    await expect.poll(async () => (await graphCounts(graph)).completions).toBeGreaterThan(0);
+    if (action === "search") {
+      await page.getByRole("button", { name: "Filters" }).click();
+      await page.locator("#graph-search").fill("Neighbor");
+      await expect(page.getByRole("button", { name: "Neighbor", exact: true })).toBeVisible();
+    }
+    const before = await graphCounts(graph);
+
+    await page.setViewportSize({ width: 699, height: 760 });
+    if (action === "fit") await page.getByRole("button", { name: "Fit view" }).click();
+    else await page.getByRole("button", { name: "Neighbor", exact: true }).click();
+
+    expect((await graphCounts(graph)).responsive).toBe(before.responsive + 1);
+    await expect(graph).toHaveAttribute("data-responsive-policy", "narrow");
+    const dimensions = await graph.evaluate((host) => `${host.clientWidth}:${host.clientHeight}`);
+    await expect(graph).toHaveAttribute("data-responsive-dimensions", dimensions);
+    if (action === "fit") {
+      await expect.poll(async () => (await graphCounts(graph)).completions).toBe(before.completions + 1);
+    }
+    await page.waitForTimeout(300);
+    expect(await graphCounts(graph)).toEqual({
+      responsive: before.responsive + 1,
+      settles: before.settles,
+      fits: before.fits + (action === "fit" ? 1 : 0),
+      completions: before.completions + (action === "fit" ? 1 : 0),
+    });
+    await page.close();
+  }
+  await context.close();
+});
+
 for (const colorScheme of ["light", "dark"] as const) {
 test(`local graph inspection fades unrelated content in ${colorScheme} mode`, async ({ page }, testInfo) => {
   const { base } = deployment(testInfo);
