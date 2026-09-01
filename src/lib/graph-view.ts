@@ -354,7 +354,7 @@ function wireHoverAndClick(
     const startingInspection = node !== null && activeInspectionNode(state) === null;
     if (!setTransientInspection(graph, state, node)) return;
     if (node) {
-      onInteraction?.();
+      if (startingInspection) onInteraction?.();
       container.dataset.transientInspection = node;
       if (startingInspection) {
         updateGeometryStats(container, renderer, graph);
@@ -1039,10 +1039,11 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   resizeObserver.observe(ui.host);
   const interruptAutomaticMotion = () => {
     cancelFilterSettle();
-    responsiveScheduler.reset(responsiveState());
     motion.cancel();
     stopCamera();
     resolveCanceledRelatedBrainsState();
+    responsiveScheduler.defer(responsiveState());
+    if (!state.dragged) responsiveScheduler.flush();
   };
   wireHoverAndClick(renderer, graph, state, interruptAutomaticMotion);
   const commitDrag = (_node: string, _neighborhood: string[], moved: boolean) => {
@@ -1205,6 +1206,7 @@ export async function mountLocalGraphs(): Promise<void> {
       pendingMotion = trigger;
       incrementGraphCounter(host, "settleRequests");
       pendingPinnedId = slug;
+      host.dataset.lastSettlePinnedId = slug;
       labelReveal.beginFit();
       motion.settle(trigger, graph.nodes(), slug);
     };
@@ -1212,6 +1214,7 @@ export async function mountLocalGraphs(): Promise<void> {
       pendingMotion = "drag-resize";
       incrementGraphCounter(host, "settleRequests");
       pendingPinnedId = pinnedId;
+      host.dataset.lastSettlePinnedId = pinnedId;
       labelReveal.beginFit();
       motion.settle("drag", graph.nodes(), pinnedId, undefined, true);
     };
@@ -1221,16 +1224,19 @@ export async function mountLocalGraphs(): Promise<void> {
       policy: narrowGraphQuery.matches,
     });
     let deferredResizePinnedId: string | null = null;
+    const applyResponsiveState = ({ width, height, policy }: ReturnType<typeof responsiveState>) => {
+      incrementGraphCounter(host, "responsiveUpdates");
+      host.dataset.responsiveDimensions = `${width}:${height}`;
+      host.dataset.responsivePolicy = policy ? "narrow" : "wide";
+      renderer.resize();
+      applyResponsiveLabelThreshold(policy);
+      applyLocalReducers();
+      labelReveal.refresh();
+    };
     const responsiveScheduler = new ResponsiveGraphScheduler(
       responsiveState(),
-      ({ width, height, policy }) => {
-        incrementGraphCounter(host, "responsiveUpdates");
-        host.dataset.responsiveDimensions = `${width}:${height}`;
-        host.dataset.responsivePolicy = policy ? "narrow" : "wide";
-        renderer.resize();
-        applyResponsiveLabelThreshold(policy);
-        applyLocalReducers();
-        labelReveal.refresh();
+      (responsive) => {
+        applyResponsiveState(responsive);
         if (deferredResizePinnedId) {
           const pinnedId = deferredResizePinnedId;
           deferredResizePinnedId = null;
@@ -1242,17 +1248,19 @@ export async function mountLocalGraphs(): Promise<void> {
     );
     const interruptAutomaticMotion = () => {
       pendingMotion = null;
-      responsiveScheduler.reset(responsiveState());
       motion.cancel();
       labelReveal.finishFitPlanning();
       stopCameraAnimation(renderer);
+      const responsiveDeferred = responsiveScheduler.defer(responsiveState());
+      if (state.dragged) resizeDeferredDuringDrag ||= responsiveDeferred;
+      else responsiveScheduler.flush();
     };
     wireHoverAndClick(renderer, graph, state, interruptAutomaticMotion);
     wireNodeDragging(renderer, graph, state, (node) => {
       if (!resizeDeferredDuringDrag) return;
       resizeDeferredDuringDrag = false;
       deferredResizePinnedId = node;
-      responsiveScheduler.flush();
+      if (!responsiveScheduler.flush()) deferredResizePinnedId = null;
     }, interruptAutomaticMotion);
     wireTheme(renderer, state);
     const onFitView = () => {
@@ -1283,8 +1291,15 @@ export async function mountLocalGraphs(): Promise<void> {
     });
     resizeObserver.observe(host);
     const interruptViewportMotion = () => {
-      responsiveScheduler.reset(responsiveState());
-      if (pendingMotion) interruptAutomaticMotion();
+      if (pendingMotion) {
+        pendingMotion = null;
+        motion.cancel();
+        labelReveal.finishFitPlanning();
+        stopCameraAnimation(renderer);
+      }
+      const responsiveDeferred = responsiveScheduler.defer(responsiveState());
+      if (state.dragged) resizeDeferredDuringDrag ||= responsiveDeferred;
+      else responsiveScheduler.flush(applyResponsiveState);
     };
     const mouse = renderer.getMouseCaptor();
     const touch = renderer.getTouchCaptor();

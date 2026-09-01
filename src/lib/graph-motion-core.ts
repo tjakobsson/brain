@@ -334,7 +334,7 @@ export class ResponsiveGraphScheduler<Policy> {
     return this.pending !== null;
   }
 
-  flush(): boolean {
+  flush(callback = this.callback): boolean {
     if (!this.pending) return false;
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
@@ -342,7 +342,7 @@ export class ResponsiveGraphScheduler<Policy> {
     this.pending = null;
     if (!this.differsFromCurrent(state)) return false;
     this.current = state;
-    this.callback(state);
+    callback(state);
     return true;
   }
 

@@ -325,6 +325,47 @@ test("fractional-scale breakpoint changes settle global and local targets once",
   await context.close();
 });
 
+test("global inspection flushes a pending fractional breakpoint change", async ({ browser }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium-root", "Fractional scale coverage runs once in Chromium.");
+  const { base } = deployment(testInfo);
+  const context = await browser.newContext({
+    baseURL: String(testInfo.project.use.baseURL),
+    deviceScaleFactor: 1.25,
+    viewport: { width: 702, height: 760 },
+  });
+  const page = await context.newPage();
+  await page.route("**/graph-data.json", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(localGraphData) }),
+  );
+  await page.goto(`${base}/`);
+  const graph = page.locator("#global-graph");
+  await expect(graph.locator("canvas.sigma-nodes")).toBeVisible();
+  await expect.poll(async () => (await graphCounts(graph)).completions).toBeGreaterThan(0);
+  await graph.scrollIntoViewIfNeeded();
+  const point = await nodeLeftOfLabel(page, graph, await longestLabelAnchor(graph.locator("canvas.sigma-labels")));
+  const graphBounds = (await graph.boundingBox())!;
+  const targetPosition = { x: point.x - graphBounds.x, y: point.y - graphBounds.y };
+  await page.mouse.move(0, 0);
+  await expect(graph).not.toHaveAttribute("data-transient-inspection");
+  const before = await graphCounts(graph);
+
+  await page.setViewportSize({ width: 699, height: 760 });
+  await graph.hover({ position: targetPosition });
+  await expect(graph).toHaveAttribute("data-transient-inspection", /.+/u);
+  expect((await graphCounts(graph)).responsive).toBe(before.responsive + 1);
+  await expect.poll(async () => (await graphCounts(graph)).completions).toBe(before.completions + 1);
+  await page.waitForTimeout(300);
+
+  expect(await graphCounts(graph)).toEqual({
+    responsive: before.responsive + 1,
+    settles: before.settles + 1,
+    fits: before.fits,
+    completions: before.completions + 1,
+  });
+  await expect(graph).toHaveAttribute("data-responsive-policy", "narrow");
+  await context.close();
+});
+
 for (const colorScheme of ["light", "dark"] as const) {
 test(`local graph inspection fades unrelated content in ${colorScheme} mode`, async ({ page }, testInfo) => {
   const { base } = deployment(testInfo);

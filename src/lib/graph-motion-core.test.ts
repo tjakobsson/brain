@@ -155,6 +155,27 @@ describe("responsive graph scheduling", () => {
     expect(callback).toHaveBeenCalledWith({ width: 900, height: 390, policy: false });
     vi.useRealTimers();
   });
+
+  it("reports when deferred interaction work has nothing to flush", () => {
+    const callback = vi.fn();
+    const resize = new ResponsiveGraphScheduler({ width: 390, height: 844, policy: true }, callback);
+
+    expect(resize.defer({ width: 391, height: 844, policy: true })).toBe(false);
+    expect(resize.hasPending()).toBe(false);
+    expect(resize.flush()).toBe(false);
+    expect(callback).not.toHaveBeenCalled();
+  });
+
+  it("can consume responsive work with an interaction-specific callback", () => {
+    const callback = vi.fn();
+    const interactionCallback = vi.fn();
+    const resize = new ResponsiveGraphScheduler({ width: 390, height: 844, policy: true }, callback);
+
+    expect(resize.defer({ width: 844, height: 390, policy: false })).toBe(true);
+    expect(resize.flush(interactionCallback)).toBe(true);
+    expect(interactionCallback).toHaveBeenCalledWith({ width: 844, height: 390, policy: false });
+    expect(callback).not.toHaveBeenCalled();
+  });
 });
 
 describe("session position cache", () => {
