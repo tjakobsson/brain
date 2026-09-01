@@ -366,7 +366,10 @@ function wireHoverAndClick(
     onNavigate?: (node: string, route: LogicalRoute) => void;
   } = {},
 ): void {
+  const canNavigateToNode = (node: string) =>
+    state.focused === null || isInspectionNeighborhoodNode(state, node);
   const navigateToNode = (node: string) => {
+    if (!canNavigateToNode(node)) return;
     onInteraction?.();
     const route = graph.getNodeAttribute(node, "route") as LogicalRoute | undefined;
     if (!route) return;
@@ -415,10 +418,11 @@ function wireHoverAndClick(
   const onPointerMove = (event: PointerEvent) => {
     if (event.pointerType === "touch" || state.dragged !== null) return;
     const bounds = container.getBoundingClientRect();
-    setPointerTarget(graphTargetNode(renderer, graph, state, {
+    const node = graphTargetNode(renderer, graph, state, {
       x: event.clientX - bounds.left,
       y: event.clientY - bounds.top,
-    }));
+    });
+    setPointerTarget(node && canNavigateToNode(node) ? node : null);
   };
   const onPointerLeave = (event: PointerEvent) => {
     if (event.pointerType !== "touch") setPointerTarget(null);
@@ -1176,6 +1180,10 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   });
 
   const onFitView = () => {
+    if (state.focused) {
+      fitFocus();
+      return;
+    }
     cancelFilterSettle();
     motion.cancel();
     responsiveScheduler.defer(responsiveState());

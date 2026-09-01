@@ -119,7 +119,8 @@ Some requirements are route, server, metadata, or accessibility contracts rather
 - canonical `brains` and `focus` query handling, including duplicate and invalid parameters;
 - scope retention through graph nodes, wiki-links, mentions, nearby links, local maps, and quick-switcher results;
 - clipboard URL contents and omission of camera, filter, and dragged-position state;
-- touch long press, keyboard graph search, focused hover locking, right-click position stability, and native empty-stage context menus;
+- touch long press, keyboard graph search, focused hover and unrelated-click locking, focused Fit view, right-click position stability, and native empty-stage context menus;
+- unpinned note-to-graph return versus explicit focused-neighborhood entry;
 - generated `<meta name="generator">` values;
 - external-origin classification, same-tab behavior, accessible names, and contrast;
 - deterministic 404 recommendations, no-JavaScript root recovery, HTTP 404 status, `HEAD`, root/subpath serving, and missing-resource behavior.

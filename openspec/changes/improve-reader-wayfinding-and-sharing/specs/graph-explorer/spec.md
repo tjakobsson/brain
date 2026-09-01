@@ -33,7 +33,7 @@ The global graph SHALL let a reader persist the neighborhood currently inspected
 
 On a fine-pointer desktop graph, invoking the context menu over an eligible node marker or rendered title SHALL offer actions to pin or move focus, copy the focused-neighborhood link, and open the note. The native context menu MUST remain available over empty graph space. Touch long press and keyboard-accessible graph search MUST reach the same focused state. A reader MUST be able to copy and clear focus without relying on another right-click.
 
-Secondary-button and context-menu gestures MUST NOT begin or continue node dragging. While a neighborhood is focused, pointer movement over other nodes MUST NOT replace the focused emphasis, reveal another neighborhood, or move graph nodes; the reader MUST clear focus before transient hover inspection resumes.
+Secondary-button and context-menu gestures MUST NOT begin or continue node dragging. While a neighborhood is focused, pointer movement over other nodes MUST NOT replace the focused emphasis, reveal another neighborhood, or move graph nodes. Lower-emphasis unrelated nodes MUST NOT navigate on left-click, while context-menu Move focus here and Open note remain available. Fit view MUST fit the focused note and its visible direct neighbors while focus exists and fit all visible nodes after focus is cleared.
 
 #### Scenario: Pin a hovered neighborhood
 - **WHEN** a desktop reader opens the context menu over a hovered note marker or rendered title and chooses Pin neighborhood
@@ -62,6 +62,14 @@ Secondary-button and context-menu gestures MUST NOT begin or continue node dragg
 #### Scenario: Lock a focused neighborhood
 - **WHEN** a reader moves the pointer over another node while one neighborhood is focused
 - **THEN** the focused note, its direct neighbors, their titles, and incident edges remain the only emphasized neighborhood until the reader clears focus
+
+#### Scenario: Ignore left-clicks on unrelated context
+- **WHEN** a reader left-clicks a lower-emphasis unrelated node while one neighborhood is focused
+- **THEN** the graph remains on the current focused URL and the unrelated note does not open, while its context menu can still move focus or open the note explicitly
+
+#### Scenario: Fit the active neighborhood
+- **WHEN** a reader activates Fit view while one neighborhood is focused
+- **THEN** the camera fits the focused note and its visible direct neighbors rather than every lower-emphasis orientation marker
 
 #### Scenario: Clear an invalidated focus
 - **WHEN** the reader changes Brain selection or an explicit filter so the focused note is no longer included

@@ -417,7 +417,8 @@ test("all site features stay within the deployment base", async ({ page }, testI
 
   await launcher.click();
   await page.getByRole("link", { name: "Graph", exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`${base}/?\\?focus=default%2Fwelcome$`));
+  await expect(page).toHaveURL(new RegExp(`${base}/?$`));
+  await expect(page.locator("#global-graph")).not.toHaveAttribute("data-focused-inspection");
   await page.goto(`${base}/notes/welcome`);
   await page.getByRole("button", { name: "Navigation" }).click();
   await page.locator(".nav-actions").getByRole("link", { name: "Tags" }).click();
@@ -630,7 +631,7 @@ test("mobile navigation stays within the deployment base", async ({ page }, test
   await expect(noteHeader.locator(".nav-menu")).toHaveCount(0);
   await expect(noteHeader.getByRole("link", { name: "Graph" })).toHaveAttribute(
     "href",
-    `${base}/?focus=default%2Fwelcome`,
+    `${base}/`,
   );
   await expect(noteHeader.getByRole("link", { name: "Tags" })).toHaveAttribute("href", `${base}/tags`);
   await expect(noteHeader.getByRole("link", { name: "Recent" })).toHaveAttribute("href", `${base}/recent`);

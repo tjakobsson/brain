@@ -33,7 +33,7 @@ const graphData = {
     {
       id: "unrelated-a",
       title: "Other A",
-      route: "/notes/portable-notes",
+      route: "/notes/atomic-notes",
       type: "fleeting",
       status: "draft",
       tags: [],
@@ -44,7 +44,7 @@ const graphData = {
     {
       id: "unrelated-b",
       title: "Other B",
-      route: "/notes/portable-notes",
+      route: "/notes/maps-of-content",
       type: "fleeting",
       status: "draft",
       tags: [],
@@ -57,6 +57,10 @@ const graphData = {
     { source: targetId, target: "neighbor" },
     { source: "unrelated-a", target: "unrelated-b" },
   ],
+};
+const contextGraphData = {
+  ...graphData,
+  edges: [...graphData.edges, { source: "neighbor", target: "unrelated-a" }],
 };
 
 async function renderedLabelAnchor(labelsCanvas: Locator, selection: "longest" | "shortest" = "longest") {
@@ -118,6 +122,40 @@ async function targetWithinLabel(
     if ((await graph.evaluate((host) => host.style.cursor)) === "pointer") return point;
   }
   throw new Error("Could not find graph target within its rendered label");
+}
+
+async function unrelatedContextTarget(page: Page, graph: Locator, menu: Locator, close = true) {
+  const point = await graph.evaluate((host) => {
+    const bounds = host.getBoundingClientRect();
+    const menu = document.querySelector<HTMLElement>("[data-graph-context-menu]")!;
+    for (let y = 30; y < bounds.height - 30; y += 18) {
+      for (let x = 30; x < bounds.width - 30; x += 18) {
+        const clientX = bounds.left + x;
+        const clientY = bounds.top + y;
+        host.dispatchEvent(new PointerEvent("pointermove", {
+          bubbles: true,
+          clientX,
+          clientY,
+          pointerType: "mouse",
+        }));
+        if (host.style.cursor === "pointer") continue;
+        host.dispatchEvent(new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          button: 2,
+          clientX,
+          clientY,
+        }));
+        if (!menu.hidden) return { x: clientX, y: clientY };
+      }
+    }
+    return null;
+  });
+  if (!point) throw new Error("Could not find a lower-emphasis context node");
+  await expect(menu.getByRole("menuitem", { name: "Move focus here" })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "Open note" })).toBeVisible();
+  if (close) await page.keyboard.press("Escape");
+  return point;
 }
 
 async function graphCounts(graph: Locator) {
@@ -469,7 +507,7 @@ test("desktop marker and title context menus establish shareable focus without r
   test.skip(testInfo.project.name !== "chromium-root", "Desktop context-menu coverage runs once.");
   const { base } = deployment(testInfo);
   await page.route("**/graph-data.json", (route) =>
-    route.fulfill({ contentType: "application/json", body: JSON.stringify(graphData) }),
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(contextGraphData) }),
   );
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", {
@@ -513,8 +551,14 @@ test("desktop marker and title context menus establish shareable focus without r
   expect(labelDuringSecondaryPress.left).toBeCloseTo(initialLabel.left, 0);
   expect(labelDuringSecondaryPress.y).toBeCloseTo(initialLabel.y, 0);
   await page.mouse.up({ button: "right" });
-  await page.mouse.click(target.x, target.y, { button: "right" });
   const menu = page.getByRole("menu");
+  if (await menu.isVisible()) await page.keyboard.press("Escape");
+  const targetAfterSecondaryPress = await targetWithinLabel(
+    page,
+    graph,
+    await renderedLabelAnchor(labels),
+  );
+  await page.mouse.click(targetAfterSecondaryPress.x, targetAfterSecondaryPress.y, { button: "right" });
   await expect(menu).toBeVisible();
   await page.mouse.move(emptyPoint.x, emptyPoint.y);
   await page.waitForTimeout(50);
@@ -567,6 +611,31 @@ test("desktop marker and title context menus establish shareable focus without r
   await graph.dispatchEvent("pointerleave", { pointerType: "mouse" });
   await expect(graph).not.toHaveAttribute("data-transient-inspection");
   expect(await canvasInkPixels(hovers)).toBe(focusedHoverInk);
+
+  await page.mouse.move(
+    graphBounds.x + graphBounds.width / 2,
+    graphBounds.y + graphBounds.height / 2,
+  );
+  await page.mouse.wheel(0, 900);
+  await page.waitForTimeout(300);
+  const unrelatedTarget = await unrelatedContextTarget(page, graph, menu);
+  await page.mouse.move(unrelatedTarget.x, unrelatedTarget.y);
+  await expect(graph).toHaveCSS("cursor", "auto");
+  const focusedUrl = page.url();
+  await page.mouse.click(unrelatedTarget.x, unrelatedTarget.y);
+  await page.waitForTimeout(100);
+  await expect(page).toHaveURL(focusedUrl);
+  await expect(graph).toHaveAttribute("data-focused-node", focusedNode ?? "");
+
+  const beforeFocusedFit = await graphCounts(graph);
+  await page.getByRole("button", { name: "Fit view" }).click();
+  await expect.poll(async () => (await graphCounts(graph)).fits).toBe(beforeFocusedFit.fits + 1);
+  await expect.poll(async () => (await graphCounts(graph)).completions)
+    .toBeGreaterThan(beforeFocusedFit.completions);
+  const labelAfterFocusedFit = await renderedLabelAnchor(labels);
+  expect(labelAfterFocusedFit.left).toBeCloseTo(focusedLabel.left, 0);
+  expect(labelAfterFocusedFit.y).toBeCloseTo(focusedLabel.y, 0);
+
   await expect(page.locator("[data-graph-focus-open]")).toHaveAttribute("href", /\/notes\//u);
   await page.locator("[data-graph-focus-clear]").click();
   await expect(graph).not.toHaveAttribute("data-focused-inspection");
@@ -598,16 +667,32 @@ test("desktop marker and title context menus establish shareable focus without r
   await expect(recipientGraph).toHaveAttribute("data-rendered-label-ids", "hover-target,neighbor");
   await expect(recipient.locator("[data-graph-focus-status]")).toBeVisible();
   await recipient.close();
-  await page.locator("[data-graph-focus-clear]").click();
 
   const bounds = (await graph.boundingBox())!;
   await page.mouse.click(bounds.x + bounds.width - 8, bounds.y + bounds.height - 8, { button: "right" });
   await expect(menu).toBeHidden();
   await expect(page.locator("body")).toHaveAttribute("data-last-context-prevented", "false");
 
-  await page.mouse.click(marker.x, marker.y, { button: "right" });
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  await page.mouse.wheel(0, 900);
+  await page.waitForTimeout(300);
+  await unrelatedContextTarget(page, graph, menu, false);
+  await menu.getByRole("menuitem", { name: "Move focus here" }).click();
+  const movedFocusedNode = await graph.getAttribute("data-focused-node");
+  expect(movedFocusedNode).toMatch(/^unrelated-[ab]$/u);
+  expect(new URL(page.url()).searchParams.get("focus")).toBe(`default/${movedFocusedNode}`);
+
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  await page.mouse.wheel(0, 900);
+  await page.waitForTimeout(300);
+  await unrelatedContextTarget(page, graph, menu, false);
   await menu.getByRole("menuitem", { name: "Open note" }).click();
   await expect(page).toHaveURL(new RegExp(`${base}/notes/.+`));
+  const openedPath = new URL(page.url()).pathname.replace(/\/$/u, "");
+  const expectedPaths = movedFocusedNode === "unrelated-a"
+    ? [`${base}/notes/welcome`]
+    : [`${base}/notes/welcome`, `${base}/notes/portable-notes`];
+  expect(expectedPaths).toContain(openedPath);
 });
 
 test("touch long press pins and clears graph inspection", async ({ browser }, testInfo) => {

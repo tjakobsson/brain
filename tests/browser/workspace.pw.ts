@@ -187,7 +187,27 @@ test("Home stays visible while About and generator provenance remain on the choo
   );
   const home = page.getByRole("link", { name: "Home" });
   await expect(home).toHaveAttribute("href", "/workspace-demo/");
-  expect(await home.evaluate((link) => link.getBoundingClientRect().left)).toBeLessThan(20);
+  expect(await home.evaluate((link) => {
+    const homeBounds = link.getBoundingClientRect();
+    const navigationBounds = document.querySelector(".site-header")!.getBoundingClientRect();
+    return {
+      homeWidth: homeBounds.width,
+      homeHeight: homeBounds.height,
+      navigationWidth: navigationBounds.width,
+      navigationTop: navigationBounds.top,
+      homeTop: homeBounds.top,
+      leftInset: homeBounds.left,
+      rightInset: innerWidth - navigationBounds.right,
+    };
+  })).toEqual({
+    homeWidth: 48,
+    homeHeight: 48,
+    navigationWidth: 48,
+    navigationTop: 12,
+    homeTop: 12,
+    leftInset: 12,
+    rightInset: 12,
+  });
   await page.getByRole("button", { name: "Navigation" }).click();
   await expect(page.getByRole("link", { name: "Brains" })).toHaveCount(0);
   await expect(page.locator(".site-header").getByRole("button", { name: "About" })).toHaveCount(0);
@@ -210,7 +230,7 @@ test("Home stays visible while About and generator provenance remain on the choo
     .toHaveAttribute("aria-label", "Filters");
 });
 
-test("combined note browsing retains scope across links, search, and focused Graph actions", async ({ page }) => {
+test("combined note browsing retains scope across unpinned and focused Graph actions", async ({ page }) => {
   await page.goto(`${workspace}/brains/engineering/notes/principles?brains=engineering,design`);
   await expect(page.locator("article")).toHaveAttribute("data-brain-id", "engineering");
 
@@ -223,7 +243,7 @@ test("combined note browsing retains scope across links, search, and focused Gra
   await page.getByRole("button", { name: "Navigation" }).click();
   await expect(page.getByRole("link", { name: "Graph", exact: true })).toHaveAttribute(
     "href",
-    "/workspace-demo/graph?brains=engineering,design&focus=engineering%2Fprinciples",
+    "/workspace-demo/graph?brains=engineering,design",
   );
   await expect(page.getByRole("link", { name: "Open full graph" })).toHaveAttribute(
     "href",
@@ -244,7 +264,7 @@ test("combined note browsing retains scope across links, search, and focused Gra
   await page.getByRole("button", { name: "Navigation" }).click();
   await expect(page.getByRole("link", { name: "Graph", exact: true })).toHaveAttribute(
     "href",
-    "/workspace-demo/graph?brains=engineering,design&focus=design%2Fprinciples",
+    "/workspace-demo/graph?brains=engineering,design",
   );
 });
 
@@ -273,6 +293,10 @@ test("every note-navigation surface traverses without losing combined scope", as
   await page.mouse.click(target.x, target.y);
   await expect.poll(() => new URL(page.url()).pathname).toContain("/notes/");
   await expectRetainedScope();
+  await page.getByRole("button", { name: "Navigation" }).click();
+  await page.getByRole("link", { name: "Graph", exact: true }).click();
+  await expect(page).toHaveURL(`${workspace}/graph?${scope}`);
+  await expect(page.locator("#global-graph")).not.toHaveAttribute("data-focused-inspection");
 
   const note = `${workspace}/brains/engineering/notes/principles?${scope}`;
   for (const selector of ["article a.wiki-link", ".mentions a", ".local-graph-links a"]) {

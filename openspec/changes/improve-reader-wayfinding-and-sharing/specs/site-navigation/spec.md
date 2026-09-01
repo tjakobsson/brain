@@ -1,11 +1,11 @@
 ## MODIFIED Requirements
 
 ### Requirement: Direct Graph and Search actions
-One activation of the four-dot launcher SHALL directly reveal Search and any available Graph action on every viewport without a nested menu. Graph MUST navigate under the configured site base path to the browsing scope's canonical global graph route. Every note page MUST additionally expose a visible focused-neighborhood action outside the expandable menu, including notes without a rendered connection map. Both note actions MUST focus the current note; a retained valid selected-Brain scope takes precedence, while a direct note visit defaults to the note's owning Brain. Search MUST open the quick switcher in the retained browsing scope. A workspace chooser with no selected brain or combined view does not establish a graph destination.
+One activation of the four-dot launcher SHALL directly reveal Search and any available Graph action on every viewport without a nested menu. Graph MUST navigate under the configured site base path to the browsing scope's canonical global graph route without adding note focus. Every note page MUST additionally expose a visible focused-neighborhood action outside the expandable menu, including notes without a rendered connection map. The focused-neighborhood action MUST focus the current note; a retained valid selected-Brain scope takes precedence, while a direct note visit defaults to the note's owning Brain. Search MUST open the quick switcher in the retained browsing scope. A workspace chooser with no selected brain or combined view does not establish a graph destination.
 
-#### Scenario: Focus a note in its graph
+#### Scenario: Return to an unpinned graph
 - **WHEN** a reader opens Graph from a directly visited Engineering note
-- **THEN** the browser opens Engineering's graph with that note persistently focused
+- **THEN** the browser opens Engineering's canonical graph without persistently focusing the note
 
 #### Scenario: Focus an isolated note visibly
 - **WHEN** a note has no rendered connection map
@@ -17,11 +17,11 @@ One activation of the four-dot launcher SHALL directly reveal Search and any ava
 
 #### Scenario: Return to selected graph context
 - **WHEN** a reader opens Graph from an Engineering note reached through an Engineering and Design combined view
-- **THEN** the browser opens the Engineering and Design graph with the current note focused rather than collapsing to Engineering alone
+- **THEN** the browser opens the unpinned Engineering and Design graph rather than collapsing to Engineering alone
 
 #### Scenario: Open the graph on mobile
 - **WHEN** a mobile reader expands navigation on a note and activates Graph
-- **THEN** the browser opens the same context-aware focused graph without another navigation layer
+- **THEN** the browser opens the same context-aware unpinned graph without another navigation layer
 
 #### Scenario: Open search directly
 - **WHEN** a reader expands navigation and activates Search
