@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  brainSelectionContext,
   canonicalBrainSelection,
   combinedRoutes,
   joinBase,
@@ -137,6 +138,37 @@ describe("combined brain selections", () => {
       valid: true,
       brainIds: [],
       value: "",
+    });
+  });
+
+  it("derives chooser, single-brain, and canonical combined routes", () => {
+    expect(brainSelectionContext(registry, [])).toEqual({
+      valid: true,
+      brainIds: [],
+      value: "",
+      kind: "chooser",
+      graph: "/",
+    });
+    expect(brainSelectionContext(registry, ["engineering"])).toEqual({
+      valid: true,
+      brainIds: ["engineering"],
+      value: "engineering",
+      kind: "brain",
+      graph: "/brains/engineering",
+    });
+    expect(brainSelectionContext(registry, ["design", "research", "design"])).toEqual({
+      valid: true,
+      brainIds: ["research", "design"],
+      value: "research,design",
+      kind: "combined",
+      graph: "/graph?brains=research,design",
+    });
+  });
+
+  it("does not derive a route when any selected brain is unknown", () => {
+    expect(brainSelectionContext(registry, ["research", "missing"])).toEqual({
+      valid: false,
+      unknownBrainIds: ["missing"],
     });
   });
 });

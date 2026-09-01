@@ -6,7 +6,7 @@ test.beforeEach(({}, testInfo) => {
   test.skip(testInfo.project.name !== "chromium-root", "Workspace behavior needs one browser project.");
 });
 
-test("desktop chooser follows hierarchy and keeps brain context in navigation", async ({ page }) => {
+test("desktop chooser follows hierarchy and keeps brain context in graph controls", async ({ page }) => {
   await page.goto(`${workspace}/`);
 
   await expect(page).toHaveTitle("Demo Brain workspace");
@@ -14,52 +14,54 @@ test("desktop chooser follows hierarchy and keeps brain context in navigation", 
   await expect(page.getByRole("heading", { name: "Product" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Discovery" })).toBeVisible();
   await expect(page.locator(".brain-card")).toHaveCount(4);
-  await expect(page.locator(".context-switcher > summary"))
-    .toHaveAttribute("title", "Switch brain, current: Workspace");
+  await expect(page.locator(".site-header .context-switcher")).toHaveCount(0);
+  await expect(page.locator(".context-switcher")).toHaveCount(0);
 
   await page.getByRole("link", { name: "Open Engineering" }).click();
   await expect(page).toHaveURL(`${workspace}/brains/engineering`);
   await expect(page.locator(".context-switcher > summary"))
-    .toHaveAttribute("aria-label", "Switch brain, current: @engineering");
+    .toHaveAttribute("aria-label", "Brain context: Engineering");
+  await expect(page.locator(".graph-controls > .context-switcher")).toHaveCount(1);
+  await expect(page.locator(".site-header .context-switcher")).toHaveCount(0);
   await expect(page.locator("#global-graph canvas.sigma-nodes")).toBeVisible();
 
   await page.getByRole("button", { name: "Navigation" }).click();
   await expect(page.locator(".nav-actions").getByRole("link", { name: "Tags" }))
     .toHaveAttribute("href", "/workspace-demo/brains/engineering/tags");
   await page.locator(".context-switcher > summary").click();
-  await page.locator(".context-switcher__panel").getByRole("link", { name: "@design" }).click();
+  const contextPanel = page.locator(".context-switcher__panel");
+  await expect(contextPanel.getByRole("checkbox", { name: "@engineering" })).toBeChecked();
+  await contextPanel.getByRole("checkbox", { name: "@engineering" }).uncheck();
+  await contextPanel.getByRole("checkbox", { name: "@design" }).check();
+  await contextPanel.getByRole("button", { name: "Apply" }).click();
   await expect(page).toHaveURL(`${workspace}/brains/design`);
   await expect(page.locator(".context-switcher > summary"))
-    .toHaveAttribute("title", "Switch brain, current: @design");
-  await page.getByRole("button", { name: "Navigation" }).click();
+    .toHaveAttribute("title", "Brain context: Design");
   await page.locator(".context-switcher > summary").click();
-  await page.getByRole("link", { name: "Brain chooser" }).click();
+  await page.locator(".context-switcher__panel").getByRole("checkbox", { name: "@design" }).uncheck();
+  await page.locator(".context-switcher__panel").getByRole("button", { name: "Apply" }).click();
   await expect(page).toHaveURL(`${workspace}/`);
 });
 
-test("active brain navigation is one collapsed, ordered, viewport-safe pill", async ({ page }) => {
+test("workspace navigation is standalone, ordered, and viewport-safe", async ({ page }) => {
   await page.goto(`${workspace}/brains/engineering/notes/principles`);
 
   const header = page.locator(".site-header");
   const launcher = header.getByRole("button", { name: "Navigation" });
-  const context = header.getByRole("button", { name: "Switch brain, current: @engineering" });
-  const graph = header.getByRole("link", { name: "Graph" });
-  const search = header.getByRole("button", { name: "Search" });
-  const reports = ["Tags", "Recent", "Orphans"].map((name) => header.getByRole("link", { name }));
+  const graph = header.locator(".graph-trigger");
+  const search = header.locator(".search-trigger");
+  const reports = header.locator(".nav-direct-action").all();
   await expect(launcher).toHaveAttribute("aria-expanded", "false");
   await expect(header.locator(".nav-actions")).toHaveJSProperty("inert", true);
   await launcher.click();
-  await expect(context).toHaveAttribute("title", "Switch brain, current: @engineering");
-  await expect(context).toHaveAttribute("aria-label", "Switch brain, current: @engineering");
-  await expect(context).toHaveAttribute("aria-expanded", "false");
-  await expect(header).toHaveCSS("border-top-width", "1px");
+  await expect(header).toHaveCSS("border-top-width", "0px");
   await expect(header).toHaveCSS("width", "48px");
-  await expect(context).toHaveCSS("border-top-width", "0px");
-  await expect(reports.at(-1)!).toHaveCSS("transform", "none");
+  await expect(header.locator(".context-switcher")).toHaveCount(0);
+  await expect(header.locator(".nav-menu-pill")).toHaveCSS("border-top-width", "1px");
+  await expect((await reports).at(-1)!).toHaveCSS("transform", "none");
 
   const geometry = await header.evaluate((pill) => {
     const controls = [
-      pill.querySelector(".context-switcher > summary"),
       pill.querySelector(".graph-trigger"),
       pill.querySelector(".search-trigger"),
       ...pill.querySelectorAll(".nav-direct-action"),
@@ -80,42 +82,49 @@ test("active brain navigation is one collapsed, ordered, viewport-safe pill", as
 
   await launcher.focus();
   await page.keyboard.press("Tab");
-  await expect(context).toBeFocused();
-  await page.keyboard.press("Tab");
   await expect(graph).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(search).toBeFocused();
   await page.keyboard.press("Tab");
-  await expect(reports[0]).toBeFocused();
-
-  await context.click();
-  await expect(context).toHaveAttribute("aria-expanded", "true");
-  const contextPanel = header.locator(".context-switcher__panel");
-  await expect(contextPanel.getByRole("link", { name: "Brain chooser" })).toBeVisible();
-  await expect(contextPanel.getByRole("link", { name: "@engineering Current" })).toHaveAttribute("aria-current", "page");
-  await contextPanel.locator(".context-switcher__label").filter({ hasText: "@design" }).evaluate((label) => {
-    label.textContent = `@${"long-brain-id-".repeat(20)}`;
-  });
-  expect(await contextPanel.evaluate((panel) => {
-    const bounds = panel.getBoundingClientRect();
-    return bounds.left >= 0 && bounds.right <= innerWidth && bounds.bottom <= innerHeight;
-  })).toBe(true);
-  await context.click();
-  await expect(context).toHaveAttribute("aria-expanded", "false");
+  await expect((await reports)[0]).toBeFocused();
 
   await expect(header.locator(".nav-menu")).toHaveCount(0);
-  for (const control of [launcher, context, graph, search, ...reports]) {
+  for (const control of [launcher, graph, search, ...(await reports)]) {
     await expect(control).toHaveAttribute("title", await control.getAttribute("aria-label") ?? "");
   }
 
-  await page.keyboard.press("Escape");
-  await expect(launcher).toBeFocused();
-  await launcher.click();
   await search.click();
   await expect(launcher).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByLabel("Search notes and tags")).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(launcher).toBeFocused();
+});
+
+test("standalone navigation clears a wrapped long note title", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(
+    `${workspace}/brains/research-archive-and-synthesis-source-trails/notes/synthesis-trails`,
+  );
+  const heading = page.locator("main h1");
+  await heading.evaluate((element) => {
+    element.textContent = "Synthesis trails preserve context across responsive graph inspection";
+  });
+
+  const titleGeometry = await heading.evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const textRects = [...range.getClientRects()];
+    const controls = [document.querySelector(".nav-menu-pill")!.getBoundingClientRect()];
+    return {
+      lines: textRects.length,
+      overlaps: textRects.some((text) => controls.some((control) => !(
+        text.right <= control.left || text.left >= control.right ||
+        text.bottom <= control.top || text.top >= control.bottom
+      ))),
+    };
+  });
+  expect(titleGeometry.overlaps).toBe(false);
+  expect(titleGeometry.lines).toBeGreaterThan(1);
 });
 
 test("Brain identity reuses one mark and reserves accent boundaries for selection", async ({ page }) => {
@@ -163,19 +172,19 @@ test("Brain identity reuses one mark and reserves accent boundaries for selectio
   expect(await boundary(design)).toEqual(designBefore);
 
   await page.getByRole("link", { name: "Open Engineering" }).click();
-  await page.getByRole("button", { name: "Navigation" }).click();
-  const currentMark = page.locator(".context-switcher > summary [data-brain-mark]");
+  const currentMark = page.locator(".graph-controls > .context-switcher > summary [data-brain-mark]");
   await expect(page.locator(".context-switcher > summary"))
-    .toHaveAttribute("title", "Switch brain, current: @engineering");
+    .toHaveAttribute("title", "Brain context: Engineering");
   await expect(currentMark).toHaveCSS("width", "16px");
   await expect(currentMark.locator("path")).toHaveAttribute("d", markGeometry!);
   await page.locator(".context-switcher > summary").click();
   for (const id of ["engineering", "design", "research", "research-archive-and-synthesis-source-trails"]) {
-    const entry = page.locator(`.context-switcher__panel a[href="/workspace-demo/brains/${id}"]`);
+    const entry = page.locator(`.context-switcher__panel label:has(input[value="${id}"])`);
     await expect(entry).toBeVisible();
     await expect(entry.locator("[data-brain-mark] path")).toHaveAttribute("d", markGeometry!);
   }
-  await expect(page.locator(".context-switcher__panel").getByText("Current")).toBeVisible();
+  await expect(page.locator('.context-switcher__panel input[value="engineering"]')).toBeChecked();
+  await expect(page.locator(".site-header .context-switcher")).toHaveCount(0);
 
   const faviconHref = await page.locator('link[rel="icon"][type="image/svg+xml"]').getAttribute("href");
   expect(faviconHref).toBe("/workspace-demo/favicon.svg");
@@ -235,6 +244,34 @@ test("chooser cards align wrapped identities on desktop and retain natural phone
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
+test("note metadata identifies owning brains and wraps long IDs", async ({ page }) => {
+  for (const fixture of [
+    { route: "/brains/engineering/notes/principles", id: "engineering", title: "Engineering" },
+    {
+      route: "/brains/research-archive-and-synthesis-source-trails/notes/synthesis-trails",
+      id: "research-archive-and-synthesis-source-trails",
+      title: "Research Archive",
+    },
+  ]) {
+    for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(viewport);
+      await page.goto(`${workspace}${fixture.route}`);
+      const metadata = page.locator(".note-meta");
+      const brain = metadata.locator(".note-brain");
+      await expect(brain).toHaveAttribute("aria-label", `Brain: ${fixture.title} (@${fixture.id})`);
+      await expect(brain.locator("[data-brain-mark]")).toBeVisible();
+      await expect(brain.locator(".note-brain__id")).toHaveText(`@${fixture.id}`);
+      await expect(metadata.locator(".chip")).toBeVisible();
+      await expect(metadata.locator(".status")).toBeVisible();
+      expect(await brain.evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        return bounds.left >= 0 && bounds.right <= innerWidth && document.documentElement.scrollWidth <= innerWidth;
+      })).toBe(true);
+      await expect(page.locator(".site-header .context-switcher")).toHaveCount(0);
+    }
+  }
+});
+
 test("combined selection is canonical, shareable, reloadable, and rejects unknown brains", async ({ page }) => {
   await page.goto(`${workspace}/`);
   await page.getByRole("checkbox", { name: "Select Engineering" }).check();
@@ -243,12 +280,28 @@ test("combined selection is canonical, shareable, reloadable, and rejects unknow
   await page.getByRole("button", { name: "Open combined graph" }).click();
 
   await expect(page).toHaveURL(`${workspace}/graph?brains=engineering,design`);
-  await expect(page.locator("[data-combined-context]")).toHaveText("Combined: Engineering + Design");
   await expect(page.locator(".context-switcher > summary"))
-    .toHaveAttribute("aria-label", "Switch brain, current: Combined");
+    .toHaveAttribute("aria-label", "Brain context: 2 brains combined");
+  await expect(page.locator(".context-switcher__satellite")).toBeVisible();
+  await expect(page.locator(".combined-context, .graph-brain-filters")).toHaveCount(0);
+  await expect(page.locator("#graph-sidebar input[name='brain-context']")).toHaveCount(0);
+  await expect(page.locator(".site-header .context-switcher")).toHaveCount(0);
+  await expect(page.locator(".graph-controls > :last-child")).toHaveClass(/context-switcher/);
   await page.reload();
   await expect(page).toHaveURL(`${workspace}/graph?brains=engineering,design`);
   await expect(page.locator("#global-graph canvas.sigma-nodes")).toBeVisible();
+
+  await page.locator(".context-switcher > summary").click();
+  const panel = page.locator(".context-switcher__panel");
+  await expect(panel.getByRole("checkbox", { name: "@engineering" })).toBeChecked();
+  await expect(panel.getByRole("checkbox", { name: "@design" })).toBeChecked();
+  await panel.getByRole("checkbox", { name: "@design" }).uncheck();
+  await panel.getByRole("button", { name: "Apply" }).click();
+  await expect(page).toHaveURL(`${workspace}/brains/engineering`);
+  await page.locator(".context-switcher > summary").click();
+  await page.locator(".context-switcher__panel").getByRole("checkbox", { name: "@engineering" }).uncheck();
+  await page.locator(".context-switcher__panel").getByRole("button", { name: "Apply" }).click();
+  await expect(page).toHaveURL(`${workspace}/`);
 
   await page.goto(`${workspace}/graph?brains=design,engineering,design`);
   await expect(page).toHaveURL(`${workspace}/graph?brains=engineering,design`);
@@ -268,10 +321,9 @@ test("mobile chooser and combined selection remain usable without horizontal ove
   const launcher = page.getByRole("button", { name: "Navigation" });
   await expect(launcher).toHaveAttribute("aria-expanded", "false");
   await expect(page.locator(".nav-actions")).toHaveJSProperty("inert", true);
-  await expect(page.locator(".context-switcher")).toHaveCSS("opacity", "0");
+  await expect(page.locator(".context-switcher")).toHaveCount(0);
   await launcher.click();
   await expect(launcher).toHaveAttribute("aria-expanded", "true");
-  await expect(page.locator(".context-switcher > summary")).toBeVisible();
   await expect(page.getByRole("link", { name: "Graph" })).toBeHidden();
   await expect(page.getByRole("button", { name: "Search" })).toBeVisible();
   await expect(page.locator(".nav-direct-action")).toHaveCount(0);
@@ -284,14 +336,65 @@ test("mobile chooser and combined selection remain usable without horizontal ove
   await action.getByRole("button", { name: "Open combined graph" }).click();
 
   await expect(page).toHaveURL(`${workspace}/graph?brains=engineering,research`);
-  await expect(page.locator("[data-combined-context]")).toContainText("Engineering + Research");
+  await expect(page.locator(".context-switcher > summary"))
+    .toHaveAttribute("aria-label", "Brain context: 2 brains combined");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   const combinedLauncher = page.getByRole("button", { name: "Navigation" });
   await combinedLauncher.click();
-  await expect(page.getByRole("link", { name: "Graph" }))
-    .toHaveAttribute("href", `${workspace}/graph?brains=engineering%2Cresearch`);
+  await expect(page.locator(".graph-trigger"))
+    .toHaveAttribute("href", "/workspace-demo/graph?brains=engineering,research");
+  await expect(page.locator(".graph-trigger")).toBeHidden();
   await expect(page.getByRole("button", { name: "Search" })).toBeVisible();
   await expect(page.locator(".nav-direct-action")).toHaveCount(0);
+  await page.locator(".context-switcher > summary").click();
+  const mobilePanel = page.locator(".context-switcher__panel");
+  await expect(mobilePanel.getByRole("checkbox", { name: "@engineering" })).toBeChecked();
+  await expect(mobilePanel.getByRole("checkbox", { name: "@research", exact: true })).toBeChecked();
+  await mobilePanel.getByRole("checkbox", { name: "@engineering" }).uncheck();
+  await mobilePanel.getByRole("button", { name: "Apply" }).click();
+  await expect(page).toHaveURL(`${workspace}/brains/research`);
+  await page.locator(".context-switcher > summary").click();
+  await page.locator(".context-switcher__panel").getByRole("checkbox", { name: "@research", exact: true }).uncheck();
+  await page.locator(".context-switcher__panel").getByRole("button", { name: "Apply" }).click();
+  await expect(page).toHaveURL(`${workspace}/`);
+});
+
+test("persistent context and graph controls stay contained across supported widths", async ({ page }) => {
+  for (const viewport of [
+    { width: 320, height: 568 },
+    { width: 390, height: 844 },
+    { width: 1280, height: 900 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto(`${workspace}/graph?brains=engineering,design`);
+    const geometry = await page.evaluate(() => {
+      const navigation = document.querySelector(".site-header")!.getBoundingClientRect();
+      const controls = document.querySelector(".graph-controls")!.getBoundingClientRect();
+      return {
+        navigationContained: navigation.left >= 0 && navigation.right <= innerWidth,
+        controlsContained: controls.left >= 0 && controls.right <= innerWidth,
+        overlap: !(
+          controls.right <= navigation.left ||
+          controls.left >= navigation.right ||
+          controls.bottom <= navigation.top ||
+          controls.top >= navigation.bottom
+        ),
+        noOverflow: document.documentElement.scrollWidth <= innerWidth,
+      };
+    });
+    expect(geometry).toEqual({
+      navigationContained: true,
+      controlsContained: true,
+      overlap: false,
+      noOverflow: true,
+    });
+
+    await page.locator(".context-switcher > summary").click();
+    expect(await page.locator(".context-switcher__panel").evaluate((panel) => {
+      const bounds = panel.getBoundingClientRect();
+      return bounds.left >= 0 && bounds.right <= innerWidth && bounds.bottom <= innerHeight;
+    })).toBe(true);
+  }
 });
 
 test("active-brain mobile launcher has direct actions and predictable disclosure focus", async ({ page }) => {
@@ -300,7 +403,6 @@ test("active-brain mobile launcher has direct actions and predictable disclosure
 
   const header = page.locator(".site-header");
   const launcher = page.getByRole("button", { name: "Navigation" });
-  const context = header.locator(".context-switcher > summary");
   await expect(launcher).toHaveAttribute("aria-expanded", "false");
   await expect(header.locator(".graph-trigger")).toHaveCSS("opacity", "0");
   await expect(header.locator(".search-trigger")).toHaveCSS("opacity", "0");
@@ -309,13 +411,23 @@ test("active-brain mobile launcher has direct actions and predictable disclosure
     return bounds.left >= 0 && bounds.right <= innerWidth && document.documentElement.scrollWidth <= innerWidth;
   })).toBe(true);
   await expect(header).toHaveCSS("width", "48px");
-  await expect(context).toHaveAttribute("title", "Switch brain, current: @engineering");
+  await expect(header.locator(".context-switcher")).toHaveCount(0);
 
   await launcher.focus();
+  await expect(launcher).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(launcher).toHaveAttribute("aria-expanded", "true");
-  await page.keyboard.press("Tab");
-  await expect(context).toBeFocused();
+  expect(await header.evaluate((pill) => {
+    const launcherBounds = pill.querySelector(".nav-launcher")!.getBoundingClientRect();
+    const actionsBounds = pill.querySelector(".nav-actions")!.getBoundingClientRect();
+    return {
+      width: actionsBounds.width,
+      aligned: Math.abs(
+        (actionsBounds.left + actionsBounds.right) / 2 -
+        (launcherBounds.left + launcherBounds.right) / 2,
+      ) < 1,
+    };
+  })).toEqual({ width: 40, aligned: true });
   await page.keyboard.press("Tab");
   await expect(header.getByRole("link", { name: "Graph" })).toBeFocused();
   await page.keyboard.press("Tab");
@@ -328,20 +440,6 @@ test("active-brain mobile launcher has direct actions and predictable disclosure
   await expect(header.getByRole("link", { name: "Recent" })).toBeVisible();
   await expect(header.getByRole("link", { name: "Orphans" })).toBeVisible();
   await expect(header.locator(".nav-menu")).toHaveCount(0);
-
-  await context.click();
-  const contextPanel = header.locator(".context-switcher__panel");
-  expect(await contextPanel.evaluate((panel) => {
-    const bounds = panel.getBoundingClientRect();
-    return bounds.left >= 0 && bounds.right <= innerWidth && bounds.bottom <= innerHeight;
-  })).toBe(true);
-  await contextPanel.getByRole("link", { name: /@design/ }).click({ trial: true });
-  await launcher.click();
-  await expect(launcher).toHaveAttribute("aria-expanded", "false");
-  await expect(context).toHaveAttribute("aria-expanded", "false");
-  await launcher.click();
-  await expect(launcher).toHaveAttribute("aria-expanded", "true");
-  await expect(contextPanel).toBeHidden();
 
   await search.click();
   await expect(launcher).toHaveAttribute("aria-expanded", "false");
@@ -369,10 +467,12 @@ test("launcher is bounded in short viewports and disables motion when requested"
   await expect(actions.locator(":scope > *").first()).toHaveCSS("transition-duration", "0s");
   const geometry = await page.locator(".site-header").evaluate((header) => {
     const launcherBounds = header.querySelector(".nav-launcher")!.getBoundingClientRect();
-    const actionsBounds = header.querySelector(".nav-actions")!.getBoundingClientRect();
+    const actions = header.querySelector(".nav-actions")!;
+    const actionsBounds = actions.getBoundingClientRect();
+    const firstActionBounds = actions.firstElementChild!.getBoundingClientRect();
     const headerBounds = header.getBoundingClientRect();
     return {
-      growsDown: actionsBounds.top >= launcherBounds.bottom,
+      growsDown: firstActionBounds.top >= launcherBounds.bottom,
       inViewport: headerBounds.top >= 0 && headerBounds.bottom <= innerHeight,
       scrollHeight: (header.querySelector(".nav-actions") as HTMLElement).scrollHeight,
       clientHeight: (header.querySelector(".nav-actions") as HTMLElement).clientHeight,
@@ -383,13 +483,6 @@ test("launcher is bounded in short viewports and disables motion when requested"
   expect(geometry.scrollHeight).toBeGreaterThan(geometry.clientHeight);
   expect((await page.locator(".site-header").boundingBox())!.y).toBe(collapsed!.y);
 
-  await page.setViewportSize({ width: 900, height: 180 });
-  await page.reload();
-  await page.getByRole("button", { name: "Navigation" }).click();
-  await page.getByRole("button", { name: "Switch brain, current: @engineering" }).click();
-  const contextPanel = page.locator(".context-switcher__panel");
-  await expect(contextPanel).toBeVisible();
-  expect(await contextPanel.evaluate((panel) => panel.getBoundingClientRect().bottom <= innerHeight)).toBe(true);
 });
 
 test("foreign links and backlinks expose owner text, shape markers, accents, and keyboard links", async ({ page }) => {
@@ -582,11 +675,22 @@ test("graph payload and scoped views keep ownership boundaries and canonical bra
   await expect(graph).toHaveAttribute("data-visible-nodes", "5");
   const filterToggle = page.locator("#graph-filter-toggle");
   if (await filterToggle.getAttribute("aria-expanded") === "false") await filterToggle.click();
-  await page.getByRole("checkbox", { name: "@research", exact: true }).uncheck();
+  await page.locator(".context-switcher > summary").click();
+  const contextPanel = page.locator(".context-switcher__panel");
+  await contextPanel.getByRole("checkbox", { name: "@research", exact: true }).uncheck();
+  await expect(contextPanel.getByRole("checkbox", { name: "@research", exact: true })).not.toBeChecked();
+  await contextPanel.getByRole("button", { name: "Apply" }).click();
   await expect(page).toHaveURL(`${workspace}/graph?brains=engineering,design`);
   await expect(graph).toHaveAttribute("data-visible-brain-ids", "engineering,design");
   await expect(graph).toHaveAttribute("data-visible-nodes", "4");
-  await expect(page.locator("[data-combined-context]")).toHaveText("Combined: Engineering + Design");
+  await expect(page.locator(".context-switcher > summary"))
+    .toHaveAttribute("aria-label", "Brain context: 2 brains combined");
+  await expect(page.locator(".combined-context, .graph-brain-filters")).toHaveCount(0);
+  await page.getByRole("button", { name: "Navigation" }).click();
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page.getByLabel("Quick switcher scope")).toHaveValue("selected");
+  await page.getByLabel("Search notes and tags").fill("Evidence");
+  await expect(page.getByText("No matches.")).toBeVisible();
 });
 
 test("graph ownership legend remains non-color-readable on mobile", async ({ page }) => {
@@ -597,15 +701,18 @@ test("graph ownership legend remains non-color-readable on mobile", async ({ pag
   const controls = page.locator(".graph-controls");
   const filterToggle = controls.getByRole("button", { name: "Filters" });
   const actions = controls.getByRole("button");
-  await expect(actions).toHaveCount(4);
+  await expect(actions).toHaveCount(5);
   await expect(controls.getByRole("button", { name: "Filters" })).toBeVisible();
   await expect(controls.getByRole("button", { name: "Fit view" })).toBeVisible();
   await expect(controls.getByRole("button", { name: "Show related brains" })).toBeVisible();
   await expect(controls.getByRole("button", { name: "Legend" })).toBeVisible();
+  await expect(controls.getByRole("button", { name: "Brain context: Engineering" })).toBeVisible();
   const initialGeometry = await page.evaluate(() => {
     const controls = document.querySelector(".graph-controls")!.getBoundingClientRect();
     const navigation = document.querySelector(".site-header")!.getBoundingClientRect();
-    const actions = [...document.querySelectorAll<HTMLElement>(".graph-controls button")]
+    const actions = [...document.querySelectorAll<HTMLElement>(
+      ".graph-controls > button, .graph-controls > .graph-legend-disclosure > button, .graph-controls > .context-switcher > summary",
+    )]
       .map((button) => button.getBoundingClientRect());
     return {
       actions: actions.map(({ x, y, width, height }) => ({ x, y, width, height })),
@@ -707,7 +814,9 @@ test("coarse-pointer tablet keeps graph controls clear of mobile navigation", as
   const geometry = await page.evaluate(() => {
     const controls = document.querySelector(".graph-controls")!.getBoundingClientRect();
     const navigation = document.querySelector(".site-header")!.getBoundingClientRect();
-    const actions = [...document.querySelectorAll<HTMLElement>(".graph-controls button")]
+    const actions = [...document.querySelectorAll<HTMLElement>(
+      ".graph-controls > button, .graph-controls > .graph-legend-disclosure > button, .graph-controls > .context-switcher > summary",
+    )]
       .map((button) => button.getBoundingClientRect());
     return {
       compact: actions.every(({ width, height }) => width === 44 && height === 44),

@@ -7,17 +7,19 @@ import {
   activeInspectionNode,
   createLongPressController,
   createHoverReducers,
+  graphScreenTargets,
   GRAPH_DRAG_TOLERANCE,
+  hitGraphScreenTarget,
   isInspectionNeighborhoodNode,
   setPinnedInspection,
+  setTransientInspection,
   stopCameraAnimation,
-  wireGraphHover,
   type GraphHoverState,
 } from "./graph-interaction";
 import { fitRenderedGraph } from "./graph-fit";
 import { wireLocalGraphLabelReveal } from "./graph-local-labels";
 import { GraphMotionController } from "./graph-motion";
-import { ResizeSettler } from "./graph-motion-core";
+import { ResponsiveGraphScheduler } from "./graph-motion-core";
 import {
   deriveGraphData,
   deriveNoteNeighborhood,
@@ -34,7 +36,7 @@ import {
   graphNodeAttributes,
   responsiveLabelSettings,
 } from "./graph-style";
-import { combinedRoutes, joinBase, routes, routesFor, type LogicalRoute } from "./routes";
+import { brainSelectionContext, joinBase, routes, type LogicalRoute } from "./routes";
 
 /**
  * Browser-side graph rendering shared by the global graph page and the
@@ -173,6 +175,63 @@ function graphTheme(): GraphTheme {
       };
 }
 
+function updateGeometryStats(host: HTMLElement, renderer: Sigma, graph: Graph): void {
+  let sumX = 0;
+  let sumY = 0;
+  let sumSquares = 0;
+  graph.forEachNode((_node, attrs) => {
+    const x = attrs.x as number;
+    const y = attrs.y as number;
+    sumX += x;
+    sumY += y;
+    sumSquares += x * x + y * y;
+  });
+  host.dataset.graphGeometry = [graph.order, sumX, sumY, sumSquares].join(":");
+  const camera = renderer.getCamera().getState();
+  host.dataset.cameraGeometry = [camera.x, camera.y, camera.angle, camera.ratio].join(":");
+}
+
+function updateInspectionTargetStats(
+  host: HTMLElement,
+  renderer: Sigma,
+  graph: Graph,
+  node: string,
+): void {
+  const data = renderer.getNodeDisplayData(node);
+  if (!data || data.hidden) return;
+  const settings = renderer.getSettings();
+  const label = graph.getNodeAttribute(node, "label") as string | undefined;
+  const labelContext = renderer.getCanvases().labels?.getContext("2d");
+  if (labelContext) {
+    labelContext.font = `${settings.labelWeight} ${settings.labelSize}px ${settings.labelFont}`;
+  }
+  const center = renderer.framedGraphToViewport(data);
+  const targets = graphScreenTargets([{
+    node,
+    x: center.x,
+    y: center.y,
+    radius: renderer.scaleSize(data.size),
+    label,
+    labelRendered: true,
+    labelWidth: labelContext && label ? labelContext.measureText(label).width : undefined,
+    foreignMarkWidth: (data as NodeLabelData).foreign
+      ? foreignLabelMarkWidth(settings.labelSize)
+      : undefined,
+  }], renderer.getDimensions());
+  const roundTarget = (target: (typeof targets)[number]) => ({
+    kind: target.kind,
+    left: Number(target.left.toFixed(3)),
+    top: Number(target.top.toFixed(3)),
+    right: Number(target.right.toFixed(3)),
+    bottom: Number(target.bottom.toFixed(3)),
+  });
+  host.dataset.inspectionTargetGeometry = JSON.stringify(targets.map(roundTarget));
+}
+
+function incrementGraphCounter(host: HTMLElement, name: string): void {
+  host.dataset[name] = String(Number(host.dataset[name] ?? 0) + 1);
+}
+
 export { nodeColor, nodeSize } from "./graph-style";
 
 let cache: Promise<GraphData> | null = null;
@@ -230,42 +289,39 @@ interface InteractionState extends GraphHoverState {
   theme: GraphTheme;
 }
 
-function touchTargetNode(renderer: Sigma, graph: Graph, point: { x: number; y: number }): string | null {
+function graphTargetNode(renderer: Sigma, graph: Graph, state: GraphHoverState, point: { x: number; y: number }): string | null {
   const settings = renderer.getSettings();
   const displayedLabels = renderer.getNodeDisplayedLabels();
+  const activeNode = activeInspectionNode(state);
   const labelContext = renderer.getCanvases().labels?.getContext("2d");
   if (labelContext) {
     labelContext.font = `${settings.labelWeight} ${settings.labelSize}px ${settings.labelFont}`;
   }
 
-  let closestLabel: { node: string; distance: number } | null = null;
-  let closestNode: { node: string; distance: number } | null = null;
+  const nodes: Parameters<typeof graphScreenTargets>[0][number][] = [];
   graph.forEachNode((node) => {
     const data = renderer.getNodeDisplayData(node);
     if (!data || data.hidden) return;
     const center = renderer.framedGraphToViewport(data);
     const visualRadius = renderer.scaleSize(data.size);
-    const distance = Math.hypot(point.x - center.x, point.y - center.y);
-
-    if (distance <= Math.max(visualRadius, 22) && (!closestNode || distance < closestNode.distance)) {
-      closestNode = { node, distance };
-    }
-
-    if (!labelContext || !data.label || !displayedLabels.has(node)) return;
-    const labelLeft = center.x + visualRadius + 3;
-    const labelWidth = labelContext.measureText(data.label).width +
-      ((data as NodeLabelData).foreign ? foreignLabelMarkWidth(settings.labelSize) : 0);
-    if (
-      point.x >= labelLeft - 8 &&
-      point.x <= labelLeft + labelWidth + 8 &&
-      point.y >= center.y - 22 &&
-      point.y <= center.y + 22 &&
-      (!closestLabel || distance < closestLabel.distance)
-    ) {
-      closestLabel = { node, distance };
-    }
+    const inspectedLabel = isInspectionNeighborhoodNode(state, node);
+    const label = graph.getNodeAttribute(node, "label") as string | undefined;
+    nodes.push({
+      node,
+      x: center.x,
+      y: center.y,
+      radius: visualRadius,
+      label,
+      labelRendered: inspectedLabel || (!activeNode && displayedLabels.has(node)),
+      labelWidth: labelContext && label
+        ? labelContext.measureText(label).width
+        : undefined,
+      foreignMarkWidth: (data as NodeLabelData).foreign
+        ? foreignLabelMarkWidth(settings.labelSize)
+        : undefined,
+    });
   });
-  return closestLabel?.node ?? closestNode?.node ?? null;
+  return hitGraphScreenTarget(graphScreenTargets(nodes, renderer.getDimensions()), point);
 }
 
 function wireHoverAndClick(
@@ -294,16 +350,46 @@ function wireHoverAndClick(
     emptyStageTouch = null;
   };
   const container = renderer.getContainer();
+  const setPointerTarget = (node: string | null) => {
+    const startingInspection = node !== null && activeInspectionNode(state) === null;
+    if (!setTransientInspection(graph, state, node)) return;
+    if (node) {
+      onInteraction?.();
+      container.dataset.transientInspection = node;
+      if (startingInspection) {
+        updateGeometryStats(container, renderer, graph);
+        container.dataset.inspectionStartGraphGeometry = container.dataset.graphGeometry;
+        container.dataset.inspectionStartCameraGeometry = container.dataset.cameraGeometry;
+        container.dataset.geometryCheckPending = "";
+      }
+    } else {
+      delete container.dataset.transientInspection;
+    }
+    container.style.cursor = node ? "pointer" : "";
+    renderer.refresh({ skipIndexation: true });
+  };
+  const onPointerMove = (event: PointerEvent) => {
+    if (event.pointerType === "touch" || state.dragged !== null) return;
+    const bounds = container.getBoundingClientRect();
+    setPointerTarget(graphTargetNode(renderer, graph, state, {
+      x: event.clientX - bounds.left,
+      y: event.clientY - bounds.top,
+    }));
+  };
+  const onPointerLeave = (event: PointerEvent) => {
+    if (event.pointerType !== "touch") setPointerTarget(null);
+  };
+  container.addEventListener("pointermove", onPointerMove);
+  container.addEventListener("pointerleave", onPointerLeave);
   container.addEventListener("touchstart", cancelMultiTouch, { passive: true });
   container.addEventListener("touchmove", cancelMultiTouch, { passive: true });
-  wireGraphHover(renderer, graph, state, onInteraction, () => state.dragged !== null);
   renderer.on("downNode", ({ node, event }) => {
     emptyStageTouch = null;
     if (event.original.type.startsWith("touch")) longPress.start(node, event);
   });
   renderer.on("downStage", ({ event }) => {
     if (!event.original.type.startsWith("touch")) return;
-    const node = touchTargetNode(renderer, graph, event);
+    const node = graphTargetNode(renderer, graph, state, event);
     if (node) longPress.start(node, event);
     else {
       longPress.consumeActivatedPress();
@@ -321,18 +407,18 @@ function wireHoverAndClick(
     navigateToNode(node);
   });
   renderer.on("clickStage", ({ event }) => {
-    if (!event.original.type.startsWith("touch")) return;
+    const touchEvent = event.original.type.startsWith("touch");
     if (longPress.consumeActivatedPress()) return;
     if (state.draggedMoved) {
       state.draggedMoved = false;
       return;
     }
-    const node = touchTargetNode(renderer, graph, event);
+    const node = graphTargetNode(renderer, graph, state, event);
     if (node) {
       setPinnedInspection(graph, state, null);
       delete renderer.getContainer().dataset.pinnedInspection;
       navigateToNode(node);
-    } else if (state.pinned) {
+    } else if (touchEvent && state.pinned) {
       setPinnedInspection(graph, state, null);
       delete renderer.getContainer().dataset.pinnedInspection;
       renderer.refresh({ skipIndexation: true });
@@ -370,6 +456,9 @@ function wireHoverAndClick(
     touch.off("touchup", releaseLongPress);
     container.removeEventListener("touchstart", cancelMultiTouch);
     container.removeEventListener("touchmove", cancelMultiTouch);
+    container.removeEventListener("pointermove", onPointerMove);
+    container.removeEventListener("pointerleave", onPointerLeave);
+    setTransientInspection(graph, state, null);
     longPress.destroy();
   });
 }
@@ -503,7 +592,6 @@ export interface GlobalGraphUI {
   searchResults: HTMLElement;
   typeFilters: NodeListOf<HTMLInputElement>;
   statusFilters: NodeListOf<HTMLInputElement>;
-  brainFilters: NodeListOf<HTMLInputElement>;
   tagFilter: HTMLSelectElement;
   count: HTMLElement;
   fitViewButton: HTMLButtonElement;
@@ -542,9 +630,11 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       ui.relatedBrainsToggle.querySelector<HTMLElement>("[data-control-label]")!.textContent = label;
     }
   }
-  let selectedBrainIds = combined
-    ? (new URLSearchParams(window.location.search).get("brains") ?? "").split(",").filter(Boolean)
-    : [];
+  const initialSelection = brainSelectionContext(
+    data.brains,
+    new URLSearchParams(window.location.search).get("brains") ?? "",
+  );
+  let selectedBrainIds = combined && initialSelection.valid ? [...initialSelection.brainIds] : [];
   const motionScope = () => {
     if (activeBrainId) return `brain:${activeBrainId}:${showRelatedBrains}`;
     if (combined) return `combined:${[...selectedBrainIds].sort().join(",")}`;
@@ -578,16 +668,21 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       : Math.max(160, Math.min(220, viewportWidth - 160));
     return width <= maximumWidth;
   };
-  const applyResponsiveLabelThreshold = () => {
+  const applyResponsiveLabelThreshold = (narrow = narrowGraphQuery.matches) => {
     renderer.setSettings(
-      responsiveLabelSettings(narrowGraphQuery.matches, desktopLabelThreshold, desktopLabelGridCellSize),
+      responsiveLabelSettings(narrow, desktopLabelThreshold, desktopLabelGridCellSize),
     );
   };
   applyResponsiveLabelThreshold();
   const motion = new GraphMotionController(renderer, graph, data, () => {
+    incrementGraphCounter(ui.host, "motionCompletions");
     relatedBrainsSessionInvalid = false;
     if (relatedBrainsStatePending) saveRelatedBrainsState();
   }, motionScope());
+  const requestSettle = (...args: Parameters<GraphMotionController["settle"]>) => {
+    incrementGraphCounter(ui.host, "settleRequests");
+    motion.settle(...args);
+  };
   const restored = relatedBrainsStorageKey === null || relatedBrainsStateRecorded
     ? motion.restoreSession()
     : { positions: false, view: false };
@@ -751,10 +846,22 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
 
   const updateRenderedLabelStats = () => {
     const displayed = renderer.getNodeDisplayedLabels();
-    ui.host.dataset.renderedLabels = String(displayed.size);
+    const rendered = activeInspectionNode(state)
+      ? new Set([...displayed].filter((id) => isInspectionNeighborhoodNode(state, id)))
+      : displayed;
+    ui.host.dataset.renderedLabels = String(rendered.size);
+    ui.host.dataset.renderedLabelIds = [...rendered].sort().join(",");
     ui.host.dataset.renderedForeignLabels = String(
       [...displayed].filter((id) => graph.getNodeAttribute(id, "foreign") === true && !hidden.has(id)).length,
     );
+    ui.host.dataset.renderedMarkers = String(graph.order - hidden.size);
+    const inspected = activeInspectionNode(state);
+    if (inspected) updateInspectionTargetStats(ui.host, renderer, graph, inspected);
+    else delete ui.host.dataset.inspectionTargetGeometry;
+    if (ui.host.hasAttribute("data-geometry-check-pending")) {
+      updateGeometryStats(ui.host, renderer, graph);
+      delete ui.host.dataset.geometryCheckPending;
+    }
   };
   renderer.on("afterRender", updateRenderedLabelStats);
   const onCameraLabelReveal = () => {
@@ -782,7 +889,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     filterSettleTimer = window.setTimeout(() => {
       filterSettleTimer = null;
       ui.host.removeAttribute("data-filter-settle-pending");
-      motion.settle("filter", visibleIds());
+      requestSettle("filter", visibleIds());
     }, 180);
   };
 
@@ -792,12 +899,25 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     if (settle) settleFilter();
   }
 
-  const resizeSettler = new ResizeSettler(
-    ui.host.clientWidth,
-    ui.host.clientHeight,
-    () => {
+  const responsiveState = () => ({
+    width: ui.host.clientWidth,
+    height: ui.host.clientHeight,
+    policy: narrowGraphQuery.matches,
+  });
+  const responsiveScheduler = new ResponsiveGraphScheduler(
+    responsiveState(),
+    ({ width, height, policy }) => {
+      incrementGraphCounter(ui.host, "responsiveUpdates");
+      ui.host.dataset.responsiveDimensions = `${width}:${height}`;
+      ui.host.dataset.responsivePolicy = policy ? "narrow" : "wide";
       renderer.resize();
-      motion.settle("resize", visibleIds());
+      applyResponsiveLabelThreshold(policy);
+      revealNarrowLabels = forceLabelsOnNarrowZoom(
+        policy,
+        renderer.getCamera().getState().ratio,
+      );
+      applyReducers();
+      requestSettle("resize", visibleIds());
     },
   );
 
@@ -828,50 +948,20 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   };
   ui.relatedBrainsToggle?.addEventListener("click", onRelatedBrainsToggle);
   const onNarrowGraphChange = () => {
-    applyResponsiveLabelThreshold();
-    revealNarrowLabels = forceLabelsOnNarrowZoom(
-      narrowGraphQuery.matches,
-      renderer.getCamera().getState().ratio,
-    );
-    applyReducers();
-    renderer.resize();
-    resizeSettler.reset(ui.host.clientWidth, ui.host.clientHeight);
-    motion.settle("resize", visibleIds());
+    const next = responsiveState();
+    if (state.dragged) responsiveScheduler.defer(next);
+    else responsiveScheduler.update(next);
   };
   narrowGraphQuery.addEventListener("change", onNarrowGraphChange);
 
   if (combined) {
-    for (const control of ui.brainFilters) {
-      control.checked = selectedBrainIds.includes(control.value);
-      control.addEventListener("change", () => {
-        selectedBrainIds = data.brains
-          .map((brain) => brain.id)
-          .filter((brainId) => [...ui.brainFilters].some((item) =>
-            item.value === brainId && item.checked
-          ));
-        if (selectedBrainIds.length === 0) {
-          window.location.assign(joinBase(import.meta.env.BASE_URL, routes.home));
-          return;
-        }
-        if (selectedBrainIds.length === 1) {
-          window.location.assign(joinBase(
-            import.meta.env.BASE_URL,
-            routesFor({ mode: "workspace", brainId: selectedBrainIds[0] }).graph,
-          ));
-          return;
-        }
-        const target = combinedRoutes(data.brains, selectedBrainIds);
-        if (target.valid) {
-          window.history.replaceState(null, "", joinBase(import.meta.env.BASE_URL, target.graph));
-          document.dispatchEvent(new CustomEvent("brain-selection-change", {
-            detail: { brainIds: selectedBrainIds },
-          }));
-        }
-        motion.setSessionScope(motionScope());
-        refresh();
-        renderSearchResults();
-      });
-    }
+    document.addEventListener("brain-selection-change", (event) => {
+      const selection = (event as CustomEvent<{ brainIds: readonly string[] }>).detail;
+      selectedBrainIds = [...selection.brainIds];
+      motion.setSessionScope(motionScope());
+      refresh();
+      renderSearchResults();
+    });
   }
 
   /* Search: dim non-matches, list matches, camera-focus on selection. */
@@ -904,7 +994,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
 
   function focusNode(id: string): void {
     cancelFilterSettle();
-    resizeSettler.reset(ui.host.clientWidth, ui.host.clientHeight);
+    responsiveScheduler.reset(responsiveState());
     motion.cancel();
     resolveCanceledRelatedBrainsState();
     const displayData = renderer.getNodeDisplayData(id);
@@ -923,7 +1013,8 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
 
   const onFitView = () => {
     cancelFilterSettle();
-    resizeSettler.reset(ui.host.clientWidth, ui.host.clientHeight);
+    responsiveScheduler.reset(responsiveState());
+    incrementGraphCounter(ui.host, "fitRequests");
     motion.fitView(visibleIds());
   };
   ui.fitViewButton.addEventListener("click", onFitView);
@@ -940,15 +1031,15 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
 
   const resizeObserver = new ResizeObserver(() => {
     if (state.dragged) {
-      resizeSettler.reset(ui.host.clientWidth, ui.host.clientHeight);
+      responsiveScheduler.defer(responsiveState());
       return;
     }
-    resizeSettler.update(ui.host.clientWidth, ui.host.clientHeight);
+    responsiveScheduler.update(responsiveState());
   });
   resizeObserver.observe(ui.host);
   const interruptAutomaticMotion = () => {
     cancelFilterSettle();
-    resizeSettler.reset(ui.host.clientWidth, ui.host.clientHeight);
+    responsiveScheduler.reset(responsiveState());
     motion.cancel();
     stopCamera();
     resolveCanceledRelatedBrainsState();
@@ -958,8 +1049,8 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     cancelFilterSettle();
     stopCamera();
     motion.cancel();
-    resizeSettler.reset(ui.host.clientWidth, ui.host.clientHeight);
-    if (moved) {
+    const responsiveFlushed = responsiveScheduler.flush();
+    if (moved && !responsiveFlushed) {
       relatedBrainsSessionInvalid = false;
       commitSession();
     }
@@ -972,7 +1063,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       motion.cancel();
       resolveCanceledRelatedBrainsState();
     } else if (relatedBrainsStatePending || relatedBrainsSessionInvalid) {
-      motion.settle("filter", visibleIds());
+      requestSettle("filter", visibleIds());
     }
   };
   document.addEventListener("visibilitychange", onVisibilityChange);
@@ -981,7 +1072,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     if (sessionTimer !== null) window.clearTimeout(sessionTimer);
     cancelFilterSettle();
     resizeObserver.disconnect();
-    resizeSettler.cancel();
+    responsiveScheduler.cancel();
     renderer.getCamera().off("updated", saveSession);
     renderer.getCamera().off("updated", onCameraLabelReveal);
     window.removeEventListener("pagehide", flushSession);
@@ -993,7 +1084,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   });
 
   refresh(false);
-  if (!restored.positions) motion.settle("initial", visibleIds());
+  if (!restored.positions) requestSettle("initial", visibleIds());
   else if (!restored.view) fitRenderedGraph(renderer, visibleIds());
 }
 
@@ -1024,8 +1115,8 @@ export async function mountLocalGraphs(): Promise<void> {
       labelRenderedSizeThreshold: 3,
     });
     const narrowGraphQuery = window.matchMedia("(max-width: 700px)");
-    const applyResponsiveLabelThreshold = () => {
-      renderer.setSettings(responsiveLabelSettings(narrowGraphQuery.matches, 3, 100));
+    const applyResponsiveLabelThreshold = (narrow = narrowGraphQuery.matches) => {
+      renderer.setSettings(responsiveLabelSettings(narrow, 3, 100));
     };
     applyResponsiveLabelThreshold();
     const fitButton = host
@@ -1044,21 +1135,34 @@ export async function mountLocalGraphs(): Promise<void> {
     const applyLocalReducers = () => {
       renderer.setSettings({
         nodeReducer: (node, attrs) => {
-          const reduced = hoverReducers.nodeReducer(node, attrs);
-          const brainAware = reduced.foreign
-            ? { ...reduced, forceLabel: forceForeignLabel(true, narrowGraphQuery.matches) }
-            : reduced;
+          const brainAware = attrs.foreign
+            ? { ...attrs, forceLabel: forceForeignLabel(true, narrowGraphQuery.matches) }
+            : attrs;
           const inspectedNeighborhood = isInspectionNeighborhoodNode(state, node);
-          return (revealNarrowLabels || inspectedNeighborhood) && brainAware.label
+          const labelAware = (revealNarrowLabels || inspectedNeighborhood) && brainAware.label
             ? { ...brainAware, forceLabel: true }
             : brainAware;
+          return hoverReducers.nodeReducer(node, labelAware);
         },
         edgeReducer: hoverReducers.edgeReducer,
       });
     };
     applyLocalReducers();
     const updateRenderedLabelStats = () => {
-      host.dataset.renderedLabels = String(renderer.getNodeDisplayedLabels().size);
+      const displayed = renderer.getNodeDisplayedLabels();
+      const rendered = activeInspectionNode(state)
+        ? new Set([...displayed].filter((id) => isInspectionNeighborhoodNode(state, id)))
+        : displayed;
+      host.dataset.renderedLabels = String(rendered.size);
+      host.dataset.renderedLabelIds = [...rendered].sort().join(",");
+      host.dataset.renderedMarkers = String(graph.order);
+      const inspected = activeInspectionNode(state);
+      if (inspected) updateInspectionTargetStats(host, renderer, graph, inspected);
+      else delete host.dataset.inspectionTargetGeometry;
+      if (host.hasAttribute("data-geometry-check-pending")) {
+        updateGeometryStats(host, renderer, graph);
+        delete host.dataset.geometryCheckPending;
+      }
     };
     renderer.on("afterRender", updateRenderedLabelStats);
     const camera = renderer.getCamera();
@@ -1092,33 +1196,53 @@ export async function mountLocalGraphs(): Promise<void> {
     );
     const fitView = () => {
       pendingMotion = "fit";
+      incrementGraphCounter(host, "fitRequests");
       stopCameraAnimation(renderer);
       labelReveal.beginFit();
       motion.fitView(graph.nodes());
     };
     const settle = (trigger: "initial" | "resize") => {
       pendingMotion = trigger;
+      incrementGraphCounter(host, "settleRequests");
       pendingPinnedId = slug;
       labelReveal.beginFit();
       motion.settle(trigger, graph.nodes(), slug);
     };
     const settleDraggedResize = (pinnedId: string) => {
       pendingMotion = "drag-resize";
+      incrementGraphCounter(host, "settleRequests");
       pendingPinnedId = pinnedId;
       labelReveal.beginFit();
       motion.settle("drag", graph.nodes(), pinnedId, undefined, true);
     };
-    const resizeSettler = new ResizeSettler(
-      host.clientWidth,
-      host.clientHeight,
-      () => {
+    const responsiveState = () => ({
+      width: host.clientWidth,
+      height: host.clientHeight,
+      policy: narrowGraphQuery.matches,
+    });
+    let deferredResizePinnedId: string | null = null;
+    const responsiveScheduler = new ResponsiveGraphScheduler(
+      responsiveState(),
+      ({ width, height, policy }) => {
+        incrementGraphCounter(host, "responsiveUpdates");
+        host.dataset.responsiveDimensions = `${width}:${height}`;
+        host.dataset.responsivePolicy = policy ? "narrow" : "wide";
         renderer.resize();
-        settle("resize");
+        applyResponsiveLabelThreshold(policy);
+        applyLocalReducers();
+        labelReveal.refresh();
+        if (deferredResizePinnedId) {
+          const pinnedId = deferredResizePinnedId;
+          deferredResizePinnedId = null;
+          settleDraggedResize(pinnedId);
+        } else {
+          settle("resize");
+        }
       },
     );
     const interruptAutomaticMotion = () => {
       pendingMotion = null;
-      resizeSettler.reset(host.clientWidth, host.clientHeight);
+      responsiveScheduler.reset(responsiveState());
       motion.cancel();
       labelReveal.finishFitPlanning();
       stopCameraAnimation(renderer);
@@ -1127,42 +1251,39 @@ export async function mountLocalGraphs(): Promise<void> {
     wireNodeDragging(renderer, graph, state, (node) => {
       if (!resizeDeferredDuringDrag) return;
       resizeDeferredDuringDrag = false;
-      renderer.resize();
-      resizeSettler.reset(host.clientWidth, host.clientHeight);
-      settleDraggedResize(node);
+      deferredResizePinnedId = node;
+      responsiveScheduler.flush();
     }, interruptAutomaticMotion);
     wireTheme(renderer, state);
     const onFitView = () => {
       if (
-        resizeSettler.hasPending()
+        responsiveScheduler.hasPending()
         || pendingMotion === "initial"
         || pendingMotion === "resize"
         || pendingMotion === "drag-resize"
       ) return;
-      resizeSettler.reset(host.clientWidth, host.clientHeight);
+      responsiveScheduler.reset(responsiveState());
       fitView();
     };
     const onNarrowGraphChange = () => {
-      applyResponsiveLabelThreshold();
-      renderer.resize();
-      resizeSettler.reset(host.clientWidth, host.clientHeight);
       if (state.dragged) {
         resizeDeferredDuringDrag = true;
+        responsiveScheduler.defer(responsiveState());
         return;
       }
-      settle("resize");
+      responsiveScheduler.update(responsiveState());
     };
     const resizeObserver = new ResizeObserver(() => {
       if (state.dragged) {
         resizeDeferredDuringDrag = true;
-        resizeSettler.reset(host.clientWidth, host.clientHeight);
+        responsiveScheduler.defer(responsiveState());
         return;
       }
-      resizeSettler.update(host.clientWidth, host.clientHeight);
+      responsiveScheduler.update(responsiveState());
     });
     resizeObserver.observe(host);
     const interruptViewportMotion = () => {
-      resizeSettler.reset(host.clientWidth, host.clientHeight);
+      responsiveScheduler.reset(responsiveState());
       if (pendingMotion) interruptAutomaticMotion();
     };
     const mouse = renderer.getMouseCaptor();
@@ -1193,7 +1314,7 @@ export async function mountLocalGraphs(): Promise<void> {
       mouse.off("wheel", interruptViewportMotion);
       touch.off("touchdown", interruptViewportMotion);
       resizeObserver.disconnect();
-      resizeSettler.cancel();
+      responsiveScheduler.cancel();
       motion.destroy();
       labelReveal.destroy();
       renderer.off("afterRender", updateRenderedLabelStats);

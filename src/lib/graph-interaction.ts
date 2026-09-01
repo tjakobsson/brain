@@ -40,13 +40,30 @@ export function setPinnedInspection(
   updateInspectionNeighbors(graph, state);
 }
 
+export function setTransientInspection(
+  graph: Graph,
+  state: GraphHoverState,
+  node: string | null,
+): boolean {
+  if (state.hovered === node) return false;
+  state.hovered = node;
+  updateInspectionNeighbors(graph, state);
+  return true;
+}
+
 export function createHoverReducers(graph: Graph, state: GraphHoverState) {
   const nodeReducer: NonNullable<SigmaSettings["nodeReducer"]> = (node, attrs) => {
     const active = activeInspectionNode(state);
-    if (active && node !== active && !state.neighbors.has(node)) {
-      return { ...attrs, color: state.theme.fadedNode, labelColor: state.theme.fadedLabel };
+    if (!active) return attrs;
+    if (node === active || state.neighbors.has(node)) {
+      return attrs.label ? { ...attrs, forceLabel: true } : attrs;
     }
-    return attrs;
+    return {
+      ...attrs,
+      color: state.theme.fadedNode,
+      label: "",
+      forceLabel: false,
+    };
   };
   const edgeReducer: NonNullable<SigmaSettings["edgeReducer"]> = (edge, attrs) => {
     const active = activeInspectionNode(state);
@@ -56,6 +73,102 @@ export function createHoverReducers(graph: Graph, state: GraphHoverState) {
     return attrs;
   };
   return { nodeReducer, edgeReducer };
+}
+
+export interface GraphScreenNode {
+  node: string;
+  x: number;
+  y: number;
+  radius: number;
+  label?: string | null;
+  labelWidth?: number;
+  foreignMarkWidth?: number;
+  labelRendered?: boolean;
+}
+
+export interface GraphScreenTarget {
+  node: string;
+  kind: "marker" | "label";
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+  centerX: number;
+  centerY: number;
+  radius?: number;
+}
+
+interface ViewportSize {
+  width: number;
+  height: number;
+}
+
+function clippedTarget(
+  target: GraphScreenTarget,
+  viewport: ViewportSize,
+): GraphScreenTarget | null {
+  const left = Math.max(0, target.left);
+  const right = Math.min(viewport.width, target.right);
+  const top = Math.max(0, target.top);
+  const bottom = Math.min(viewport.height, target.bottom);
+  return left <= right && top <= bottom ? { ...target, left, right, top, bottom } : null;
+}
+
+export function graphScreenTargets(
+  nodes: readonly GraphScreenNode[],
+  viewport: ViewportSize,
+): GraphScreenTarget[] {
+  const targets: GraphScreenTarget[] = [];
+  for (const node of nodes) {
+    const markerRadius = Math.max(node.radius, 22);
+    const marker = clippedTarget({
+      node: node.node,
+      kind: "marker",
+      left: node.x - markerRadius,
+      right: node.x + markerRadius,
+      top: node.y - markerRadius,
+      bottom: node.y + markerRadius,
+      centerX: node.x,
+      centerY: node.y,
+      radius: markerRadius,
+    }, viewport);
+    if (marker) targets.push(marker);
+
+    if (!node.labelRendered || !node.label || !node.labelWidth || node.labelWidth <= 0) continue;
+    const label = clippedTarget({
+      node: node.node,
+      kind: "label",
+      left: node.x + node.radius + 3 - 8,
+      right: node.x + node.radius + 3 + node.labelWidth + (node.foreignMarkWidth ?? 0) + 8,
+      top: node.y - 22,
+      bottom: node.y + 22,
+      centerX: node.x,
+      centerY: node.y,
+    }, viewport);
+    if (label) targets.push(label);
+  }
+  return targets;
+}
+
+export function hitGraphScreenTarget(
+  targets: readonly GraphScreenTarget[],
+  point: { x: number; y: number },
+): string | null {
+  const matches = targets.filter((target) =>
+    point.x >= target.left && point.x <= target.right &&
+    point.y >= target.top && point.y <= target.bottom &&
+    (target.kind === "label" ||
+      (point.x - target.centerX) ** 2 + (point.y - target.centerY) ** 2 <=
+        target.radius! ** 2)
+  );
+  matches.sort((a, b) => {
+    const aDistance = (point.x - a.centerX) ** 2 + (point.y - a.centerY) ** 2;
+    const bDistance = (point.x - b.centerX) ** 2 + (point.y - b.centerY) ** 2;
+    return aDistance - bDistance ||
+      Number(a.kind === "label") - Number(b.kind === "label") ||
+      a.node.localeCompare(b.node);
+  });
+  return matches[0]?.node ?? null;
 }
 
 export function wireGraphHover(
@@ -68,15 +181,13 @@ export function wireGraphHover(
   renderer.on("enterNode", ({ node, event }) => {
     if (event?.original?.type?.startsWith("touch")) return;
     onNodeEnter?.();
-    state.hovered = node;
-    updateInspectionNeighbors(graph, state);
+    setTransientInspection(graph, state, node);
     renderer.getContainer().style.cursor = "pointer";
     renderer.refresh({ skipIndexation: true });
   });
   renderer.on("leaveNode", ({ event }) => {
     if (event?.original?.type?.startsWith("touch")) return;
-    state.hovered = null;
-    updateInspectionNeighbors(graph, state);
+    setTransientInspection(graph, state, null);
     if (!isDragging()) renderer.getContainer().style.cursor = "";
     renderer.refresh({ skipIndexation: true });
   });

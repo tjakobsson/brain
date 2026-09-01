@@ -31,6 +31,19 @@ export type CanonicalBrainSelection =
       readonly unknownBrainIds: readonly string[];
     };
 
+export type BrainSelectionContext =
+  | {
+      readonly valid: true;
+      readonly brainIds: readonly string[];
+      readonly value: string;
+      readonly kind: "chooser" | "brain" | "combined";
+      readonly graph: LogicalRoute;
+    }
+  | {
+      readonly valid: false;
+      readonly unknownBrainIds: readonly string[];
+    };
+
 export type CombinedRoutes =
   | {
       readonly valid: true;
@@ -126,6 +139,30 @@ export function combinedRoutes(
   return {
     valid: true,
     brainIds: canonical.brainIds,
+    graph: `/graph?brains=${canonical.value}`,
+  };
+}
+
+export function brainSelectionContext(
+  registry: readonly BrainRouteRegistryEntry[],
+  selection: BrainSelectionInput,
+): BrainSelectionContext {
+  const canonical = canonicalBrainSelection(registry, selection);
+  if (!canonical.valid) return canonical;
+
+  if (canonical.brainIds.length === 0) {
+    return { ...canonical, kind: "chooser", graph: routes.home };
+  }
+  if (canonical.brainIds.length === 1) {
+    return {
+      ...canonical,
+      kind: "brain",
+      graph: routesFor({ mode: "workspace", brainId: canonical.brainIds[0] }).graph,
+    };
+  }
+  return {
+    ...canonical,
+    kind: "combined",
     graph: `/graph?brains=${canonical.value}`,
   };
 }

@@ -288,43 +288,82 @@ export class MotionGeneration {
   }
 }
 
-export class ResizeSettler {
+export interface ResponsiveGraphState<Policy> {
+  width: number;
+  height: number;
+  policy: Policy;
+}
+
+export class ResponsiveGraphScheduler<Policy> {
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private pending: ResponsiveGraphState<Policy> | null = null;
 
   constructor(
-    private width: number,
-    private height: number,
-    private readonly callback: (width: number, height: number) => void,
+    private current: ResponsiveGraphState<Policy>,
+    private readonly callback: (state: ResponsiveGraphState<Policy>) => void,
     private readonly delay = 180,
     private readonly threshold = 24,
   ) {}
 
-  update(width: number, height: number): boolean {
-    if (Math.abs(width - this.width) < this.threshold && Math.abs(height - this.height) < this.threshold) {
+  update(state: ResponsiveGraphState<Policy>): boolean {
+    this.pending = state;
+    if (!this.differsFromCurrent(state)) {
+      this.cancelPending();
       return false;
     }
-    this.width = width;
-    this.height = height;
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = setTimeout(() => {
       this.timer = null;
-      this.callback(this.width, this.height);
+      this.flush();
     }, this.delay);
     return true;
   }
 
+  defer(state: ResponsiveGraphState<Policy>): boolean {
+    this.pending = state;
+    if (this.timer !== null) clearTimeout(this.timer);
+    this.timer = null;
+    if (!this.differsFromCurrent(state)) {
+      this.pending = null;
+      return false;
+    }
+    return true;
+  }
+
   hasPending(): boolean {
-    return this.timer !== null;
+    return this.pending !== null;
+  }
+
+  flush(): boolean {
+    if (!this.pending) return false;
+    if (this.timer !== null) clearTimeout(this.timer);
+    this.timer = null;
+    const state = this.pending;
+    this.pending = null;
+    if (!this.differsFromCurrent(state)) return false;
+    this.current = state;
+    this.callback(state);
+    return true;
   }
 
   cancel(): void {
-    if (this.timer !== null) clearTimeout(this.timer);
-    this.timer = null;
+    this.cancelPending();
   }
 
-  reset(width: number, height: number): void {
-    this.cancel();
-    this.width = width;
-    this.height = height;
+  reset(state: ResponsiveGraphState<Policy>): void {
+    this.cancelPending();
+    this.current = state;
+  }
+
+  private differsFromCurrent(state: ResponsiveGraphState<Policy>): boolean {
+    return Math.abs(state.width - this.current.width) >= this.threshold
+      || Math.abs(state.height - this.current.height) >= this.threshold
+      || !Object.is(state.policy, this.current.policy);
+  }
+
+  private cancelPending(): void {
+    if (this.timer !== null) clearTimeout(this.timer);
+    this.timer = null;
+    this.pending = null;
   }
 }

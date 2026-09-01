@@ -706,7 +706,8 @@ test("mobile local graphs reveal titles relative to their fitted view", async ({
   expect(fittedRatio).toBeGreaterThan(0);
   const fittedInk = await graphInkBounds(graph);
 
-  await canvas.hover();
+  await canvas.hover({ position: { x: 4, y: 4 } });
+  await expect(graph).not.toHaveAttribute("data-transient-inspection");
   await page.mouse.wheel(0, -100);
   await expect.poll(async () => Number(await graph.getAttribute("data-rendered-labels"))).toBe(neighbors.length + 1);
 
