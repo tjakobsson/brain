@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.0 - 2026-09-01
+
+- Move Brain selection into the full-graph controls and show each note's owning Brain in its metadata, keeping shared navigation compact and graph context explicit.
+- Focus graph inspection on the selected note and its immediate neighbors, with stable marker and title targets across pointer, touch, browser zoom, and responsive layout changes.
+
 ## 1.3.0 - 2026-08-31
 
 - Unify compact navigation and graph controls across desktop and touch layouts, with persistent neighborhood inspection and theme-aware graph rendering.

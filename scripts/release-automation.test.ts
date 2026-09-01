@@ -56,8 +56,8 @@ describe("release automation", () => {
   });
 
   it("keeps workspace distribution interfaces on the maintained v1 line", () => {
-    expect(packageMetadata.version).toBe("1.3.0");
-    expect(candidate.version).toBe("1.3.0");
+    expect(packageMetadata.version).toBe("1.4.0");
+    expect(candidate.version).toBe("1.4.0");
     expect(releaseSource).toContain('const major = process.env.VERSION.split(".")[0]');
   });
 });
