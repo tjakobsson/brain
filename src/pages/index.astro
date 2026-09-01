@@ -3,16 +3,69 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 import BrainChooser from "../components/BrainChooser.astro";
 import GlobalGraph from "../components/GlobalGraph.astro";
 import { getWorkspaceSnapshot } from "../lib/vault-state";
+import packageMetadata from "../../package.json";
 
 const snapshot = getWorkspaceSnapshot();
+const generatorLabel = `Brain v${packageMetadata.version}`;
 ---
 
 {snapshot.mode === "workspace" ? (
-  <BaseLayout title={snapshot.registry.title}>
+  <BaseLayout title={snapshot.registry.title} chooser>
     <BrainChooser registry={snapshot.registry} />
+    <footer class="chooser-about">
+      <button
+        class="chooser-about__trigger"
+        type="button"
+        aria-label="About"
+        aria-controls="chooser-about-disclosure"
+        aria-expanded="false"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="8"></circle>
+          <path d="M12 11v5M12 8h.01"></path>
+        </svg>
+        <span>About</span>
+      </button>
+      <aside id="chooser-about-disclosure" class="about-disclosure" hidden aria-label="About Brain">
+        <p class="eyebrow">Generated with</p>
+        <p class="about-version">{generatorLabel}</p>
+        <a href="https://github.com/tjakobsson/brain">Project releases</a>
+      </aside>
+    </footer>
   </BaseLayout>
 ) : (
   <BaseLayout title="Graph" fluid>
     <GlobalGraph />
   </BaseLayout>
 )}
+
+<script>
+  const trigger = document.querySelector<HTMLButtonElement>(".chooser-about__trigger");
+  const disclosure = document.querySelector<HTMLElement>("#chooser-about-disclosure");
+  if (trigger && disclosure) {
+    const close = (restoreFocus = false) => {
+      disclosure.hidden = true;
+      trigger.setAttribute("aria-expanded", "false");
+      if (restoreFocus) trigger.focus();
+    };
+    trigger.addEventListener("click", () => {
+      const open = disclosure.hidden;
+      close();
+      if (open) {
+        disclosure.hidden = false;
+        trigger.setAttribute("aria-expanded", "true");
+      }
+    });
+    document.addEventListener("pointerdown", (event) => {
+      if (
+        !disclosure.hidden &&
+        event.target instanceof Node &&
+        !disclosure.contains(event.target) &&
+        !trigger.contains(event.target)
+      ) close();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !disclosure.hidden) close(true);
+    });
+  }
+</script>

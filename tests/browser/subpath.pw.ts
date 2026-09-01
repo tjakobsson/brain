@@ -636,12 +636,12 @@ test("mobile navigation stays within the deployment base", async ({ page }, test
   await expect(noteHeader.getByRole("link", { name: "Recent" })).toHaveAttribute("href", `${base}/recent`);
   await expect(noteHeader.getByRole("link", { name: "Orphans" })).toHaveAttribute("href", `${base}/orphans`);
   await expect(noteHeader.getByRole("link", { name: "Brains" })).toHaveCount(0);
-  const about = noteHeader.getByRole("button", { name: "About" });
-  await about.click();
-  await expect(page.getByLabel("About Brain")).toBeVisible();
-  await page.locator("article h1").dispatchEvent("pointerdown");
-  await expect(page.getByLabel("About Brain")).toBeHidden();
-  await launcher.click();
+  await expect(noteHeader.getByRole("button", { name: "About" })).toHaveCount(0);
+  await expect(page.locator(".note-focus-action")).toHaveAttribute(
+    "href",
+    `${base}/?focus=default%2Fwelcome`,
+  );
+  await expect(noteHeader.getByRole("link", { name: "Orphans" })).toHaveCSS("transform", "none");
   const controlPositions = await noteHeader.evaluate((header) => {
     const controls = [...header.querySelectorAll(".nav-actions > .nav-action")]
       .filter((control) => !(control as HTMLElement).hidden)

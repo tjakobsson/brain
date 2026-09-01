@@ -8,7 +8,9 @@ import {
   resolveFocusedVisibility,
   hitGraphScreenTarget,
   isInspectionNeighborhoodNode,
+  permitsNodeDrag,
   setFocusedInspection,
+  setTransientInspection,
   stopCameraAnimation,
   wireGraphHover,
   type GraphHoverState,
@@ -177,7 +179,7 @@ describe("graph hover interaction", () => {
     expect(restored.nodeReducer("d", searchMiss)).toBe(searchMiss);
   });
 
-  it("restores pinned inspection after pointer hover and ignores touch hover events", () => {
+  it("locks pinned inspection against pointer hover and ignores touch hover events", () => {
     const { graph, renderer, emit, state } = fixture();
     setFocusedInspection(graph, state, "a");
     expect(isInspectionNeighborhoodNode(state, "a")).toBe(true);
@@ -190,8 +192,9 @@ describe("graph hover interaction", () => {
     expect(state.neighbors).toEqual(new Set(["b"]));
 
     emit("enterNode", { node: "c", event: { original: { type: "mousemove" } } });
-    expect(activeInspectionNode(state)).toBe("c");
-    expect(state.neighbors).toEqual(new Set(["b", "d"]));
+    expect(activeInspectionNode(state)).toBe("a");
+    expect(state.hovered).toBeNull();
+    expect(state.neighbors).toEqual(new Set(["b"]));
 
     emit("leaveNode", { node: "c", event: { original: { type: "mousemove" } } });
     expect(activeInspectionNode(state)).toBe("a");
@@ -200,6 +203,15 @@ describe("graph hover interaction", () => {
     setFocusedInspection(graph, state, null);
     expect(isInspectionNeighborhoodNode(state, "a")).toBe(false);
     expect(isInspectionNeighborhoodNode(state, "b")).toBe(false);
+    expect(setTransientInspection(graph, state, "c")).toBe(true);
+    expect(activeInspectionNode(state)).toBe("c");
+  });
+
+  it("permits only touch and unmodified primary-button node drags", () => {
+    expect(permitsNodeDrag({ type: "mousedown", button: 0, ctrlKey: false })).toBe(true);
+    expect(permitsNodeDrag({ type: "touchstart", button: 0, ctrlKey: false })).toBe(true);
+    expect(permitsNodeDrag({ type: "mousedown", button: 2, ctrlKey: false })).toBe(false);
+    expect(permitsNodeDrag({ type: "mousedown", button: 0, ctrlKey: true })).toBe(false);
   });
 
   it("lets shared focus override stored filters once and clears on explicit exclusion", () => {

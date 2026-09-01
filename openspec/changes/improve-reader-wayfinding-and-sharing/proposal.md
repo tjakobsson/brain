@@ -5,9 +5,9 @@ Readers can currently lose their selected Brain context when they open a note, c
 ## What Changes
 
 - Preserve an optional selected-Brain browsing scope across graph, note, and quick-switcher navigation while continuing to identify each note by its owning Brain.
-- Let readers pin a graph neighborhood, copy a canonical focused-graph link, restore that focus from a URL, and open a note directly in its focused full-graph context.
+- Let readers pin a graph neighborhood, copy a canonical focused-graph link, restore the complete focused neighborhood from a URL, lock it against hover until cleared, and open a note directly in its focused full-graph context.
 - Keep the global graph legend inside the viewport on desktop and mobile.
-- Add a shared-navigation destination for the Brain chooser and a quiet About surface that identifies the generator version embedded in the static site.
+- Add an always-visible Home destination back to the Brain chooser, keep About/version provenance on the chooser itself, and avoid duplicating either action in the expandable navigation menu.
 - Rebalance the root chooser so entering one Brain is the primary default and combining multiple Brains becomes a secondary action revealed by selection.
 - Give authored external web links a visible and accessible external-site treatment without forcing a new browsing tab.
 - Publish a custom, base-path-safe 404 page with deterministic note suggestions scoped to valid Brain context inferred from the missing URL.

@@ -13,9 +13,18 @@ interface Props {
   activeBrainId?: string;
   combined?: boolean;
   noteContext?: { ownerBrainId: string; compositeId: string };
+  chooser?: boolean;
 }
 
-const { title, wide = false, fluid = false, activeBrainId, combined = false, noteContext } = Astro.props;
+const {
+  title,
+  wide = false,
+  fluid = false,
+  activeBrainId,
+  combined = false,
+  noteContext,
+  chooser = false,
+} = Astro.props;
 const snapshot = getWorkspaceSnapshot();
 const isWorkspace = snapshot.mode === "workspace";
 const activeBrain = activeBrainId
@@ -54,6 +63,13 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
   </head>
   <body>
     <div class="site-header-slot">
+      {isWorkspace && !fluid && !chooser && (
+        <a class="page-home-action nav-action" href={url(routes.home)} aria-label="Home" title="Home">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m4 10 8-6 8 6v9a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1Z"></path>
+          </svg>
+        </a>
+      )}
       <header class="site-header">
         <nav class="site-nav-pill" aria-label="Primary navigation">
           <div class="nav-menu-pill">
@@ -130,37 +146,12 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
                 </svg>
               </a>
             )}
-            {isWorkspace && (
-              <a class="nav-action brains-trigger" href={url(routes.home)} aria-label="Brains" title="Brains">
-                <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M8 5.5a3 3 0 0 0-3 3c0 .6.2 1.2.5 1.7A3.5 3.5 0 0 0 7 16.8V19m9-13.5a3 3 0 0 1 3 3c0 .6-.2 1.2-.5 1.7a3.5 3.5 0 0 1-1.5 6.6V19M8 8.5h8M7 13h10M12 5v14"></path>
-                </svg>
-              </a>
-            )}
-            <button
-              class="nav-action about-trigger"
-              type="button"
-              aria-label="About"
-              title="About"
-              aria-controls="about-disclosure"
-              aria-expanded="false"
-            >
-              <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="12" cy="12" r="8"></circle>
-                <path d="M12 11v5M12 8h.01"></path>
-              </svg>
-            </button>
             </div>
-            <aside id="about-disclosure" class="about-disclosure" hidden aria-label="About Brain">
-              <p class="eyebrow">Generated with</p>
-              <p class="about-version">{generatorLabel}</p>
-              <a href="https://github.com/tjakobsson/brain">Project releases</a>
-            </aside>
           </div>
         </nav>
       </header>
     </div>
-    <main class:list={[{ wide, fluid }]}>
+    <main class:list={[{ wide, fluid, "has-home": isWorkspace && !fluid && !chooser }]}>
       <slot />
     </main>
     <QuickSwitcher
@@ -184,14 +175,7 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
       const header = document.querySelector<HTMLElement>(".site-header")!;
       const launcher = header.querySelector<HTMLButtonElement>(".nav-launcher")!;
       const actions = header.querySelector<HTMLElement>(".nav-actions")!;
-      const aboutTrigger = header.querySelector<HTMLButtonElement>(".about-trigger")!;
-      const about = header.querySelector<HTMLElement>(".about-disclosure")!;
       let expanded = false;
-
-      const closeAbout = () => {
-        about.hidden = true;
-        aboutTrigger.setAttribute("aria-expanded", "false");
-      };
 
       const applyNavigationState = () => {
         header.toggleAttribute("data-nav-expanded", expanded);
@@ -201,7 +185,6 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
         actions.style.setProperty("--nav-actions-height", `${actions.scrollHeight}px`);
       };
       const collapseNavigation = (restoreFocus: boolean) => {
-        closeAbout();
         if (!expanded) return;
         expanded = false;
         for (const details of actions.querySelectorAll<HTMLDetailsElement>("details[open]")) {
@@ -224,14 +207,6 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
         if (target?.closest(".search-trigger")) collapseNavigation(true);
         else if (target?.closest("a")) collapseNavigation(false);
       }, { capture: true });
-      aboutTrigger.addEventListener("click", () => {
-        const open = about.hidden;
-        closeAbout();
-        if (open) {
-          about.hidden = false;
-          aboutTrigger.setAttribute("aria-expanded", "true");
-        }
-      });
       document.addEventListener("pointerdown", (event) => {
         if (expanded && event.target instanceof Node && !header.contains(event.target)) {
           collapseNavigation(false);

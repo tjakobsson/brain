@@ -2,19 +2,19 @@
 
 - [x] 1.1 Extend route helpers with canonical optional note browsing scope and focused composite-node graph state, and verify unit tests cover zero/one/many Brains, unknown IDs, fragments, root and subpath deployments, and removal of invalid focus.
 - [x] 1.2 Separate note ownership from browsing scope in shared page context, then propagate valid scope through graph-node, wiki-link, mention, nearby-note, and quick-switcher note navigation; verify browser tests traverse each path from a combined graph without collapsing to the destination note's owner.
-- [x] 1.3 Make note-page Graph and connection-map actions derive one focused destination from the current note plus retained scope, and verify direct notes open their owning graph while combined-context notes return to the selected graph with the note focused.
+- [x] 1.3 Make the menu Graph action and an always-visible note-page action derive one focused destination from the current note plus retained scope, including notes without a connection map; verify direct notes open their owning graph while combined-context notes return to the selected graph with the note focused.
 
 ## 2. Shareable Graph Focus
 
-- [x] 2.1 Consolidate persistent inspection focus separately from transient hover and layout-motion pinning, including URL synchronization, selection/filter invalidation, initial stored-filter precedence, and direct foreign-neighbor visibility; verify focused unit tests cover reducers, canonical state, visible nodes and edges, and clearing behavior.
-- [x] 2.2 Add marker-and-title desktop context-menu targeting plus a viewport-contained DOM menu for Pin or Move focus, Copy neighborhood link, and Open note while preserving the native empty-stage menu; verify browser tests cover target resolution, menu bounds, dismissal, clipboard feedback, and unchanged left-click navigation.
-- [x] 2.3 Add a persistent non-color focus marker and accessible focused-state actions for Copy, Open, and Clear, then route touch long press and graph-search activation through the same transition; verify pointer, touch, keyboard, light/dark, and transient-hover-over-focus browser assertions.
-- [x] 2.4 Restore valid focused URLs after graph layout or session restoration and fit the focused note plus rendered direct-neighborhood bounds without changing graph-space positions; verify tests cover desktop-to-phone sharing, combined selection, per-Brain foreign boundaries, responsive settling, and omission of camera, filter, and dragged-position state from copied URLs.
+- [x] 2.1 Consolidate persistent inspection focus separately from transient hover and layout-motion pinning, lock transient inspection while focus exists, and verify focused unit tests cover reducers, canonical state, visible nodes and edges, and clearing behavior.
+- [x] 2.2 Add marker-and-title desktop context-menu targeting plus a viewport-contained DOM menu while preserving the native empty-stage menu and rejecting secondary-button drag starts; verify target resolution, menu bounds, dismissal, stable graph positions, clipboard feedback, and unchanged left-click navigation.
+- [x] 2.3 Add a persistent non-color focus marker and accessible focused-state actions for Copy, Open, and Clear, then route touch long press and graph-search activation through the same transition; verify pointer, touch, keyboard, light/dark, and hover-lock browser assertions.
+- [x] 2.4 Restore valid focused URLs through the same reducer transition as interactive focus and fit the focused note plus visibly emphasized and labeled direct neighbors without changing graph-space positions; verify desktop-to-phone sharing, combined selection, per-Brain foreign boundaries, responsive settling, and semantic-only copied URLs.
 
 ## 3. Chooser, Navigation, And Provenance
 
 - [x] 3.1 Rebalance Brain cards so Enter Brain remains primary, combination controls are secondary, and the combined action appears only after selection begins; verify desktop and phone browser tests cover zero, one, and two selected Brains without initial multi-Brain pressure or overflow.
-- [x] 3.2 Add the base-path-correct Brains destination and bounded About/version disclosure to the shared navigation pill without a Brain selector, and verify action order, labels, focus, Escape/outside dismissal, reduced motion, short viewport scrolling, and workspace versus single-vault visibility.
+- [x] 3.2 Add a base-path-correct always-visible Home icon beside graph Filters and standalone on content pages, remove duplicate Brains and About menu actions, and keep the bounded About/version disclosure on the Brain chooser only; verify labels, focus, containment, reduced motion, and workspace versus single-vault behavior.
 - [x] 3.3 Inject the package semantic version into every page's generator metadata and the About disclosure from one source of truth, and verify generated HTML and browser-visible text match `brain --version` without timestamps or machine paths.
 
 ## 4. External Link Signalling

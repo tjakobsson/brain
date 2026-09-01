@@ -144,19 +144,16 @@ await withPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch
 });
 
 await withPage({}, async (page) => {
-  await ready(page, `${workspace}/brains/engineering/notes/principles`);
+  await ready(page, `${workspace}/brains/research-archive-and-synthesis-source-trails/notes/archive-boundaries`);
   await page.getByRole("button", { name: "Navigation" }).click();
-  await page.getByRole("button", { name: "About", exact: true }).click();
-  await page.getByLabel("About Brain").waitFor({ state: "visible" });
-  await screenshot(page, "03-navigation-about-desktop.png");
+  await screenshot(page, "03-note-home-focused-graph-desktop.png");
 });
 
 await withPage({ viewport: { width: 390, height: 500 }, isMobile: true, hasTouch: true }, async (page) => {
-  await ready(page, `${workspace}/brains/engineering/notes/principles`);
-  await page.getByRole("button", { name: "Navigation" }).click();
+  await ready(page, `${workspace}/`);
   await page.getByRole("button", { name: "About", exact: true }).click();
   await page.getByLabel("About Brain").waitFor({ state: "visible" });
-  await screenshot(page, "04-navigation-about-short-phone.png");
+  await screenshot(page, "04-chooser-about-short-phone.png");
 });
 
 await withPage({}, async (page) => {

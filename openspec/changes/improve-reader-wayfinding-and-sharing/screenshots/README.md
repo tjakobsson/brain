@@ -18,17 +18,17 @@ The phone chooser shows selected cards and the fixed combined-graph action after
 
 ## Navigation, provenance, and browsing scope
 
-### Brains and About navigation
+### Visible Home and focused graph access
 
-The expanded navigation includes Brains and About. The About disclosure presents the package-derived `Brain v1.4.0` provenance and release link.
+An isolated note keeps Home at the top left and a focused-graph action beside its title. The expanded navigation contains contextual destinations without duplicate Brains or About actions.
 
-![Desktop navigation and About disclosure](03-navigation-about-desktop.png)
+![Desktop isolated note with Home and focused graph access](03-note-home-focused-graph-desktop.png)
 
-### Bounded short-phone disclosure
+### Chooser-only About disclosure
 
-The same navigation and About content remain contained in a 390 by 500 viewport.
+About remains available on the Brain chooser and its package-derived `Brain v1.4.0` provenance stays contained in a 390 by 500 viewport.
 
-![Short phone navigation and About disclosure](04-navigation-about-short-phone.png)
+![Short phone chooser About disclosure](04-chooser-about-short-phone.png)
 
 ### Note ownership remains separate from selected browsing scope
 
@@ -119,7 +119,7 @@ Some requirements are route, server, metadata, or accessibility contracts rather
 - canonical `brains` and `focus` query handling, including duplicate and invalid parameters;
 - scope retention through graph nodes, wiki-links, mentions, nearby links, local maps, and quick-switcher results;
 - clipboard URL contents and omission of camera, filter, and dragged-position state;
-- touch long press, keyboard graph search, transient hover restoration, and native empty-stage context menus;
+- touch long press, keyboard graph search, focused hover locking, right-click position stability, and native empty-stage context menus;
 - generated `<meta name="generator">` values;
 - external-origin classification, same-tab behavior, accessible names, and contrast;
 - deterministic 404 recommendations, no-JavaScript root recovery, HTTP 404 status, `HEAD`, root/subpath serving, and missing-resource behavior.

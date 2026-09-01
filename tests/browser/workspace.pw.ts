@@ -167,7 +167,7 @@ test("workspace navigation is standalone, ordered, and viewport-safe", async ({ 
   await expect(header.locator(".nav-menu")).toHaveCount(0);
   await expect(header.locator(".nav-actions > .nav-action").evaluateAll((controls) =>
     controls.filter((control) => !(control as HTMLElement).hidden).map((control) => control.getAttribute("aria-label"))
-  )).resolves.toEqual(["Graph", "Search", "Tags", "Recent", "Orphans", "Brains", "About"]);
+  )).resolves.toEqual(["Graph", "Search", "Tags", "Recent", "Orphans"]);
   for (const control of [launcher, graph, search, ...(await reports)]) {
     await expect(control).toHaveAttribute("title", await control.getAttribute("aria-label") ?? "");
   }
@@ -179,14 +179,21 @@ test("workspace navigation is standalone, ordered, and viewport-safe", async ({ 
   await expect(launcher).toBeFocused();
 });
 
-test("shared navigation exposes Brains and deterministic generator provenance", async ({ page }) => {
+test("Home stays visible while About and generator provenance remain on the chooser", async ({ page }) => {
   await page.goto(`${workspace}/brains/engineering/notes/principles`);
   await expect(page.locator('meta[name="generator"]')).toHaveAttribute(
     "content",
     `Brain v${packageMetadata.version}`,
   );
+  const home = page.getByRole("link", { name: "Home" });
+  await expect(home).toHaveAttribute("href", "/workspace-demo/");
+  expect(await home.evaluate((link) => link.getBoundingClientRect().left)).toBeLessThan(20);
   await page.getByRole("button", { name: "Navigation" }).click();
-  await expect(page.getByRole("link", { name: "Brains" })).toHaveAttribute("href", "/workspace-demo/");
+  await expect(page.getByRole("link", { name: "Brains" })).toHaveCount(0);
+  await expect(page.locator(".site-header").getByRole("button", { name: "About" })).toHaveCount(0);
+  await home.click();
+  await expect(page).toHaveURL(`${workspace}/`);
+  await expect(page.getByRole("link", { name: "Home" })).toHaveCount(0);
   const about = page.getByRole("button", { name: "About" });
   await about.click();
   await expect(about).toHaveAttribute("aria-expanded", "true");
@@ -194,7 +201,13 @@ test("shared navigation exposes Brains and deterministic generator provenance", 
   await expect(page.getByLabel("About Brain").locator(".about-version")).toHaveCSS("user-select", "text");
   await page.keyboard.press("Escape");
   await expect(page.getByLabel("About Brain")).toBeHidden();
-  await expect(page.getByRole("button", { name: "Navigation" })).toBeFocused();
+  await expect(about).toBeFocused();
+
+  await page.goto(`${workspace}/brains/engineering`);
+  const graphHome = page.locator(".graph-controls").getByRole("link", { name: "Home" });
+  await expect(graphHome).toHaveAttribute("href", "/workspace-demo/");
+  await expect(graphHome.locator("xpath=following-sibling::*[1]"))
+    .toHaveAttribute("aria-label", "Filters");
 });
 
 test("combined note browsing retains scope across links, search, and focused Graph actions", async ({ page }) => {
@@ -216,6 +229,10 @@ test("combined note browsing retains scope across links, search, and focused Gra
     "href",
     "/workspace-demo/graph?brains=engineering,design&focus=engineering%2Fprinciples",
   );
+  await expect(page.locator(".note-focus-action")).toHaveAttribute(
+    "href",
+    "/workspace-demo/graph?brains=engineering,design&focus=engineering%2Fprinciples",
+  );
   await page.getByRole("button", { name: "Search" }).click();
   await expect(page.getByLabel("Quick switcher scope")).toHaveValue("selected");
   await page.getByLabel("Search notes and tags").fill("Principles");
@@ -228,6 +245,17 @@ test("combined note browsing retains scope across links, search, and focused Gra
   await expect(page.getByRole("link", { name: "Graph", exact: true })).toHaveAttribute(
     "href",
     "/workspace-demo/graph?brains=engineering,design&focus=design%2Fprinciples",
+  );
+});
+
+test("an isolated note keeps a visible focused-neighborhood action", async ({ page }) => {
+  await page.goto(`${workspace}/brains/research-archive-and-synthesis-source-trails/notes/archive-boundaries`);
+  await expect(page.locator(".local-graph-panel")).toHaveCount(0);
+  const action = page.locator(".note-focus-action");
+  await expect(action).toBeVisible();
+  await expect(action).toHaveAttribute(
+    "href",
+    "/workspace-demo/brains/research-archive-and-synthesis-source-trails?focus=research-archive-and-synthesis-source-trails%2Farchive-boundaries",
   );
 });
 
@@ -282,7 +310,10 @@ test("standalone navigation clears a wrapped long note title", async ({ page }) 
     const range = document.createRange();
     range.selectNodeContents(element);
     const textRects = [...range.getClientRects()];
-    const controls = [document.querySelector(".nav-menu-pill")!.getBoundingClientRect()];
+    const controls = [
+      document.querySelector(".page-home-action")!.getBoundingClientRect(),
+      document.querySelector(".nav-menu-pill")!.getBoundingClientRect(),
+    ];
     return {
       lines: textRects.length,
       overlaps: textRects.some((text) => controls.some((control) => !(
@@ -501,6 +532,7 @@ test("mobile chooser and combined selection remain usable without horizontal ove
   await expect(launcher).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByRole("link", { name: "Graph" })).toBeHidden();
   await expect(page.getByRole("button", { name: "Search" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "About" })).toBeVisible();
   await expect(page.locator(".nav-direct-action")).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(launcher).toBeFocused();
@@ -576,6 +608,24 @@ test("persistent context and graph controls stay contained across supported widt
       return bounds.left >= 0 && bounds.right <= innerWidth && bounds.bottom <= innerHeight;
     })).toBe(true);
   }
+
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto(`${workspace}/brains/engineering`);
+  const activeBrainGeometry = await page.evaluate(() => {
+    const navigation = document.querySelector(".site-header")!.getBoundingClientRect();
+    const controls = document.querySelector(".graph-controls")!.getBoundingClientRect();
+    const children = [...document.querySelectorAll(".graph-controls > *")]
+      .map((control) => control.getBoundingClientRect())
+      .filter((control) => control.width > 0);
+    return {
+      childrenContained: children.every((control) =>
+        control.left >= controls.left && control.right <= controls.right
+      ),
+      overlap: !(controls.right <= navigation.left || controls.left >= navigation.right),
+      noOverflow: document.documentElement.scrollWidth <= innerWidth,
+    };
+  });
+  expect(activeBrainGeometry).toEqual({ childrenContained: true, overlap: false, noOverflow: true });
 });
 
 test("active-brain mobile launcher has direct actions and predictable disclosure focus", async ({ page }) => {
@@ -663,15 +713,7 @@ test("launcher is bounded in short viewports and disables motion when requested"
   expect(geometry.inViewport).toBe(true);
   expect(geometry.scrollHeight).toBeGreaterThan(geometry.clientHeight);
   expect((await page.locator(".site-header").boundingBox())!.y).toBe(collapsed!.y);
-  const about = page.getByRole("button", { name: "About" });
-  await about.scrollIntoViewIfNeeded();
-  await about.click();
-  expect(await page.getByLabel("About Brain").evaluate((panel) => {
-    const bounds = panel.getBoundingClientRect();
-    return bounds.left >= 0 && bounds.top >= 0 && bounds.right <= innerWidth && bounds.bottom <= innerHeight;
-  })).toBe(true);
-  await page.keyboard.press("Escape");
-  await expect(launcher).toBeFocused();
+  await expect(page.locator(".site-header").getByRole("button", { name: "About" })).toHaveCount(0);
 });
 
 test("foreign links and backlinks expose owner text, shape markers, accents, and keyboard links", async ({ page }) => {

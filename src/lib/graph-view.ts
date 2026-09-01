@@ -11,6 +11,7 @@ import {
   GRAPH_DRAG_TOLERANCE,
   hitGraphScreenTarget,
   isInspectionNeighborhoodNode,
+  permitsNodeDrag,
   resolveFocusedVisibility,
   setFocusedInspection,
   setTransientInspection,
@@ -67,6 +68,7 @@ type NodeLabelData = Parameters<typeof drawDiscNodeLabel>[1] & {
   foreign?: boolean;
   labelColor?: string;
   focused?: boolean;
+  suppressHover?: boolean;
 };
 
 let brainMarkPath: Path2D | undefined;
@@ -135,6 +137,7 @@ const drawGraphNodeLabel: typeof drawDiscNodeLabel = (context, data, settings) =
 
 const drawGraphNodeHover: typeof drawDiscNodeLabel = (context, data, settings) => {
   const graphData = data as NodeLabelData;
+  if (graphData.suppressHover) return;
   context.font = `${settings.labelWeight} ${settings.labelSize}px ${settings.labelFont}`;
   context.fillStyle = graphHoverSurface(window.matchMedia("(prefers-color-scheme: light)").matches);
   context.shadowOffsetX = 0;
@@ -393,6 +396,7 @@ function wireHoverAndClick(
   const container = renderer.getContainer();
   const setPointerTarget = (node: string | null) => {
     const startingInspection = node !== null && activeInspectionNode(state) === null;
+    container.style.cursor = node ? "pointer" : "";
     if (!setTransientInspection(graph, state, node)) return;
     if (node) {
       if (startingInspection) onInteraction?.();
@@ -406,7 +410,6 @@ function wireHoverAndClick(
     } else {
       delete container.dataset.transientInspection;
     }
-    container.style.cursor = node ? "pointer" : "";
     renderer.refresh({ skipIndexation: true });
   };
   const onPointerMove = (event: PointerEvent) => {
@@ -535,6 +538,7 @@ function wireNodeDragging(
   let starts = new Map<string, { x: number; y: number; weight: number }>();
 
   renderer.on("downNode", ({ node, event, preventSigmaDefault }) => {
+    if (!permitsNodeDrag(event.original as MouseEvent)) return;
     state.dragged = node;
     state.draggedMoved = false;
     onDragStart?.();
@@ -799,7 +803,11 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     theme,
   };
   const requestedFocus = new URLSearchParams(window.location.search).get("focus");
-  state.focused = requestedFocus ? nodeByCompositeId.get(requestedFocus) ?? null : null;
+  setFocusedInspection(
+    graph,
+    state,
+    requestedFocus ? nodeByCompositeId.get(requestedFocus) ?? null : null,
+  );
   let initialFocusOverride = state.focused !== null;
   const hoverReducers = createHoverReducers(graph, state);
   let query = "";
@@ -897,6 +905,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     const next = node && focusAllowed(node) ? node : null;
     initialFocusOverride = false;
     setFocusedInspection(graph, state, next);
+    delete ui.host.dataset.transientInspection;
     updateFocusUI();
     syncFocusUrl();
     recomputeHidden();
@@ -982,6 +991,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
         res.focused = true;
         res.highlighted = true;
       }
+      if (state.focused && node !== state.focused) res.suppressHover = true;
       if (activeNode) {
         return hoverReducers.nodeReducer(node, res as typeof attrs);
       } else if (query && !label.includes(query)) {
@@ -1389,7 +1399,12 @@ export async function mountLocalGraphs(): Promise<void> {
           const focused = node === state.focused && state.hovered === null
             ? { ...labelAware, focused: true, highlighted: true }
             : labelAware;
-          return hoverReducers.nodeReducer(node, focused);
+          return hoverReducers.nodeReducer(
+            node,
+            state.focused && node !== state.focused
+              ? { ...focused, suppressHover: true }
+              : focused,
+          );
         },
         edgeReducer: hoverReducers.edgeReducer,
       });

@@ -33,6 +33,8 @@ The global graph SHALL let a reader persist the neighborhood currently inspected
 
 On a fine-pointer desktop graph, invoking the context menu over an eligible node marker or rendered title SHALL offer actions to pin or move focus, copy the focused-neighborhood link, and open the note. The native context menu MUST remain available over empty graph space. Touch long press and keyboard-accessible graph search MUST reach the same focused state. A reader MUST be able to copy and clear focus without relying on another right-click.
 
+Secondary-button and context-menu gestures MUST NOT begin or continue node dragging. While a neighborhood is focused, pointer movement over other nodes MUST NOT replace the focused emphasis, reveal another neighborhood, or move graph nodes; the reader MUST clear focus before transient hover inspection resumes.
+
 #### Scenario: Pin a hovered neighborhood
 - **WHEN** a desktop reader opens the context menu over a hovered note marker or rendered title and chooses Pin neighborhood
 - **THEN** that note remains visibly focused after the pointer leaves and the graph URL records its composite identity
@@ -53,9 +55,13 @@ On a fine-pointer desktop graph, invoking the context menu over an eligible node
 - **WHEN** a desktop reader opens the context menu over graph space that does not target a marker or rendered title
 - **THEN** Brain does not suppress the browser's native context menu or change graph focus
 
-#### Scenario: Inspect around an existing pin
-- **WHEN** a reader transiently hovers another node while one neighborhood is focused
-- **THEN** the transient neighborhood may take visual precedence and the persistent focus resumes when transient inspection ends
+#### Scenario: Keep context-menu gestures out of drag state
+- **WHEN** a desktop reader opens a node context menu and moves the pointer before or after pinning
+- **THEN** no node follows the pointer and graph-space positions remain unchanged
+
+#### Scenario: Lock a focused neighborhood
+- **WHEN** a reader moves the pointer over another node while one neighborhood is focused
+- **THEN** the focused note, its direct neighbors, their titles, and incident edges remain the only emphasized neighborhood until the reader clears focus
 
 #### Scenario: Clear an invalidated focus
 - **WHEN** the reader changes Brain selection or an explicit filter so the focused note is no longer included

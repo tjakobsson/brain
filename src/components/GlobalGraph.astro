@@ -1,5 +1,6 @@
 ---
 import { getLinkIndex } from "../lib/link-index";
+import { joinBase, routes } from "../lib/routes";
 import { getWorkspaceSnapshot } from "../lib/vault-state";
 import BrainMark from "./BrainMark.astro";
 import GraphLegend from "./GraphLegend.astro";
@@ -37,6 +38,14 @@ const brainRouteRegistry = snapshot.registry.brains.map(({ id, title }) => ({ id
 <div class="graph-page">
   <div class:list={["graph-shell", "filters-closed", { "has-related-brains": activeBrainId && boundaryBrainIds.size > 0 }]}>
     <div class="graph-controls">
+      {isWorkspace && (
+        <a class="graph-control graph-home-action" href={joinBase(import.meta.env.BASE_URL, routes.home)} aria-label="Home" title="Home">
+          <svg class="graph-control-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m4 10 8-6 8 6v9a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1Z"></path>
+          </svg>
+          <span class="graph-control-label">Home</span>
+        </a>
+      )}
       <button
         id="graph-filter-toggle"
         class="graph-control graph-filter-toggle"
