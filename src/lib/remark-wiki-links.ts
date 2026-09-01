@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { Link, PhrasingContent, Root, Text } from "mdast";
+import type { Emphasis, Link, PhrasingContent, Root, Text } from "mdast";
 import type { VFile } from "vfile";
 import { getLinkIndex } from "./link-index";
 import { transformTextNodes } from "./mdast-text";
@@ -104,6 +104,7 @@ function toLinkNode(
     data: {
       hProperties: {
         className: ["wiki-link", ...(foreign ? ["wiki-link--foreign"] : [])],
+        "data-note-route": route,
         ...(foreign ? {
           "data-brain-id": resolution.targetBrainId,
           style: `--brain-accent: ${brainAccents.get(resolution.targetBrainId) ?? "var(--accent)"}`,
@@ -127,9 +128,21 @@ function splitTextNode(
   const out: PhrasingContent[] = [];
   let cursor = 0;
   for (const link of links) {
-    if (link.index > cursor) out.push({ type: "text", value: node.value.slice(cursor, link.index) });
-    out.push(toLinkNode(link, index, source, base, brainAccents));
-    cursor = link.index + link.length;
+    const linkEnd = link.index + link.length;
+    const highlighted = link.index >= cursor + 2 &&
+      node.value.slice(link.index - 2, link.index) === "==" &&
+      node.value.slice(linkEnd, linkEnd + 2) === "==";
+    const textEnd = highlighted ? link.index - 2 : link.index;
+    if (textEnd > cursor) out.push({ type: "text", value: node.value.slice(cursor, textEnd) });
+    const linked = toLinkNode(link, index, source, base, brainAccents);
+    out.push(highlighted
+      ? {
+          type: "emphasis",
+          children: [linked],
+          data: { hName: "mark" },
+        } satisfies Emphasis
+      : linked);
+    cursor = linkEnd + (highlighted ? 2 : 0);
   }
   if (cursor < node.value.length) out.push({ type: "text", value: node.value.slice(cursor) });
   return out;

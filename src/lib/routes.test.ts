@@ -6,7 +6,12 @@ import {
   joinBase,
   routes,
   routesFor,
+  singularQueryValue,
+  stripBase,
+  withBrainScope,
   withFragment,
+  withGraphFocus,
+  withoutGraphFocus,
   type LogicalRoute,
 } from "./routes";
 
@@ -173,6 +178,118 @@ describe("combined brain selections", () => {
   });
 });
 
+describe("note browsing scope", () => {
+  const note = routesFor({ mode: "workspace", brainId: "engineering" }).note("note-a");
+
+  it("omits absent and empty scope", () => {
+    expect(withBrainScope(registry, note)).toEqual({
+      valid: true,
+      brainIds: [],
+      value: "",
+      route: note,
+    });
+    expect(withBrainScope(registry, `${note}?brains=research#details`, [])).toEqual({
+      valid: true,
+      brainIds: [],
+      value: "",
+      route: `${note}#details`,
+    });
+  });
+
+  it("adds canonical one-Brain and combined scope before other query state", () => {
+    expect(withBrainScope(registry, note, "engineering")).toEqual({
+      valid: true,
+      brainIds: ["engineering"],
+      value: "engineering",
+      route: `${note}?brains=engineering`,
+    });
+    expect(
+      withBrainScope(
+        registry,
+        `${note}?focus=engineering%2Fnote-a#deep-dive`,
+        ["design", "research", "design"],
+      ),
+    ).toEqual({
+      valid: true,
+      brainIds: ["research", "design"],
+      value: "research,design",
+      route: `${note}?brains=research,design&focus=engineering%2Fnote-a#deep-dive`,
+    });
+  });
+
+  it("rejects unknown scope without returning a partial note route", () => {
+    expect(withBrainScope(registry, note, ["research", "missing"])).toEqual({
+      valid: false,
+      unknownBrainIds: ["missing"],
+    });
+  });
+});
+
+describe("focused graph routes", () => {
+  const knownCompositeIds = [
+    "research/note-a",
+    "engineering/note-a",
+    "design/note-b",
+  ] as const;
+
+  it("adds focus to root, per-Brain, and canonical combined graph routes", () => {
+    expect(withGraphFocus(routes.home, knownCompositeIds, "research/note-a")).toBe(
+      "/?focus=research%2Fnote-a",
+    );
+    expect(
+      withGraphFocus(
+        routesFor({ mode: "workspace", brainId: "engineering" }).graph,
+        knownCompositeIds,
+        "engineering/note-a",
+      ),
+    ).toBe("/brains/engineering?focus=engineering%2Fnote-a");
+    expect(
+      withGraphFocus(
+        "/graph?brains=research,design",
+        knownCompositeIds,
+        "design/note-b",
+      ),
+    ).toBe("/graph?brains=research,design&focus=design%2Fnote-b");
+  });
+
+  it("replaces focus without changing valid Brain state or fragments", () => {
+    expect(
+      withGraphFocus(
+        "/graph?focus=research%2Fnote-a&brains=research,design#neighborhood",
+        knownCompositeIds,
+        "design/note-b",
+      ),
+    ).toBe("/graph?brains=research,design&focus=design%2Fnote-b#neighborhood");
+  });
+
+  it("removes absent, unknown, and explicitly cleared focus", () => {
+    const focused = "/graph?brains=research,design&focus=research%2Fnote-a#neighborhood";
+
+    expect(withGraphFocus(focused, knownCompositeIds, "missing/note")).toBe(
+      "/graph?brains=research,design#neighborhood",
+    );
+    expect(withGraphFocus(focused, knownCompositeIds)).toBe(
+      "/graph?brains=research,design#neighborhood",
+    );
+    expect(withoutGraphFocus(focused)).toBe("/graph?brains=research,design#neighborhood");
+  });
+
+  it("keeps focused routes base-correct at root and below a deployment subpath", () => {
+    const focused = withGraphFocus(
+      "/graph?brains=research,design",
+      knownCompositeIds,
+      "research/note-a",
+    );
+
+    expect(joinBase("", focused)).toBe(
+      "/graph?brains=research,design&focus=research%2Fnote-a",
+    );
+    expect(joinBase("/brain-site", focused)).toBe(
+      "/brain-site/graph?brains=research,design&focus=research%2Fnote-a",
+    );
+  });
+});
+
 describe("joinBase", () => {
   const workspace = routesFor({ mode: "workspace", brainId: "engineering" });
   const combined = combinedRoutes(registry, ["design", "research"]);
@@ -248,5 +365,48 @@ describe("joinBase", () => {
     expect(() => joinBase("/vault-repo", "//notes/note-a" as LogicalRoute)).toThrow(
       "Invalid logical route",
     );
+  });
+});
+
+describe("singularQueryValue", () => {
+  it("distinguishes absent, singular, and duplicate parameters", () => {
+    expect(singularQueryValue(new URLSearchParams("focus=note"), "brains")).toEqual({
+      present: false,
+      valid: true,
+    });
+    expect(singularQueryValue(new URLSearchParams("brains=engineering,design"), "brains"))
+      .toEqual({ present: true, valid: true, value: "engineering,design" });
+    expect(singularQueryValue(new URLSearchParams("brains=engineering&brains=unknown"), "brains"))
+      .toEqual({ present: true, valid: false });
+  });
+});
+
+describe("stripBase", () => {
+  it("returns logical paths for root and subpath deployments", () => {
+    expect(stripBase("", "/brains/engineering/notes/missing")).toBe(
+      "/brains/engineering/notes/missing",
+    );
+    expect(stripBase("/", "/brains/engineering/notes/missing")).toBe(
+      "/brains/engineering/notes/missing",
+    );
+    expect(stripBase("/brain-site", "/brain-site/brains/engineering/notes/missing")).toBe(
+      "/brains/engineering/notes/missing",
+    );
+    expect(stripBase("/brain-site/", "/brain-site/")).toBe("/");
+  });
+
+  it("rejects paths outside the base, including overlapping prefixes", () => {
+    expect(stripBase("/brain", "/brains/engineering")).toBeNull();
+    expect(stripBase("/brain-site", "/other/brain-site/notes/missing")).toBeNull();
+    expect(stripBase("/notes", "/notes-other/missing")).toBeNull();
+    expect(stripBase("/notes", "/notes/notes/missing")).toBe("/notes/missing");
+  });
+
+  it("rejects malformed bases and pathnames", () => {
+    expect(() => stripBase("brain-site", "/brain-site/missing")).toThrow(
+      "Invalid deployment base",
+    );
+    expect(stripBase("/brain-site", "brain-site/missing")).toBeNull();
+    expect(stripBase("/brain-site", "//brain-site/missing")).toBeNull();
   });
 });

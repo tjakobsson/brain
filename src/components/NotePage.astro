@@ -5,7 +5,7 @@ import NoteMeta from "./NoteMeta.astro";
 import NoteMentions from "./NoteMentions.astro";
 import GraphLegend from "./GraphLegend.astro";
 import { getLinkIndex } from "../lib/link-index";
-import { joinBase, routesFor } from "../lib/routes";
+import { joinBase, routesFor, withGraphFocus } from "../lib/routes";
 import { getWorkspaceSnapshot } from "../lib/vault-state";
 
 const { entry } = Astro.props;
@@ -54,9 +54,14 @@ const contextualRoutes = routesFor(
 );
 const url = (route: import("../lib/routes").LogicalRoute) =>
   joinBase(import.meta.env.BASE_URL, route);
+const focusedGraphRoute = withGraphFocus(contextualRoutes.graph, [note.compositeId], note.compositeId);
 ---
 
-<BaseLayout title={title} activeBrainId={snapshot.mode === "workspace" ? note.brainId : undefined}>
+<BaseLayout
+  title={title}
+  activeBrainId={snapshot.mode === "workspace" ? note.brainId : undefined}
+  noteContext={{ ownerBrainId: note.brainId, compositeId: note.compositeId }}
+>
   <article data-brain-id={note.brainId} data-brain-title={brain.title}>
     <h1>{title}</h1>
     <NoteMeta
@@ -85,16 +90,16 @@ const url = (route: import("../lib/routes").LogicalRoute) =>
             brains={localLegendBrains}
             activeBrainId={note.brainId}
           />
-          <a href={url(contextualRoutes.graph)}>Open full graph</a>
+          <a href={url(focusedGraphRoute)} data-focused-graph-route>Open full graph</a>
         </div>
       </header>
-      <div class="local-graph" data-slug={entry.id} aria-hidden="true"></div>
+      <div class="local-graph" data-slug={entry.id} data-active-brain-id={note.brainId} aria-hidden="true"></div>
       <nav class="local-graph-links" aria-label="Notes in the connection map">
         <span>Nearby notes</span>
         <ul>
           {nearbyNotes.map((nearby) => (
             <li>
-              <a href={url(nearby.route)}>
+              <a href={url(nearby.route)} data-note-route={nearby.route}>
                 {nearby.title}
                 {nearby.brainId !== note.brainId && <span class="brain-badge">↗ @{nearby.brainId}</span>}
               </a>

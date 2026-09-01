@@ -11,7 +11,8 @@ import {
   GRAPH_DRAG_TOLERANCE,
   hitGraphScreenTarget,
   isInspectionNeighborhoodNode,
-  setPinnedInspection,
+  resolveFocusedVisibility,
+  setFocusedInspection,
   setTransientInspection,
   stopCameraAnimation,
   type GraphHoverState,
@@ -22,6 +23,7 @@ import { GraphMotionController } from "./graph-motion";
 import { ResponsiveGraphScheduler } from "./graph-motion-core";
 import {
   deriveGraphData,
+  deriveFocusedGraphData,
   deriveNoteNeighborhood,
   normalizeGraphData,
   type GraphContext,
@@ -36,7 +38,15 @@ import {
   graphNodeAttributes,
   responsiveLabelSettings,
 } from "./graph-style";
-import { brainSelectionContext, joinBase, routes, type LogicalRoute } from "./routes";
+import {
+  brainSelectionContext,
+  joinBase,
+  routes,
+  singularQueryValue,
+  withBrainScope,
+  withGraphFocus,
+  type LogicalRoute,
+} from "./routes";
 
 /**
  * Browser-side graph rendering shared by the global graph page and the
@@ -56,6 +66,7 @@ type NodeLabelData = Parameters<typeof drawDiscNodeLabel>[1] & {
   brainAccent?: string;
   foreign?: boolean;
   labelColor?: string;
+  focused?: boolean;
 };
 
 let brainMarkPath: Path2D | undefined;
@@ -154,6 +165,23 @@ const drawGraphNodeHover: typeof drawDiscNodeLabel = (context, data, settings) =
   context.shadowOffsetX = 0;
   context.shadowOffsetY = 0;
   context.shadowBlur = 0;
+  if (graphData.focused) {
+    context.beginPath();
+    context.arc(data.x, data.y, data.size + 5, 0, Math.PI * 2);
+    context.strokeStyle = nodeLabelColor(graphData, settings);
+    context.lineWidth = 2;
+    context.setLineDash([3, 2]);
+    context.stroke();
+    context.setLineDash([]);
+    context.beginPath();
+    context.moveTo(data.x, data.y - data.size - 9);
+    context.lineTo(data.x + 4, data.y - data.size - 5);
+    context.lineTo(data.x, data.y - data.size - 1);
+    context.lineTo(data.x - 4, data.y - data.size - 5);
+    context.closePath();
+    context.fillStyle = nodeLabelColor(graphData, settings);
+    context.fill();
+  }
   drawGraphNodeLabel(context, data, settings);
 };
 
@@ -329,18 +357,31 @@ function wireHoverAndClick(
   graph: Graph,
   state: InteractionState,
   onInteraction?: () => void,
+  options: {
+    onFocus?: (node: string | null, fit?: boolean) => void;
+    onContextMenu?: (node: string, event: MouseEvent) => void;
+    onNavigate?: (node: string, route: LogicalRoute) => void;
+  } = {},
 ): void {
   const navigateToNode = (node: string) => {
     onInteraction?.();
     const route = graph.getNodeAttribute(node, "route") as LogicalRoute | undefined;
-    if (route) window.location.assign(joinBase(import.meta.env.BASE_URL, route));
+    if (!route) return;
+    if (options.onNavigate) options.onNavigate(node, route);
+    else window.location.assign(joinBase(import.meta.env.BASE_URL, route));
+  };
+  const focus = (node: string | null, fit = false) => {
+    if (options.onFocus) options.onFocus(node, fit);
+    else {
+      setFocusedInspection(graph, state, node);
+      renderer.getContainer().toggleAttribute("data-focused-inspection", node !== null);
+      renderer.refresh({ skipIndexation: true });
+    }
   };
   const longPress = createLongPressController({
     onActivate: (node) => {
       onInteraction?.();
-      setPinnedInspection(graph, state, node);
-      renderer.getContainer().dataset.pinnedInspection = node;
-      renderer.refresh({ skipIndexation: true });
+      focus(node, true);
     },
   });
   let emptyStageTouch: { x: number; y: number } | null = null;
@@ -381,6 +422,18 @@ function wireHoverAndClick(
   };
   container.addEventListener("pointermove", onPointerMove);
   container.addEventListener("pointerleave", onPointerLeave);
+  const onContextMenu = (event: MouseEvent) => {
+    if (!options.onContextMenu) return;
+    const bounds = container.getBoundingClientRect();
+    const node = graphTargetNode(renderer, graph, state, {
+      x: event.clientX - bounds.left,
+      y: event.clientY - bounds.top,
+    });
+    if (!node) return;
+    event.preventDefault();
+    options.onContextMenu(node, event);
+  };
+  container.addEventListener("contextmenu", onContextMenu);
   container.addEventListener("touchstart", cancelMultiTouch, { passive: true });
   container.addEventListener("touchmove", cancelMultiTouch, { passive: true });
   renderer.on("downNode", ({ node, event }) => {
@@ -402,8 +455,6 @@ function wireHoverAndClick(
       state.draggedMoved = false;
       return;
     }
-    setPinnedInspection(graph, state, null);
-    delete renderer.getContainer().dataset.pinnedInspection;
     navigateToNode(node);
   });
   renderer.on("clickStage", ({ event }) => {
@@ -415,13 +466,9 @@ function wireHoverAndClick(
     }
     const node = graphTargetNode(renderer, graph, state, event);
     if (node) {
-      setPinnedInspection(graph, state, null);
-      delete renderer.getContainer().dataset.pinnedInspection;
       navigateToNode(node);
-    } else if (touchEvent && state.pinned) {
-      setPinnedInspection(graph, state, null);
-      delete renderer.getContainer().dataset.pinnedInspection;
-      renderer.refresh({ skipIndexation: true });
+    } else if (touchEvent && state.focused) {
+      focus(null);
     }
   });
   const touch = renderer.getTouchCaptor();
@@ -442,10 +489,8 @@ function wireHoverAndClick(
   };
   const releaseLongPress = () => {
     longPress.release();
-    if (emptyStageTouch && state.pinned) {
-      setPinnedInspection(graph, state, null);
-      delete renderer.getContainer().dataset.pinnedInspection;
-      renderer.refresh({ skipIndexation: true });
+    if (emptyStageTouch && state.focused) {
+      focus(null);
     }
     emptyStageTouch = null;
   };
@@ -458,6 +503,7 @@ function wireHoverAndClick(
     container.removeEventListener("touchmove", cancelMultiTouch);
     container.removeEventListener("pointermove", onPointerMove);
     container.removeEventListener("pointerleave", onPointerLeave);
+    container.removeEventListener("contextmenu", onContextMenu);
     setTransientInspection(graph, state, null);
     longPress.destroy();
   });
@@ -596,6 +642,15 @@ export interface GlobalGraphUI {
   count: HTMLElement;
   fitViewButton: HTMLButtonElement;
   relatedBrainsToggle?: HTMLButtonElement | null;
+  focusStatus: HTMLElement;
+  focusTitle: HTMLElement;
+  focusCopy: HTMLButtonElement;
+  focusOpen: HTMLAnchorElement;
+  focusClear: HTMLButtonElement;
+  contextMenu: HTMLElement;
+  contextFocus: HTMLButtonElement;
+  contextCopy: HTMLButtonElement;
+  contextOpen: HTMLButtonElement;
 }
 
 export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
@@ -630,9 +685,10 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       ui.relatedBrainsToggle.querySelector<HTMLElement>("[data-control-label]")!.textContent = label;
     }
   }
+  const initialQuery = singularQueryValue(new URLSearchParams(window.location.search), "brains");
   const initialSelection = brainSelectionContext(
     data.brains,
-    new URLSearchParams(window.location.search).get("brains") ?? "",
+    initialQuery.valid && initialQuery.present ? initialQuery.value : "",
   );
   let selectedBrainIds = combined && initialSelection.valid ? [...initialSelection.brainIds] : [];
   const motionScope = () => {
@@ -646,6 +702,8 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       ? { mode: "combined", brainIds: selectedBrainIds }
       : { mode: "all" };
   const graph = buildGraph(data, visualContext);
+  const nodeByCompositeId = new Map(data.nodes.map((node) => [node.compositeId, node.id]));
+  const compositeIds = [...nodeByCompositeId.keys()];
   const theme = graphTheme();
   const renderer = new Sigma(graph, ui.host, baseSettings(theme, graph.order));
   const narrowGraphQuery = window.matchMedia("(max-width: 700px)");
@@ -674,10 +732,13 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     );
   };
   applyResponsiveLabelThreshold();
+  let focusAfterMotion: (() => void) | null = null;
   const motion = new GraphMotionController(renderer, graph, data, () => {
     incrementGraphCounter(ui.host, "motionCompletions");
     relatedBrainsSessionInvalid = false;
     if (relatedBrainsStatePending) saveRelatedBrainsState();
+    focusAfterMotion?.();
+    focusAfterMotion = null;
   }, motionScope());
   const requestSettle = (...args: Parameters<GraphMotionController["settle"]>) => {
     incrementGraphCounter(ui.host, "settleRequests");
@@ -731,12 +792,15 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   let contextEdges = new Set<string>();
   const state: InteractionState = {
     hovered: null,
-    pinned: null,
+    focused: null,
     neighbors: new Set(),
     dragged: null,
     draggedMoved: false,
     theme,
   };
+  const requestedFocus = new URLSearchParams(window.location.search).get("focus");
+  state.focused = requestedFocus ? nodeByCompositeId.get(requestedFocus) ?? null : null;
+  let initialFocusOverride = state.focused !== null;
   const hoverReducers = createHoverReducers(graph, state);
   let query = "";
 
@@ -759,9 +823,90 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     return `${source}\u001f${target}`;
   }
 
+  const focusAllowed = (node: string): boolean => {
+    if (!graph.hasNode(node)) return false;
+    const context = activeBrainId
+      ? { mode: "brain" as const, brainId: activeBrainId, includeForeign: true }
+      : currentContext();
+    return deriveGraphData(data, context).nodes.some(({ id }) => id === node);
+  };
+
+  const focusedRoute = (): LogicalRoute => {
+    const graphContext = brainSelectionContext(
+      data.brains,
+      combined ? selectedBrainIds : activeBrainId ? [activeBrainId] : [],
+    );
+    const current = graphContext.valid ? graphContext.graph : routes.home;
+    const compositeId = state.focused
+      ? graph.getNodeAttribute(state.focused, "compositeId") as string
+      : null;
+    return withGraphFocus(current, compositeIds, compositeId);
+  };
+
+  const syncFocusUrl = () => {
+    const href = joinBase(import.meta.env.BASE_URL, focusedRoute());
+    if (`${window.location.pathname}${window.location.search}` !== href) {
+      window.history.replaceState(null, "", href);
+    }
+  };
+
+  const selectedScope = (): readonly string[] => {
+    if (combined) return selectedBrainIds;
+    if (activeBrainId) return [activeBrainId];
+    return [];
+  };
+
+  const noteHref = (route: LogicalRoute): string => {
+    const scope = selectedScope();
+    const scoped = scope.length > 0 ? withBrainScope(data.brains, route, scope) : null;
+    return joinBase(import.meta.env.BASE_URL, scoped?.valid ? scoped.route : route);
+  };
+
+  const focusIds = () => state.focused
+    ? [state.focused, ...graph.neighbors(state.focused).filter((id) => !hidden.has(id))]
+    : [];
+
+  const updateFocusUI = () => {
+    const node = state.focused;
+    ui.host.toggleAttribute("data-focused-inspection", node !== null);
+    if (!node) {
+      ui.focusStatus.hidden = true;
+      delete ui.host.dataset.focusedNode;
+      return;
+    }
+    const title = data.nodes.find(({ id }) => id === node)?.title ?? node;
+    const route = graph.getNodeAttribute(node, "route") as LogicalRoute;
+    ui.host.dataset.focusedNode = node;
+    ui.focusStatus.hidden = false;
+    ui.focusTitle.textContent = title;
+    ui.focusOpen.href = noteHref(route);
+  };
+
+  const fitFocus = () => {
+    const ids = focusIds();
+    if (ids.length === 0) return;
+    cancelFilterSettle();
+    motion.cancel();
+    responsiveScheduler.defer(responsiveState());
+    responsiveScheduler.flush(applyResponsiveState);
+    incrementGraphCounter(ui.host, "fitRequests");
+    motion.fitView(ids);
+  };
+
+  const setFocus = (node: string | null, fit = false) => {
+    const next = node && focusAllowed(node) ? node : null;
+    initialFocusOverride = false;
+    setFocusedInspection(graph, state, next);
+    updateFocusUI();
+    syncFocusUrl();
+    recomputeHidden();
+    applyReducers();
+    if (fit && next) fitFocus();
+  };
+
   function recomputeHidden(): void {
     hidden.clear();
-    const contextData = deriveGraphData(data, currentContext());
+    const contextData = deriveFocusedGraphData(data, currentContext(), state.focused);
     const contextNodes = new Set(contextData.nodes.map((node) => node.id));
     contextEdges = new Set(contextData.edges.map((edge) => edgeKey(edge.source, edge.target)));
     const types = activeTypes();
@@ -773,8 +918,19 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       else if (!statuses.has(attrs.status as string)) hidden.add(id);
       else if (tag && !(attrs.tags as string[]).includes(tag)) hidden.add(id);
     });
+    const resolvedFocus = resolveFocusedVisibility(
+      hidden,
+      state.focused,
+      state.focused ? graph.neighbors(state.focused).filter((id) => contextNodes.has(id)) : [],
+      initialFocusOverride,
+    );
+    if (state.focused && !resolvedFocus) {
+      setFocusedInspection(graph, state, null);
+      updateFocusUI();
+      syncFocusUrl();
+    }
     const total = graph.order - hidden.size;
-    ui.count.textContent = `${total} of ${contextData.nodes.length} notes`;
+    ui.count.textContent = `${total} of ${contextNodes.size} notes`;
     const visibleNodes = data.nodes.filter((node) => !hidden.has(node.id));
     const visibleBrainIds = data.brains
       .map((brain) => brain.id)
@@ -822,6 +978,10 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       }
       const inspectedNeighborhood = isInspectionNeighborhoodNode(state, node);
       if ((revealNarrowLabels || inspectedNeighborhood) && res.label) res.forceLabel = true;
+      if (node === state.focused && state.hovered === null) {
+        res.focused = true;
+        res.highlighted = true;
+      }
       if (activeNode) {
         return hoverReducers.nodeReducer(node, res as typeof attrs);
       } else if (query && !label.includes(query)) {
@@ -889,6 +1049,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     filterSettleTimer = window.setTimeout(() => {
       filterSettleTimer = null;
       ui.host.removeAttribute("data-filter-settle-pending");
+      if (state.focused) focusAfterMotion = fitFocus;
       requestSettle("filter", visibleIds());
     }, 180);
   };
@@ -920,6 +1081,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     responsiveState(),
     (responsive) => {
       applyResponsiveState(responsive);
+      if (state.focused) focusAfterMotion = fitFocus;
       requestSettle("resize", visibleIds());
     },
   );
@@ -963,6 +1125,8 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       selectedBrainIds = [...selection.brainIds];
       motion.setSessionScope(motionScope());
       refresh();
+      updateFocusUI();
+      syncFocusUrl();
       renderSearchResults();
     });
   }
@@ -989,23 +1153,9 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
         button.append(owner);
         button.setAttribute("aria-label", `${match.title}, ${match.brainTitle} brain @${match.brainId}`);
       }
-      button.addEventListener("click", () => focusNode(match.id));
+      button.addEventListener("click", () => setFocus(match.id, true));
       li.appendChild(button);
       ui.searchResults.appendChild(li);
-    }
-  }
-
-  function focusNode(id: string): void {
-    cancelFilterSettle();
-    motion.cancel();
-    resolveCanceledRelatedBrainsState();
-    responsiveScheduler.defer(responsiveState());
-    responsiveScheduler.flush(applyResponsiveState);
-    const displayData = renderer.getNodeDisplayData(id);
-    if (displayData) {
-      renderer
-        .getCamera()
-        .animate({ x: displayData.x, y: displayData.y, ratio: 0.25 }, { duration: 500 });
     }
   }
 
@@ -1035,6 +1185,75 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   mouse.on("wheel", onWheel);
   wireTheme(renderer, state);
 
+  let menuNode: string | null = null;
+  let copyResetTimer: number | null = null;
+  const closeContextMenu = (restoreFocus = false) => {
+    if (ui.contextMenu.hidden) return;
+    ui.contextMenu.hidden = true;
+    if (restoreFocus) ui.fitViewButton.focus({ preventScroll: true });
+    menuNode = null;
+  };
+  const openContextMenu = (node: string, event: MouseEvent) => {
+    menuNode = node;
+    ui.contextFocus.textContent = state.focused ? "Move focus here" : "Pin neighborhood";
+    ui.contextMenu.hidden = false;
+    ui.contextMenu.style.left = `${event.clientX}px`;
+    ui.contextMenu.style.top = `${event.clientY}px`;
+    const bounds = ui.contextMenu.getBoundingClientRect();
+    const left = Math.max(8, Math.min(event.clientX, window.innerWidth - bounds.width - 8));
+    const top = Math.max(8, Math.min(event.clientY, window.innerHeight - bounds.height - 8));
+    ui.contextMenu.style.left = `${left}px`;
+    ui.contextMenu.style.top = `${top}px`;
+    ui.contextFocus.focus();
+  };
+  const openNode = (node: string) => {
+    const route = graph.getNodeAttribute(node, "route") as LogicalRoute;
+    window.location.assign(noteHref(route));
+  };
+  const copyFocusedLink = async (button: HTMLButtonElement) => {
+    if (!state.focused) return;
+    const previous = button.textContent ?? "Copy link";
+    window.clearTimeout(copyResetTimer ?? undefined);
+    try {
+      await navigator.clipboard.writeText(new URL(joinBase(import.meta.env.BASE_URL, focusedRoute()), window.location.origin).href);
+      button.textContent = "Copied";
+      button.setAttribute("aria-label", "Copied neighborhood link");
+    } catch {
+      button.textContent = "Copy failed";
+      button.setAttribute("aria-label", "Copy neighborhood link failed");
+    }
+    copyResetTimer = window.setTimeout(() => {
+      button.textContent = previous;
+      button.removeAttribute("aria-label");
+      copyResetTimer = null;
+    }, 2000);
+  };
+  ui.contextFocus.addEventListener("click", () => {
+    if (menuNode) setFocus(menuNode, true);
+    closeContextMenu();
+  });
+  ui.contextCopy.addEventListener("click", () => {
+    if (menuNode) setFocus(menuNode);
+    void copyFocusedLink(ui.focusCopy);
+    closeContextMenu();
+  });
+  ui.contextOpen.addEventListener("click", () => {
+    if (menuNode) openNode(menuNode);
+  });
+  ui.focusCopy.addEventListener("click", () => void copyFocusedLink(ui.focusCopy));
+  ui.focusClear.addEventListener("click", () => setFocus(null));
+  document.addEventListener("pointerdown", (event) => {
+    if (!ui.contextMenu.hidden && event.target instanceof Node && !ui.contextMenu.contains(event.target)) {
+      closeContextMenu();
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !ui.contextMenu.hidden) {
+      event.stopImmediatePropagation();
+      closeContextMenu(true);
+    }
+  });
+
   const resizeObserver = new ResizeObserver(() => {
     if (state.dragged) {
       responsiveScheduler.defer(responsiveState());
@@ -1051,7 +1270,11 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     responsiveScheduler.defer(responsiveState());
     if (!state.dragged) responsiveScheduler.flush();
   };
-  wireHoverAndClick(renderer, graph, state, interruptAutomaticMotion);
+  wireHoverAndClick(renderer, graph, state, interruptAutomaticMotion, {
+    onFocus: setFocus,
+    onContextMenu: openContextMenu,
+    onNavigate: (_node, route) => window.location.assign(noteHref(route)),
+  });
   const commitDrag = (_node: string, _neighborhood: string[], moved: boolean) => {
     cancelFilterSettle();
     stopCamera();
@@ -1070,6 +1293,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       motion.cancel();
       resolveCanceledRelatedBrainsState();
     } else if (relatedBrainsStatePending || relatedBrainsSessionInvalid) {
+      if (state.focused) focusAfterMotion = fitFocus;
       requestSettle("filter", visibleIds());
     }
   };
@@ -1090,9 +1314,22 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     motion.destroy();
   });
 
+  if (state.focused && !focusAllowed(state.focused)) {
+    setFocusedInspection(graph, state, null);
+  }
+  updateFocusUI();
+  syncFocusUrl();
   refresh(false);
-  if (!restored.positions) requestSettle("initial", visibleIds());
+  if (state.focused) {
+    if (!restored.positions) {
+      focusAfterMotion = fitFocus;
+      requestSettle("initial", visibleIds());
+    } else {
+      window.requestAnimationFrame(fitFocus);
+    }
+  } else if (!restored.positions) requestSettle("initial", visibleIds());
   else if (!restored.view) fitRenderedGraph(renderer, visibleIds());
+  initialFocusOverride = false;
 }
 
 /* ------------------------------------------------------------------------ */
@@ -1131,7 +1368,7 @@ export async function mountLocalGraphs(): Promise<void> {
       ?.querySelector<HTMLButtonElement>("[data-fit-local-graph]");
     const state: InteractionState = {
       hovered: null,
-      pinned: null,
+      focused: null,
       neighbors: new Set(),
       dragged: null,
       draggedMoved: false,
@@ -1149,7 +1386,10 @@ export async function mountLocalGraphs(): Promise<void> {
           const labelAware = (revealNarrowLabels || inspectedNeighborhood) && brainAware.label
             ? { ...brainAware, forceLabel: true }
             : brainAware;
-          return hoverReducers.nodeReducer(node, labelAware);
+          const focused = node === state.focused && state.hovered === null
+            ? { ...labelAware, focused: true, highlighted: true }
+            : labelAware;
+          return hoverReducers.nodeReducer(node, focused);
         },
         edgeReducer: hoverReducers.edgeReducer,
       });
@@ -1261,7 +1501,20 @@ export async function mountLocalGraphs(): Promise<void> {
       if (state.dragged) resizeDeferredDuringDrag ||= responsiveDeferred;
       else responsiveScheduler.flush();
     };
-    wireHoverAndClick(renderer, graph, state, interruptAutomaticMotion);
+    wireHoverAndClick(renderer, graph, state, interruptAutomaticMotion, {
+      onNavigate: (_node, route) => {
+        const requested = singularQueryValue(new URLSearchParams(window.location.search), "brains");
+        const retained = requested.valid && requested.present
+          ? brainSelectionContext(data.brains, requested.value)
+          : null;
+        const fallbackBrainId = host.dataset.activeBrainId;
+        const scope = retained?.valid && retained.brainIds.length > 0
+          ? retained.brainIds
+          : fallbackBrainId && data.mode === "workspace" ? [fallbackBrainId] : [];
+        const scoped = scope.length > 0 ? withBrainScope(data.brains, route, scope) : null;
+        window.location.assign(joinBase(import.meta.env.BASE_URL, scoped?.valid ? scoped.route : route));
+      },
+    });
     wireNodeDragging(renderer, graph, state, (node) => {
       if (!resizeDeferredDuringDrag) return;
       resizeDeferredDuringDrag = false;

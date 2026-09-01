@@ -5,9 +5,10 @@ import {
   createLongPressController,
   createHoverReducers,
   graphScreenTargets,
+  resolveFocusedVisibility,
   hitGraphScreenTarget,
   isInspectionNeighborhoodNode,
-  setPinnedInspection,
+  setFocusedInspection,
   stopCameraAnimation,
   wireGraphHover,
   type GraphHoverState,
@@ -50,7 +51,7 @@ function fixture() {
   };
   const state: GraphHoverState = {
     hovered: null,
-    pinned: null,
+    focused: null,
     neighbors: new Set(),
     theme: { fadedEdge: "#eeeeee", fadedLabel: "#cccccc", fadedNode: "#dddddd" },
   };
@@ -178,7 +179,7 @@ describe("graph hover interaction", () => {
 
   it("restores pinned inspection after pointer hover and ignores touch hover events", () => {
     const { graph, renderer, emit, state } = fixture();
-    setPinnedInspection(graph, state, "a");
+    setFocusedInspection(graph, state, "a");
     expect(isInspectionNeighborhoodNode(state, "a")).toBe(true);
     expect(isInspectionNeighborhoodNode(state, "b")).toBe(true);
     expect(isInspectionNeighborhoodNode(state, "c")).toBe(false);
@@ -196,9 +197,19 @@ describe("graph hover interaction", () => {
     expect(activeInspectionNode(state)).toBe("a");
     expect(state.neighbors).toEqual(new Set(["b"]));
 
-    setPinnedInspection(graph, state, null);
+    setFocusedInspection(graph, state, null);
     expect(isInspectionNeighborhoodNode(state, "a")).toBe(false);
     expect(isInspectionNeighborhoodNode(state, "b")).toBe(false);
+  });
+
+  it("lets shared focus override stored filters once and clears on explicit exclusion", () => {
+    const restoredHidden = new Set(["a", "b", "c"]);
+    expect(resolveFocusedVisibility(restoredHidden, "a", ["b"], true)).toBe("a");
+    expect(restoredHidden).toEqual(new Set(["c"]));
+
+    const explicitHidden = new Set(["a", "b"]);
+    expect(resolveFocusedVisibility(explicitHidden, "a", ["b"], false)).toBeNull();
+    expect(explicitHidden).toEqual(new Set(["a", "b"]));
   });
 
   it("stops an active camera animation at its current state", () => {

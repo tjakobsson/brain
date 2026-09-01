@@ -30,3 +30,11 @@ Standard Markdown images work too:
 
 > [!warning] Keep links title-based
 > Brain wiki-links target note titles rather than folder paths, so moving a note does not break its connections.
+
+## Open formats
+
+The [CommonMark specification](https://spec.commonmark.org/) documents the
+portable foundation, while the
+[Astro Markdown guide for rendering structured content on static sites](https://docs.astro.build/en/guides/markdown-content/)
+shows one publishing path. An authored raw link works too:
+<a href="https://developer.mozilla.org/en-US/docs/Web/HTML/Element/a">HTML anchor reference</a>.

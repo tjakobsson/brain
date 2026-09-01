@@ -400,15 +400,13 @@ test("global camera actions apply pending responsive state without a resize sett
     await expect(graph).toHaveAttribute("data-responsive-policy", "narrow");
     const dimensions = await graph.evaluate((host) => `${host.clientWidth}:${host.clientHeight}`);
     await expect(graph).toHaveAttribute("data-responsive-dimensions", dimensions);
-    if (action === "fit") {
-      await expect.poll(async () => (await graphCounts(graph)).completions).toBe(before.completions + 1);
-    }
+    await expect.poll(async () => (await graphCounts(graph)).completions).toBe(before.completions + 1);
     await page.waitForTimeout(300);
     expect(await graphCounts(graph)).toEqual({
       responsive: before.responsive + 1,
       settles: before.settles,
-      fits: before.fits + (action === "fit" ? 1 : 0),
-      completions: before.completions + (action === "fit" ? 1 : 0),
+      fits: before.fits + 1,
+      completions: before.completions + 1,
     });
     await page.close();
   }
@@ -453,6 +451,120 @@ test(`local graph inspection fades unrelated content in ${colorScheme} mode`, as
   await expect(page).toHaveURL(new RegExp(`${base}/notes/welcome/?$`));
 });
 }
+
+test("desktop marker and title context menus establish shareable focus without replacing empty-stage behavior", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium-root", "Desktop context-menu coverage runs once.");
+  const { base } = deployment(testInfo);
+  await page.route("**/graph-data.json", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(graphData) }),
+  );
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText(value: string) {
+          (window as unknown as { copiedNeighborhoodLink?: string }).copiedNeighborhoodLink = value;
+          return Promise.resolve();
+        },
+      },
+    });
+  });
+  await page.goto(`${base}/?camera=7&filter=draft`);
+  const graph = page.locator("#global-graph");
+  const nodes = graph.locator("canvas.sigma-nodes");
+  const labels = graph.locator("canvas.sigma-labels");
+  await expect(labels).toBeVisible();
+  await page.waitForTimeout(800);
+  await page.emulateMedia({ colorScheme: "light" });
+  const normalLight = await nodes.screenshot();
+  await page.evaluate(() => {
+    document.addEventListener("contextmenu", (event) => {
+      document.body.dataset.lastContextPrevented = String(event.defaultPrevented);
+    });
+  });
+
+  const target = await targetWithinLabel(page, graph, await longestLabelAnchor(labels));
+  await page.mouse.click(target.x, target.y, { button: "right" });
+  const menu = page.getByRole("menu");
+  await expect(menu).toBeVisible();
+  expect(await menu.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return bounds.left >= 0 && bounds.top >= 0 && bounds.right <= innerWidth && bounds.bottom <= innerHeight;
+  })).toBe(true);
+  await expect(page.locator("body")).toHaveAttribute("data-last-context-prevented", "true");
+  await menu.getByRole("menuitem", { name: "Pin neighborhood" }).click();
+  await expect(graph).toHaveAttribute("data-focused-inspection");
+  await expect(page.locator("[data-graph-focus-status]")).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`${base}/?\\?focus=default%2F.+$`));
+  expect(page.url()).not.toMatch(/[?&](?:camera|x|y|ratio|filter)=/u);
+  const focusedLight = await nodes.screenshot();
+  expect(focusedLight.equals(normalLight)).toBe(false);
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.waitForTimeout(50);
+  const focusedDark = await nodes.screenshot();
+
+  const focusedNode = await graph.getAttribute("data-focused-node");
+  let transientNode: string | null = null;
+  const graphBounds = (await graph.boundingBox())!;
+  for (let y = graphBounds.y + 60; y < graphBounds.y + graphBounds.height - 40 && !transientNode; y += 45) {
+    for (let x = graphBounds.x + 60; x < graphBounds.x + graphBounds.width - 40; x += 45) {
+      await page.mouse.move(x, y);
+      const inspected = await graph.getAttribute("data-transient-inspection");
+      if (inspected && inspected !== focusedNode) {
+        transientNode = inspected;
+        break;
+      }
+    }
+  }
+  expect(transientNode).toBeTruthy();
+  const transientDark = await nodes.screenshot();
+  expect(transientDark.equals(focusedDark)).toBe(false);
+  await expect(graph).toHaveAttribute("data-focused-node", focusedNode ?? "");
+  await graph.dispatchEvent("pointerleave", { pointerType: "mouse" });
+  await expect(graph).not.toHaveAttribute("data-transient-inspection");
+  expect((await nodes.screenshot()).equals(transientDark)).toBe(false);
+  await expect(page.locator("[data-graph-focus-open]")).toHaveAttribute("href", /\/notes\//u);
+  await page.locator("[data-graph-focus-clear]").click();
+  await expect(graph).not.toHaveAttribute("data-focused-inspection");
+  await expect(page).toHaveURL(new RegExp(`${base}/?$`));
+  expect((await nodes.screenshot()).equals(focusedDark)).toBe(false);
+
+  const marker = await nodeLeftOfLabel(page, graph, await longestLabelAnchor(labels));
+  await page.mouse.click(marker.x, marker.y, { button: "right" });
+  await expect(menu).toBeVisible();
+  await menu.getByRole("menuitem", { name: "Copy neighborhood link" }).click();
+  const focusCopy = page.locator("[data-graph-focus-copy]");
+  await expect(focusCopy).toHaveText("Copied");
+  const copied = await page.evaluate(() =>
+    (window as unknown as { copiedNeighborhoodLink?: string }).copiedNeighborhoodLink
+  );
+  expect(copied).toBeTruthy();
+  expect(copied).not.toMatch(/[?&](?:camera|x|y|ratio|filter|position)=/u);
+  expect(new URL(copied!).searchParams.get("focus")).toBe(`default/${focusedNode}`);
+  const recipient = await page.context().newPage();
+  await recipient.setViewportSize({ width: 390, height: 844 });
+  await recipient.route("**/graph-data.json", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(graphData) }),
+  );
+  await recipient.goto(copied!);
+  const recipientGraph = recipient.locator("#global-graph");
+  await expect(recipientGraph).toHaveAttribute("data-focused-node", focusedNode ?? "");
+  await expect.poll(async () => Number(await recipientGraph.getAttribute("data-fit-requests")))
+    .toBeGreaterThan(0);
+  await expect(recipientGraph).toHaveAttribute("data-rendered-label-ids", /hover-target/u);
+  await expect(recipient.locator("[data-graph-focus-status]")).toBeVisible();
+  await recipient.close();
+  await page.locator("[data-graph-focus-clear]").click();
+
+  const bounds = (await graph.boundingBox())!;
+  await page.mouse.click(bounds.x + bounds.width - 8, bounds.y + bounds.height - 8, { button: "right" });
+  await expect(menu).toBeHidden();
+  await expect(page.locator("body")).toHaveAttribute("data-last-context-prevented", "false");
+
+  await page.mouse.click(marker.x, marker.y, { button: "right" });
+  await menu.getByRole("menuitem", { name: "Open note" }).click();
+  await expect(page).toHaveURL(new RegExp(`${base}/notes/.+`));
+});
 
 test("touch long press pins and clears graph inspection", async ({ browser }, testInfo) => {
   test.skip(testInfo.project.name !== "chromium-root", "Trusted touch dispatch uses Chromium CDP once.");
@@ -515,20 +627,22 @@ test("touch long press pins and clears graph inspection", async ({ browser }, te
   };
 
   await addSecondTouch(target);
-  await expect(graph).not.toHaveAttribute("data-pinned-inspection");
+  await expect(graph).not.toHaveAttribute("data-focused-inspection");
   await touch(target, 550);
-  await expect(page).toHaveURL(new RegExp(`${base}/?$`));
-  await expect(graph).toHaveAttribute("data-pinned-inspection");
+  await expect(page).toHaveURL(new RegExp(`${base}/?\\?focus=default%2F.+$`));
+  await expect(graph).toHaveAttribute("data-focused-inspection");
+  await expect(page.locator("[data-graph-focus-status]")).toBeVisible();
   const pinned = await nodesCanvas.screenshot();
   expect(pinned.equals(normal)).toBe(false);
 
   const bounds = (await graph.boundingBox())!;
   const empty = { x: bounds.x + bounds.width - 12, y: bounds.y + bounds.height - 12 };
   await drag(empty, { x: empty.x - 50, y: empty.y - 50 });
-  await expect(graph).toHaveAttribute("data-pinned-inspection");
+  await expect(graph).toHaveAttribute("data-focused-inspection");
 
   await touch(empty);
-  await expect(graph).not.toHaveAttribute("data-pinned-inspection");
+  await expect(graph).not.toHaveAttribute("data-focused-inspection");
+  await expect(page).toHaveURL(new RegExp(`${base}/?$`));
   expect((await nodesCanvas.screenshot()).equals(pinned)).toBe(false);
   await context.close();
 });

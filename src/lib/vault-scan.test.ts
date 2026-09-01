@@ -78,6 +78,15 @@ describe("scanVault", () => {
     expect(backlinks?.[0].context).toBe("This builds on Note B in practice.");
   });
 
+  it("retains highlight delimiters in backlink context for excerpt rendering", () => {
+    writeNote("Note A.md", "This makes ==[[Note B|the result]]== visible.");
+    writeNote("Note B.md", "Nothing.");
+
+    expect(scanVault(dir).backlinks.get("note-b")?.[0].context).toBe(
+      "This makes ==the result== visible.",
+    );
+  });
+
   it("normalizes list-wrapped links in backlink context", () => {
     writeNote("Note A.md", "10. This builds on [[Note\n    B]] in practice.");
     writeNote("Note B.md", "Nothing.");

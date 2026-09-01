@@ -16,6 +16,20 @@ function reloadScript(endpoint) {
   return `<script>(()=>{const events=new EventSource(${JSON.stringify(endpoint)});events.addEventListener("reload",()=>location.reload());})();</script>`;
 }
 
+function isDocumentRequest(request) {
+  const accept = request.headers.accept?.toLowerCase() ?? "";
+  const destination = request.headers["sec-fetch-dest"];
+  return accept.includes("text/html") || destination === "document";
+}
+
+function isMissingPathError(error) {
+  return error?.code === "ENOENT" || error?.code === "ENOTDIR";
+}
+
+function endPlain(response, request, status, message) {
+  response.writeHead(status).end(request.method === "HEAD" ? undefined : message);
+}
+
 export function createGenerationRegistry(output, onRetire) {
   const generations = new Map();
   let active = output;
@@ -88,7 +102,7 @@ export function serveStaticSite({ output, base = "", host, port, liveReload = fa
         return;
       }
       if (prefix && url.pathname !== prefix && !url.pathname.startsWith(`${prefix}/`)) {
-        response.writeHead(404).end("Not found");
+        endPlain(response, request, 404, "Not found");
         return;
       }
       const relative = decodeURIComponent(url.pathname.slice(prefix.length)) || "/";
@@ -98,11 +112,26 @@ export function serveStaticSite({ output, base = "", host, port, liveReload = fa
       response.once("close", acquired.release);
       let filePath = path.resolve(root, `.${relative}`);
       if (filePath !== root && !filePath.startsWith(`${root}${path.sep}`)) {
-        response.writeHead(400).end("Invalid path");
+        endPlain(response, request, 400, "Invalid path");
         return;
       }
-      if ((await fs.stat(filePath)).isDirectory()) filePath = path.join(filePath, "index.html");
-      let body = await fs.readFile(filePath);
+      let body;
+      let status = 200;
+      try {
+        if ((await fs.stat(filePath)).isDirectory()) filePath = path.join(filePath, "index.html");
+        body = await fs.readFile(filePath);
+      } catch (error) {
+        if (!isMissingPathError(error) || !isDocumentRequest(request)) throw error;
+        try {
+          filePath = path.join(root, "404.html");
+          body = await fs.readFile(filePath);
+          status = 404;
+        } catch (fallbackError) {
+          if (!isMissingPathError(fallbackError)) throw fallbackError;
+          endPlain(response, request, 404, "Not found");
+          return;
+        }
+      }
       const html = path.extname(filePath) === ".html";
       if (liveReload && html && request.method !== "HEAD") {
         const text = body.toString("utf8");
@@ -111,13 +140,13 @@ export function serveStaticSite({ output, base = "", host, port, liveReload = fa
           text.includes("</body>") ? text.replace("</body>", `${script}</body>`) : `${text}${script}`,
         );
       }
-      response.writeHead(200, {
+      response.writeHead(status, {
         ...(liveReload && html ? { "Cache-Control": "no-store" } : {}),
         "Content-Type": contentTypes.get(path.extname(filePath)) ?? "application/octet-stream",
       });
       response.end(request.method === "HEAD" ? undefined : body);
     } catch (error) {
-      response.writeHead(error.code === "ENOENT" ? 404 : 500).end("Not found");
+      endPlain(response, request, isMissingPathError(error) ? 404 : 500, "Not found");
     }
   });
 

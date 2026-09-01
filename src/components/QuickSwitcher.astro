@@ -1,7 +1,12 @@
 ---
 /* Cmd+K quick switcher — included in BaseLayout so it exists on every page. */
-interface Props { activeBrainId?: string; combined?: boolean; workspace?: boolean }
-const { activeBrainId, combined = false, workspace = false } = Astro.props;
+interface Props {
+  activeBrainId?: string;
+  combined?: boolean;
+  workspace?: boolean;
+  brainRegistry?: readonly { id: string; title: string }[];
+}
+const { activeBrainId, combined = false, workspace = false, brainRegistry = [] } = Astro.props;
 ---
 
 <div id="quick-switcher" class="switcher-overlay" hidden>
@@ -10,7 +15,7 @@ const { activeBrainId, combined = false, workspace = false } = Astro.props;
       <span>Scope</span>
       <select data-switcher-scope aria-label="Quick switcher scope">
         {activeBrainId && <option value="active">Active brain @{activeBrainId}</option>}
-        {combined && <option value="selected">Selected brains</option>}
+        <option value="selected" data-selected-scope hidden={!combined}>Selected brains</option>
         <option value="all">All brains</option>
       </select>
     </label>
@@ -25,6 +30,7 @@ const { activeBrainId, combined = false, workspace = false } = Astro.props;
       data-active-brain-id={activeBrainId}
       data-combined={combined ? "true" : "false"}
       data-workspace={workspace ? "true" : "false"}
+      data-brain-registry={JSON.stringify(brainRegistry)}
     />
     <ul id="switcher-results" class="switcher-results" role="listbox"></ul>
     <div class="switcher-empty" role="status" aria-live="polite" hidden>No matches.</div>
@@ -33,7 +39,7 @@ const { activeBrainId, combined = false, workspace = false } = Astro.props;
 
 <script>
   import Fuse from "fuse.js";
-  import { joinBase, routes, type LogicalRoute } from "../lib/routes";
+  import { canonicalBrainSelection, joinBase, routes, singularQueryValue, withBrainScope, type LogicalRoute } from "../lib/routes";
 
   interface Entry {
     title: string;
@@ -53,6 +59,8 @@ const { activeBrainId, combined = false, workspace = false } = Astro.props;
   const activeBrainId = input.dataset.activeBrainId;
   const combined = input.dataset.combined === "true";
   const workspace = input.dataset.workspace === "true";
+  const brainRegistry = JSON.parse(input.dataset.brainRegistry ?? "[]") as { id: string; title: string }[];
+  const selectedScope = scope.querySelector<HTMLOptionElement>("[data-selected-scope]")!;
 
   let entries: Entry[] | null = null;
   let fuse: Fuse<Entry> | null = null;
@@ -88,9 +96,18 @@ const { activeBrainId, combined = false, workspace = false } = Astro.props;
     document.body.style.overflow = "hidden";
     for (const region of pageRegions) region.inert = true;
     input.value = "";
-    selectedBrainIds = combined
-      ? (new URLSearchParams(window.location.search).get("brains") ?? "").split(",").filter(Boolean)
-      : [];
+    const requestedScope = singularQueryValue(new URLSearchParams(window.location.search), "brains");
+    const retainedScope = !requestedScope.valid || !requestedScope.present
+      ? null
+      : canonicalBrainSelection(brainRegistry, requestedScope.value);
+    selectedBrainIds = retainedScope?.valid ? [...retainedScope.brainIds] : [];
+    selectedScope.hidden = selectedBrainIds.length === 0;
+    selectedScope.textContent = selectedBrainIds.length > 0
+      ? `Selected brains (${selectedBrainIds.map((id) => `@${id}`).join(", ")})`
+      : "Selected brains";
+    if (selectedBrainIds.length > 0) scope.value = "selected";
+    else if (activeBrainId) scope.value = "active";
+    else scope.value = "all";
     input.focus();
     void search();
   }
@@ -122,7 +139,7 @@ const { activeBrainId, combined = false, workspace = false } = Astro.props;
       kind.textContent = workspace ? `${entry.kind} · @${entry.brainId}` : entry.kind;
       kind.style.setProperty("--brain-accent", entry.brainAccent);
       li.append(label, kind);
-      li.addEventListener("click", () => navigate(entry.route));
+      li.addEventListener("click", () => navigate(entry));
       li.addEventListener("mousemove", () => select(i));
       resultsList.appendChild(li);
     });
@@ -147,8 +164,12 @@ const { activeBrainId, combined = false, workspace = false } = Astro.props;
     } else input.removeAttribute("aria-activedescendant");
   }
 
-  function navigate(route: LogicalRoute): void {
+  function navigate(entry: Entry): void {
     close();
+    const scoped = entry.kind === "note" && selectedBrainIds.length > 0
+      ? withBrainScope(brainRegistry, entry.route, selectedBrainIds)
+      : null;
+    const route = scoped?.valid ? scoped.route : entry.route;
     window.location.assign(joinBase(import.meta.env.BASE_URL, route));
   }
 
@@ -214,7 +235,7 @@ const { activeBrainId, combined = false, workspace = false } = Astro.props;
     } else if (e.key === "Enter") {
       e.preventDefault();
       const entry = results[selected];
-      if (entry) navigate(entry.route);
+      if (entry) navigate(entry);
     }
   });
 </script>

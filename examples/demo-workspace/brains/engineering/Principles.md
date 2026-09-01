@@ -8,7 +8,7 @@ updated: 2026-08-27T15:30:00Z
 
 Small reversible changes make [[Delivery loops]] easier to inspect.
 
-The product should also follow [[@design/Principles|the design principles]] and test its assumptions against [[@research/Evidence#Confidence]].
+The product should also follow ==[[@design/Principles|the design principles]]== and test its assumptions against [[@research/Evidence#Confidence]].
 
 ![Engineering dependency map](media/diagram.svg)
 

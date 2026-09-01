@@ -1,0 +1,104 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { joinBase, routes } from "../lib/routes";
+import { getWorkspaceSnapshot } from "../lib/vault-state";
+
+const snapshot = getWorkspaceSnapshot();
+const brains = snapshot.mode === "workspace"
+  ? snapshot.registry.brains.map(({ id, title }) => ({ id, title }))
+  : [];
+const rootHref = joinBase(import.meta.env.BASE_URL, routes.home);
+---
+
+<BaseLayout title="Page not found">
+  <section
+    class="recovery-page recovery-page--content"
+    data-not-found
+    data-mode={snapshot.mode}
+    data-brains={JSON.stringify(brains)}
+  >
+    <div class="recovery-card">
+      <p class="eyebrow">404 · Page not found</p>
+      <h1>This path has no note yet</h1>
+      <p>The link may be old, incomplete, or waiting for a note to be written.</p>
+      <div class="recovery-actions">
+        <a href={rootHref} data-recovery-link>{snapshot.mode === "workspace" ? "Return to the Brain chooser" : "Return to the graph"}</a>
+        <button type="button" data-open-switcher>Search</button>
+      </div>
+      <section class="not-found-recommendation" data-recommendation hidden aria-live="polite">
+        <p class="eyebrow">Try another doorway</p>
+        <a data-recommendation-link>
+          <strong data-recommendation-title></strong>
+          <span data-recommendation-owner></span>
+          <span data-recommendation-tags></span>
+        </a>
+        <button type="button" data-another-note hidden>Another note</button>
+      </section>
+      <noscript><p>Search is available from the navigation menu when scripting is enabled.</p></noscript>
+    </div>
+  </section>
+</BaseLayout>
+
+<script>
+  import { createNotFoundResult, type NotFoundSearchCandidate } from "../lib/not-found";
+  import { joinBase, routes } from "../lib/routes";
+
+  const page = document.querySelector<HTMLElement>("[data-not-found]")!;
+  const brains = JSON.parse(page.dataset.brains ?? "[]") as { id: string; title: string }[];
+  const mode = page.dataset.mode === "workspace" ? "workspace" : "vault";
+  const recovery = page.querySelector<HTMLAnchorElement>("[data-recovery-link]")!;
+  const recommendation = page.querySelector<HTMLElement>("[data-recommendation]")!;
+  const recommendationLink = page.querySelector<HTMLAnchorElement>("[data-recommendation-link]")!;
+  const recommendationTitle = page.querySelector<HTMLElement>("[data-recommendation-title]")!;
+  const recommendationOwner = page.querySelector<HTMLElement>("[data-recommendation-owner]")!;
+  const recommendationTags = page.querySelector<HTMLElement>("[data-recommendation-tags]")!;
+  const another = page.querySelector<HTMLButtonElement>("[data-another-note]")!;
+  let candidates: NotFoundSearchCandidate[] = [];
+  let advance = 0;
+
+  const input = () => ({
+    deploymentBase: import.meta.env.BASE_URL,
+    pathname: window.location.pathname,
+    search: window.location.search,
+    brains,
+    mode,
+    candidates,
+  } as const);
+
+  const render = () => {
+    const result = createNotFoundResult(input(), advance);
+    recovery.href = result.context.recoveryHref;
+    recovery.textContent = result.context.brainIds.length > 1
+      ? "Return to the selected graph"
+      : result.context.brainIds.length === 1
+        ? `Return to @${result.context.brainIds[0]}'s graph`
+        : mode === "workspace" ? "Return to the Brain chooser" : "Return to the graph";
+    if (!result.recommendation) {
+      recommendation.hidden = true;
+      return;
+    }
+    const { candidate } = result.recommendation;
+    recommendation.hidden = false;
+    recommendationLink.href = result.recommendation.href;
+    recommendationTitle.textContent = candidate.title;
+    recommendationOwner.textContent = `@${candidate.brainId} · ${candidate.brainTitle}`;
+    recommendationTags.textContent = candidate.tags.length > 0 ? candidate.tags.map((tag) => `#${tag}`).join(" ") : "";
+    another.hidden = !result.recommendation.hasAnother;
+  };
+
+  fetch(joinBase(import.meta.env.BASE_URL, routes.searchIndex))
+    .then((response) => {
+      if (!response.ok) throw new Error(`search-index.json: HTTP ${response.status}`);
+      return response.json() as Promise<NotFoundSearchCandidate[]>;
+    })
+    .then((entries) => {
+      candidates = entries;
+      render();
+    })
+    .catch(() => render());
+
+  another.addEventListener("click", () => {
+    advance += 1;
+    render();
+  });
+</script>
