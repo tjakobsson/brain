@@ -4,6 +4,8 @@ import {
   activeInspectionNode,
   createLongPressController,
   createHoverReducers,
+  graphScreenTargets,
+  hitGraphScreenTarget,
   isInspectionNeighborhoodNode,
   setPinnedInspection,
   stopCameraAnimation,
@@ -116,12 +118,13 @@ describe("graph hover interaction", () => {
       color: "#123456",
     };
 
-    expect(nodeReducer("a", attrs)).toEqual(attrs);
-    expect(nodeReducer("b", attrs)).toEqual(attrs);
+    expect(nodeReducer("a", attrs)).toEqual({ ...attrs, forceLabel: true });
+    expect(nodeReducer("b", attrs)).toEqual({ ...attrs, forceLabel: true });
     expect(nodeReducer("d", attrs)).toEqual({
       ...attrs,
       color: "#dddddd",
-      labelColor: "#cccccc",
+      label: "",
+      forceLabel: false,
     });
     expect(attrs).toEqual({
       x: 12,
@@ -135,6 +138,42 @@ describe("graph hover interaction", () => {
     const edgeAttrs = { color: "#654321", hidden: true, label: "relation" };
     expect(edgeReducer("a-b", edgeAttrs)).toEqual(edgeAttrs);
     expect(edgeReducer("c-d", edgeAttrs)).toEqual({ ...edgeAttrs, color: "#eeeeee" });
+  });
+
+  it.each([
+    ["light", { fadedEdge: "#e7e4ea", fadedLabel: "#aaa4b0", fadedNode: "#e1dde5" }],
+    ["dark", { fadedEdge: "#211f25", fadedLabel: "#625e69", fadedNode: "#29262e" }],
+  ])("composes inspection with %s global and local attributes and restores them", (_scheme, theme) => {
+    const { graph, state } = fixture();
+    state.theme = theme;
+    state.hovered = "a";
+    state.neighbors = new Set(["b"]);
+    const reducers = createHoverReducers(graph, state);
+    const globalMatch = { ...graph.getNodeAttributes("a"), label: "Alpha", color: "#abc", forceLabel: false };
+    const localForeign = {
+      ...graph.getNodeAttributes("b"),
+      label: "○ ↗ @other · Beta",
+      color: "#8f8b94",
+      forceLabel: false,
+      foreign: true,
+    };
+    const searchMiss = { ...graph.getNodeAttributes("d"), label: "Delta", color: "#abc", forceLabel: true };
+
+    expect(reducers.nodeReducer("a", globalMatch)).toEqual({ ...globalMatch, forceLabel: true });
+    expect(reducers.nodeReducer("b", localForeign)).toEqual({ ...localForeign, forceLabel: true });
+    expect(reducers.nodeReducer("d", searchMiss)).toEqual({
+      ...searchMiss,
+      color: theme.fadedNode,
+      label: "",
+      forceLabel: false,
+    });
+
+    state.hovered = null;
+    state.neighbors.clear();
+    const restored = createHoverReducers(graph, state);
+    expect(restored.nodeReducer("a", globalMatch)).toBe(globalMatch);
+    expect(restored.nodeReducer("b", localForeign)).toBe(localForeign);
+    expect(restored.nodeReducer("d", searchMiss)).toBe(searchMiss);
   });
 
   it("restores pinned inspection after pointer hover and ignores touch hover events", () => {
@@ -169,6 +208,58 @@ describe("graph hover interaction", () => {
     stopCameraAnimation(renderer as never);
 
     expect(camera.animate).toHaveBeenCalledWith(camera.getState(), { duration: 1 });
+  });
+});
+
+describe("graph screen targets", () => {
+  it("hits markers and long rendered labels, including foreign mark width", () => {
+    const targets = graphScreenTargets([
+      { node: "plain", x: 50, y: 50, radius: 6, label: "Long title", labelWidth: 180, labelRendered: true },
+      {
+        node: "foreign",
+        x: 50,
+        y: 100,
+        radius: 4,
+        label: "Foreign",
+        labelWidth: 60,
+        foreignMarkWidth: 24,
+        labelRendered: true,
+      },
+    ], { width: 300, height: 150 });
+
+    expect(hitGraphScreenTarget(targets, { x: 35, y: 50 })).toBe("plain");
+    expect(hitGraphScreenTarget(targets, { x: 220, y: 50 })).toBe("plain");
+    expect(hitGraphScreenTarget(targets, { x: 140, y: 100 })).toBe("foreign");
+  });
+
+  it("clips targets to the viewport and omits absent or unrendered labels", () => {
+    const targets = graphScreenTargets([
+      { node: "clipped", x: 4, y: 4, radius: 8, label: "Visible", labelWidth: 70, labelRendered: true },
+      { node: "absent", x: 60, y: 60, radius: 5 },
+      { node: "selected-out", x: 90, y: 60, radius: 5, label: "Hidden", labelWidth: 70, labelRendered: false },
+      { node: "outside", x: 180, y: 180, radius: 5, label: "Outside", labelWidth: 70, labelRendered: true },
+    ], { width: 120, height: 100 });
+
+    expect(targets.find((target) => target.node === "clipped" && target.kind === "marker")).toMatchObject({
+      left: 0,
+      top: 0,
+    });
+    expect(targets.filter((target) => target.node === "absent")).toHaveLength(1);
+    expect(targets.filter((target) => target.node === "selected-out")).toHaveLength(1);
+    expect(targets.some((target) => target.node === "outside")).toBe(false);
+    expect(hitGraphScreenTarget(targets, { x: -1, y: 4 })).toBeNull();
+  });
+
+  it("resolves overlapping targets by distance, marker priority, then node ID", () => {
+    const targets = graphScreenTargets([
+      { node: "beta", x: 50, y: 50, radius: 5, label: "Beta", labelWidth: 80, labelRendered: true },
+      { node: "alpha", x: 50, y: 50, radius: 5, label: "Alpha", labelWidth: 80, labelRendered: true },
+      { node: "near", x: 80, y: 50, radius: 5 },
+    ], { width: 200, height: 100 });
+
+    expect(hitGraphScreenTarget(targets, { x: 50, y: 50 })).toBe("alpha");
+    expect(hitGraphScreenTarget(targets, { x: 75, y: 50 })).toBe("near");
+    expect(hitGraphScreenTarget(targets, { x: 120, y: 50 })).toBe("alpha");
   });
 });
 

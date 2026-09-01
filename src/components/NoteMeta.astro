@@ -2,6 +2,7 @@
 import { joinBase, routesFor } from "../lib/routes";
 import { formatTimestamp } from "../lib/timestamps";
 import { getWorkspaceSnapshot } from "../lib/vault-state";
+import BrainMark from "./BrainMark.astro";
 
 interface Props {
   brainId: string;
@@ -14,6 +15,12 @@ interface Props {
 
 const { brainId, type, status, tags, created, updated } = Astro.props;
 const snapshot = getWorkspaceSnapshot();
+const brain = snapshot.mode === "workspace"
+  ? snapshot.registry.brains.find(({ id }) => id === brainId)
+  : undefined;
+if (snapshot.mode === "workspace" && !brain) {
+  throw new Error(`Unknown note brain ${JSON.stringify(brainId)}.`);
+}
 const contextualRoutes = routesFor(
   snapshot.mode === "workspace" ? { mode: "workspace", brainId } : { mode: "vault" },
 );
@@ -22,6 +29,17 @@ const STATUS_GLYPHS = { draft: "○", developing: "◐", established: "●" } as
 ---
 
 <div class="note-meta">
+  {brain && (
+    <span
+      class="note-brain"
+      style={`--brain-accent: ${brain.accent}`}
+      aria-label={`Brain: ${brain.title} (@${brain.id})`}
+      title={brain.title}
+    >
+      <BrainMark />
+      <span class="note-brain__id">@{brain.id}</span>
+    </span>
+  )}
   <span class={`chip type-${type}`}><span class="dot"></span>{type}</span>
   <span class={`status status-${status}`}>
     <span class="glyph">{STATUS_GLYPHS[status]}</span>

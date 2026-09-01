@@ -93,7 +93,7 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
 </section>
 
 <script>
-  import { combinedRoutes, joinBase } from "../lib/routes";
+  import { brainSelectionContext, joinBase } from "../lib/routes";
 
   const form = document.querySelector<HTMLFormElement>("[data-brain-selection]");
   if (form) {
@@ -112,9 +112,9 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
     form.addEventListener("submit", (event) => {
       event.preventDefault();
       const selected = controls.filter((control) => control.checked).map((control) => control.value);
-      const combined = combinedRoutes(registry, selected);
-      if (combined.valid && combined.brainIds.length >= 2) {
-        window.location.assign(joinBase(import.meta.env.BASE_URL, combined.graph));
+      const context = brainSelectionContext(registry, selected);
+      if (context.valid && context.kind === "combined") {
+        window.location.assign(joinBase(import.meta.env.BASE_URL, context.graph));
       }
     });
   }

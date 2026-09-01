@@ -706,7 +706,8 @@ test("mobile local graphs reveal titles relative to their fitted view", async ({
   expect(fittedRatio).toBeGreaterThan(0);
   const fittedInk = await graphInkBounds(graph);
 
-  await canvas.hover();
+  await canvas.hover({ position: { x: 4, y: 4 } });
+  await expect(graph).not.toHaveAttribute("data-transient-inspection");
   await page.mouse.wheel(0, -100);
   await expect.poll(async () => Number(await graph.getAttribute("data-rendered-labels"))).toBe(neighbors.length + 1);
 
@@ -840,6 +841,54 @@ test("mobile local graphs recompose clustered positions for their viewport", asy
   const fittedAfterDragHeight = Math.max(...fittedAfterDrag.map(({ y }) => y))
     - Math.min(...fittedAfterDrag.map(({ y }) => y));
   expect(fittedAfterDragWidth).toBeGreaterThan(fittedAfterDragHeight);
+});
+
+test("a sub-threshold drag resize cannot pin a later local resize", async ({ page }, testInfo) => {
+  const { base } = deployment(testInfo);
+  await preserveGraphPixels(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${base}/notes/welcome`);
+
+  const graph = page.locator(".local-graph");
+  await expect(graph.locator("canvas.sigma-nodes")).toBeVisible();
+  await expect.poll(async () => Number(await graph.getAttribute("data-fit-completions"))).toBeGreaterThan(0);
+  await graph.scrollIntoViewIfNeeded();
+  const dragTargets = [...await graphNodeComponents(graph)].sort((a, b) => a.pixels - b.pixels);
+  const dragCanvas = graph.locator("canvas.sigma-nodes");
+  const dragBounds = (await dragCanvas.boundingBox())!;
+  const dragPixels = await dragCanvas.evaluate((canvas) => ({
+    width: (canvas as HTMLCanvasElement).width,
+    height: (canvas as HTMLCanvasElement).height,
+  }));
+  let dragPoint: { x: number; y: number } | null = null;
+  for (const target of dragTargets) {
+    const point = {
+      x: dragBounds.x + (target.x / dragPixels.width) * dragBounds.width,
+      y: dragBounds.y + (1 - target.y / dragPixels.height) * dragBounds.height,
+    };
+    await page.mouse.move(point.x, point.y);
+    const inspected = await graph.getAttribute("data-transient-inspection");
+    if (inspected && inspected !== "welcome") {
+      dragPoint = point;
+      break;
+    }
+  }
+  expect(dragPoint).not.toBeNull();
+  const responsiveUpdates = Number(await graph.getAttribute("data-responsive-updates"));
+
+  await page.mouse.move(dragPoint!.x, dragPoint!.y);
+  await page.mouse.down();
+  await page.setViewportSize({ width: 391, height: 844 });
+  await page.waitForTimeout(100);
+  await page.mouse.move(dragPoint!.x + 12, dragPoint!.y + 12);
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+  expect(Number(await graph.getAttribute("data-responsive-updates"))).toBe(responsiveUpdates);
+
+  await page.setViewportSize({ width: 430, height: 844 });
+  await expect.poll(async () => Number(await graph.getAttribute("data-responsive-updates")))
+    .toBe(responsiveUpdates + 1);
+  await expect(graph).toHaveAttribute("data-last-settle-pinned-id", "welcome");
 });
 
 test("local graphs resume interrupted motion when the page becomes visible", async ({ page }, testInfo) => {

@@ -25,7 +25,6 @@ const registry = snapshot.registry.brains.map(({ id, title }) => ({ id, title })
     </div>
   </div>
   <div data-combined-graph hidden>
-    <p class="combined-context" data-combined-context aria-live="polite"></p>
     <GlobalGraph combined />
   </div>
 </BaseLayout>
@@ -50,14 +49,6 @@ const registry = snapshot.registry.brains.map(({ id, title }) => ({ id, title })
     if (`${window.location.pathname}${window.location.search}` !== canonical) {
       window.history.replaceState(null, "", canonical);
     }
-    const renderContext = (brainIds: string[]) => {
-      const titles = brainIds.map((id) => registry.find((brain) => brain.id === id)?.title ?? id);
-      graph.querySelector<HTMLElement>("[data-combined-context]")!.textContent = `Combined: ${titles.join(" + ")}`;
-    };
-    renderContext(selection.brainIds);
-    document.addEventListener("brain-selection-change", (event) => {
-      renderContext((event as CustomEvent<{ brainIds: string[] }>).detail.brainIds);
-    });
     graph.hidden = false;
     error.hidden = true;
   }

@@ -200,6 +200,10 @@ const { activeBrainId, combined = false, workspace = false } = Astro.props;
 
   input.addEventListener("input", () => void search());
   scope.addEventListener("change", () => void search());
+  document.addEventListener("brain-selection-change", (event) => {
+    selectedBrainIds = [...(event as CustomEvent<{ brainIds: readonly string[] }>).detail.brainIds];
+    if (!overlay.hidden && scope.value === "selected") void search();
+  });
   input.addEventListener("keydown", (e) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();

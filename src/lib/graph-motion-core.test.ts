@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   MotionGeneration,
-  ResizeSettler,
+  ResponsiveGraphScheduler,
   adaptPositionsToViewport,
   animationDuration,
   graphSignature,
@@ -81,16 +81,16 @@ describe("motion generation", () => {
   });
 });
 
-describe("resize settling", () => {
+describe("responsive graph scheduling", () => {
   it("ignores minor changes and debounces repeated meaningful resizes", () => {
     vi.useFakeTimers();
     const callback = vi.fn();
-    const resize = new ResizeSettler(390, 844, callback);
+    const resize = new ResponsiveGraphScheduler({ width: 390, height: 844, policy: "narrow" }, callback);
     expect(resize.hasPending()).toBe(false);
-    expect(resize.update(400, 850)).toBe(false);
-    expect(resize.update(844, 390)).toBe(true);
+    expect(resize.update({ width: 400, height: 850, policy: "narrow" })).toBe(false);
+    expect(resize.update({ width: 844, height: 390, policy: "wide" })).toBe(true);
     expect(resize.hasPending()).toBe(true);
-    expect(resize.update(900, 390)).toBe(true);
+    expect(resize.update({ width: 900, height: 390, policy: "wide" })).toBe(true);
     vi.advanceTimersByTime(179);
     expect(callback).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
@@ -103,29 +103,78 @@ describe("resize settling", () => {
   it("settles rapid measured changes once at the final dimensions and ignores unchanged overlays", () => {
     vi.useFakeTimers();
     const callback = vi.fn();
-    const resize = new ResizeSettler(1200, 800, callback);
+    const resize = new ResponsiveGraphScheduler({ width: 1200, height: 800, policy: false }, callback);
 
-    expect(resize.update(1200, 800)).toBe(false);
-    expect(resize.update(900, 800)).toBe(true);
-    expect(resize.update(1040, 800)).toBe(true);
-    expect(resize.update(1040, 800)).toBe(false);
+    expect(resize.update({ width: 1200, height: 800, policy: false })).toBe(false);
+    expect(resize.update({ width: 900, height: 800, policy: false })).toBe(true);
+    expect(resize.update({ width: 1040, height: 800, policy: false })).toBe(true);
+    expect(resize.update({ width: 1040, height: 800, policy: false })).toBe(true);
     vi.runAllTimers();
 
     expect(callback).toHaveBeenCalledOnce();
-    expect(callback).toHaveBeenCalledWith(1040, 800);
+    expect(callback).toHaveBeenCalledWith({ width: 1040, height: 800, policy: false });
     vi.useRealTimers();
   });
 
-  it("cancels queued work and rebases dimensions during an interaction", () => {
+  it("applies final dimensions and breakpoint settings once for one burst", () => {
+    vi.useFakeTimers();
+    const resizeRenderer = vi.fn();
+    const applySettings = vi.fn();
+    const requestSettle = vi.fn();
+    const resize = new ResponsiveGraphScheduler(
+      { width: 720, height: 600, policy: "desktop" },
+      ({ width, height, policy }) => {
+        resizeRenderer(width, height);
+        applySettings(policy);
+        requestSettle();
+      },
+    );
+
+    expect(resize.update({ width: 708.5, height: 601, policy: "desktop" })).toBe(false);
+    expect(resize.update({ width: 699.75, height: 602, policy: "narrow" })).toBe(true);
+    expect(resize.update({ width: 688.25, height: 604, policy: "narrow" })).toBe(true);
+    vi.runAllTimers();
+
+    expect(resizeRenderer).toHaveBeenCalledOnce();
+    expect(resizeRenderer).toHaveBeenCalledWith(688.25, 604);
+    expect(applySettings).toHaveBeenCalledOnce();
+    expect(applySettings).toHaveBeenCalledWith("narrow");
+    expect(requestSettle).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+  });
+
+  it("defers and flushes final responsive work during an interaction", () => {
     vi.useFakeTimers();
     const callback = vi.fn();
-    const resize = new ResizeSettler(390, 844, callback);
-    expect(resize.update(844, 390)).toBe(true);
-    resize.reset(844, 390);
-    expect(resize.update(844, 390)).toBe(false);
+    const resize = new ResponsiveGraphScheduler({ width: 390, height: 844, policy: true }, callback);
+    expect(resize.update({ width: 844, height: 390, policy: false })).toBe(true);
+    expect(resize.defer({ width: 900, height: 390, policy: false })).toBe(true);
     vi.runAllTimers();
     expect(callback).not.toHaveBeenCalled();
+    expect(resize.flush()).toBe(true);
+    expect(callback).toHaveBeenCalledWith({ width: 900, height: 390, policy: false });
     vi.useRealTimers();
+  });
+
+  it("reports when deferred interaction work has nothing to flush", () => {
+    const callback = vi.fn();
+    const resize = new ResponsiveGraphScheduler({ width: 390, height: 844, policy: true }, callback);
+
+    expect(resize.defer({ width: 391, height: 844, policy: true })).toBe(false);
+    expect(resize.hasPending()).toBe(false);
+    expect(resize.flush()).toBe(false);
+    expect(callback).not.toHaveBeenCalled();
+  });
+
+  it("can consume responsive work with an interaction-specific callback", () => {
+    const callback = vi.fn();
+    const interactionCallback = vi.fn();
+    const resize = new ResponsiveGraphScheduler({ width: 390, height: 844, policy: true }, callback);
+
+    expect(resize.defer({ width: 844, height: 390, policy: false })).toBe(true);
+    expect(resize.flush(interactionCallback)).toBe(true);
+    expect(interactionCallback).toHaveBeenCalledWith({ width: 844, height: 390, policy: false });
+    expect(callback).not.toHaveBeenCalled();
   });
 });
 

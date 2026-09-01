@@ -1,12 +1,14 @@
 ---
 import { getLinkIndex } from "../lib/link-index";
 import { getWorkspaceSnapshot } from "../lib/vault-state";
+import BrainMark from "./BrainMark.astro";
 import GraphLegend from "./GraphLegend.astro";
 
 interface Props { activeBrainId?: string; combined?: boolean }
 const { activeBrainId, combined = false } = Astro.props;
 const index = getLinkIndex();
 const snapshot = getWorkspaceSnapshot();
+const isWorkspace = snapshot.mode === "workspace";
 const allTags = [...new Set(index.notes.flatMap((note) => note.meta.tags))].sort();
 const typeCounts = new Map<string, number>();
 for (const note of index.notes) {
@@ -26,6 +28,10 @@ if (activeBrainId) {
 const legendBrains = snapshot.registry.brains.filter((brain) =>
   combined || brain.id === activeBrainId || boundaryBrainIds.has(brain.id)
 );
+const contextActionLabel = activeBrain
+  ? `Brain context: ${activeBrain.title}`
+  : combined ? "Brain context: combined brains" : "Brain context: Brain chooser";
+const brainRouteRegistry = snapshot.registry.brains.map(({ id, title }) => ({ id, title }));
 ---
 
 <div class="graph-page">
@@ -76,24 +82,45 @@ const legendBrains = snapshot.registry.brains.filter((brain) =>
         activeBrainId={activeBrainId}
         globalControl
       />
+      {isWorkspace && (
+        <details
+          class="context-switcher"
+          data-registry={JSON.stringify(brainRouteRegistry)}
+          data-active-brain-id={activeBrainId}
+          data-combined={combined ? "true" : "false"}
+        >
+          <summary
+            role="button"
+            aria-label={contextActionLabel}
+            aria-expanded="false"
+            title={contextActionLabel}
+            style={activeBrain ? `--brain-accent: ${activeBrain.accent}` : undefined}
+          >
+            <span class="context-switcher__mark">
+              <BrainMark />
+              <span class="context-switcher__satellite" hidden={!combined} aria-hidden="true"></span>
+            </span>
+          </summary>
+          <form class="context-switcher__panel">
+            <fieldset>
+              <legend>Brain context</legend>
+              {snapshot.registry.brains.map((brain) => (
+                <label style={`--brain-accent: ${brain.accent}`}>
+                  <input type="checkbox" name="brain-context" value={brain.id} checked={brain.id === activeBrainId} />
+                  <BrainMark />
+                  <span class="context-switcher__label" title={`@${brain.id}`}>@{brain.id}</span>
+                </label>
+              ))}
+            </fieldset>
+            <button type="submit">Apply</button>
+          </form>
+        </details>
+      )}
     </div>
     <aside id="graph-sidebar" class="graph-sidebar" inert>
       <h2>Search</h2>
       <input id="graph-search" type="search" placeholder="Find a note..." autocomplete="off" />
       <ul id="graph-search-results" class="graph-search-results"></ul>
-
-      {combined && (
-        <fieldset class="graph-brain-filters">
-          <legend>Brain</legend>
-          {snapshot.registry.brains.map((brain, index) => (
-            <label style={`--brain-accent: ${brain.accent}`}>
-              <input type="checkbox" data-filter="brain" value={brain.id} />
-              <span class={`brain-shape brain-shape--${index % 4}`} aria-hidden="true"></span>
-              <span>@{brain.id}</span>
-            </label>
-          ))}
-        </fieldset>
-      )}
 
       <h2>Type</h2>
       {(["fleeting", "literature", "permanent"] as const).map((type) => (
@@ -158,6 +185,7 @@ const legendBrains = snapshot.registry.brains.filter((brain) =>
 
 <script>
   import { mountGlobalGraph } from "../lib/graph-view";
+  import { brainSelectionContext, joinBase, type BrainSelectionContext } from "../lib/routes";
 
   const q = <T extends Element>(selector: string): T => {
     const element = document.querySelector<T>(selector);
@@ -171,10 +199,11 @@ const legendBrains = snapshot.registry.brains.filter((brain) =>
   const graphFilterStateKey = "brain:graph-filter-values";
   const typeFilters = document.querySelectorAll<HTMLInputElement>('[data-filter="type"]');
   const statusFilters = document.querySelectorAll<HTMLInputElement>('[data-filter="status"]');
-  const brainFilters = document.querySelectorAll<HTMLInputElement>('[data-filter="brain"]');
   const tagFilter = q<HTMLSelectElement>("#graph-tag-filter");
+  const context = document.querySelector<HTMLDetailsElement>(".graph-controls > .context-switcher");
 
   function setFiltersOpen(open: boolean, persist = true): void {
+    if (open && context?.open) context.open = false;
     sidebar.classList.toggle("is-open", open);
     sidebar.inert = !open;
     graphShell.classList.toggle("filters-closed", !open);
@@ -236,6 +265,7 @@ const legendBrains = snapshot.registry.brains.filter((brain) =>
     setFiltersOpen(filterToggle.getAttribute("aria-expanded") !== "true");
   });
   document.addEventListener("graph-legend-open", () => {
+    if (context?.open) context.open = false;
     if (filterToggle.getAttribute("aria-expanded") === "true") setFiltersOpen(false);
   });
   document.addEventListener("keydown", (event) => {
@@ -252,13 +282,80 @@ const legendBrains = snapshot.registry.brains.filter((brain) =>
   }
   tagFilter.addEventListener("change", persistGraphFilters);
 
+  if (context) {
+    const summary = context.querySelector<HTMLElement>(":scope > summary")!;
+    const form = context.querySelector<HTMLFormElement>("form")!;
+    const controls = [...form.querySelectorAll<HTMLInputElement>('input[name="brain-context"]')];
+    const satellite = summary.querySelector<HTMLElement>(".context-switcher__satellite")!;
+    const registry = JSON.parse(context.dataset.registry ?? "[]") as { id: string; title: string }[];
+    const activeBrainId = context.dataset.activeBrainId;
+    const initialInput = context.dataset.combined === "true"
+      ? new URLSearchParams(window.location.search).get("brains") ?? ""
+      : activeBrainId ? [activeBrainId] : [];
+    let current = brainSelectionContext(registry, initialInput);
+
+    const updateContext = (selection: BrainSelectionContext) => {
+      if (!selection.valid) return;
+      current = selection;
+      const label = selection.kind === "chooser"
+        ? "Brain context: Brain chooser"
+        : selection.kind === "combined"
+          ? `Brain context: ${selection.brainIds.length} brains combined`
+          : `Brain context: ${registry.find((brain) => brain.id === selection.brainIds[0])?.title ?? selection.brainIds[0]}`;
+      summary.setAttribute("aria-label", label);
+      summary.title = label;
+      satellite.hidden = selection.kind !== "combined";
+    };
+    const resetControls = () => {
+      if (!current.valid) return;
+      for (const control of controls) control.checked = current.brainIds.includes(control.value);
+    };
+    context.addEventListener("toggle", () => {
+      summary.setAttribute("aria-expanded", String(context.open));
+      if (context.open) {
+        if (filterToggle.getAttribute("aria-expanded") === "true") setFiltersOpen(false);
+        document.dispatchEvent(new CustomEvent("graph-legend-close"));
+        resetControls();
+      }
+    });
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const selection = brainSelectionContext(
+        registry,
+        controls.filter((control) => control.checked).map((control) => control.value),
+      );
+      if (!selection.valid) return;
+      const target = joinBase(import.meta.env.BASE_URL, selection.graph);
+      if (selection.kind === "combined" && context.dataset.combined === "true") {
+        window.history.replaceState(null, "", target);
+        updateContext(selection);
+        context.open = false;
+        document.dispatchEvent(new CustomEvent("brain-selection-change", { detail: selection }));
+      } else {
+        window.location.assign(target);
+      }
+    });
+    document.addEventListener("pointerdown", (event) => {
+      if (context.open && event.target instanceof Node && !context.contains(event.target)) {
+        context.open = false;
+      }
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && context.open) {
+        event.stopImmediatePropagation();
+        context.open = false;
+        summary.focus();
+      }
+    });
+    updateContext(current);
+  }
+
   mountGlobalGraph({
     host: q("#global-graph"),
     searchInput: q<HTMLInputElement>("#graph-search"),
     searchResults: q("#graph-search-results"),
     typeFilters,
     statusFilters,
-    brainFilters,
     tagFilter,
     count: q("#graph-count"),
     fitViewButton: q<HTMLButtonElement>("#graph-fit-view"),
