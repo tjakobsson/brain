@@ -48,6 +48,8 @@ export type BrainScopedRoute =
       readonly unknownBrainIds: readonly string[];
     };
 
+export type GraphContextRoute = BrainScopedRoute;
+
 export type BrainSelectionContext =
   | {
       readonly valid: true;
@@ -211,6 +213,21 @@ export function withGraphFocus(
 ): LogicalRoute {
   const validFocus = focus && new Set(knownCompositeIds).has(focus) ? segment(focus) : undefined;
   return withQueryValue(route, "focus", validFocus);
+}
+
+export function withGraphContext(
+  registry: readonly BrainRouteRegistryEntry[],
+  knownCompositeIds: readonly string[],
+  route: LogicalRoute,
+  selection?: BrainSelectionInput | null,
+  focus?: string | null,
+): GraphContextRoute {
+  const scoped = withBrainScope(registry, route, selection);
+  if (!scoped.valid) return scoped;
+  return {
+    ...scoped,
+    route: withGraphFocus(scoped.route, knownCompositeIds, focus),
+  };
 }
 
 export function withoutGraphFocus(route: LogicalRoute): LogicalRoute {

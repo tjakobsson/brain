@@ -126,6 +126,33 @@ a:hover {
   pointer-events: auto;
 }
 
+.page-note-nav {
+  position: absolute;
+  top: max(0.75rem, env(safe-area-inset-top));
+  left: max(0.75rem, env(safe-area-inset-left));
+  display: flex;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+  pointer-events: auto;
+}
+
+.page-note-nav .nav-action {
+  width: 44px;
+  height: 44px;
+}
+
+.page-note-nav .note-graph-trigger {
+  border-left: 1px solid var(--border);
+  border-radius: 0 999px 999px 0;
+}
+
+.page-note-nav .nav-action:first-child {
+  border-radius: 999px 0 0 999px;
+}
+
 .site-nav-pill {
   display: flex;
   flex-direction: column;

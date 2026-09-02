@@ -39,7 +39,7 @@ const { activeBrainId, combined = false, workspace = false, brainRegistry = [] }
 
 <script>
   import Fuse from "fuse.js";
-  import { canonicalBrainSelection, joinBase, routes, singularQueryValue, withBrainScope, type LogicalRoute } from "../lib/routes";
+  import { canonicalBrainSelection, joinBase, routes, singularQueryValue, withGraphContext, type LogicalRoute } from "../lib/routes";
 
   interface Entry {
     title: string;
@@ -166,8 +166,15 @@ const { activeBrainId, combined = false, workspace = false, brainRegistry = [] }
 
   function navigate(entry: Entry): void {
     close();
-    const scoped = entry.kind === "note" && selectedBrainIds.length > 0
-      ? withBrainScope(brainRegistry, entry.route, selectedBrainIds)
+    const navigationScope = scope.value === "selected"
+      ? selectedBrainIds
+      : scope.value === "active" && activeBrainId ? [activeBrainId] : [];
+    const canRetainFocus = !workspace || scope.value === "selected" || (
+      scope.value === "active" && selectedBrainIds.length === 0
+    );
+    const focus = canRetainFocus ? document.documentElement.dataset.originatingGraphFocus : undefined;
+    const scoped = entry.kind === "note" && (navigationScope.length > 0 || focus)
+      ? withGraphContext(brainRegistry, focus ? [focus] : [], entry.route, navigationScope, focus)
       : null;
     const route = scoped?.valid ? scoped.route : entry.route;
     window.location.assign(joinBase(import.meta.env.BASE_URL, route));

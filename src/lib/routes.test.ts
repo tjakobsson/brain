@@ -10,6 +10,7 @@ import {
   stripBase,
   withBrainScope,
   withFragment,
+  withGraphContext,
   withGraphFocus,
   withoutGraphFocus,
   type LogicalRoute,
@@ -287,6 +288,37 @@ describe("focused graph routes", () => {
     expect(joinBase("/brain-site", focused)).toBe(
       "/brain-site/graph?brains=research,design&focus=research%2Fnote-a",
     );
+  });
+
+  it("composes canonical note scope and originating focus before fragments", () => {
+    const note = `${routesFor({ mode: "workspace", brainId: "engineering" }).note("note-a")}#details` as LogicalRoute;
+    expect(
+      withGraphContext(
+        registry,
+        knownCompositeIds,
+        note,
+        ["design", "research", "design"],
+        "research/note-a",
+      ),
+    ).toEqual({
+      valid: true,
+      brainIds: ["research", "design"],
+      value: "research,design",
+      route: "/brains/engineering/notes/note-a?brains=research,design&focus=research%2Fnote-a#details",
+    });
+  });
+
+  it("drops unknown focus while retaining valid scope and rejects unknown scope", () => {
+    const note = routesFor({ mode: "workspace", brainId: "engineering" }).note("note-a");
+    expect(withGraphContext(registry, knownCompositeIds, note, ["engineering"], "missing/note"))
+      .toEqual({
+        valid: true,
+        brainIds: ["engineering"],
+        value: "engineering",
+        route: `${note}?brains=engineering`,
+      });
+    expect(withGraphContext(registry, knownCompositeIds, note, ["engineering", "missing"], "engineering/note-a"))
+      .toEqual({ valid: false, unknownBrainIds: ["missing"] });
   });
 });
 
