@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.5.0 - 2026-09-02
+
+- Retain the reader's Brain browsing scope across notes, graphs, wiki-links, mentions, and the quick switcher instead of collapsing to each note's owning Brain.
+- Share a focused graph neighborhood by URL, with context-menu and long-press targeting, a persistent non-color focus marker, and Copy, Open, and Clear actions.
+- Separate returning to the retained graph from opening the current note's own focused neighborhood.
+- Make entering a Brain the primary chooser action and reveal combination guidance only after a selection begins.
+- Add an always-visible Home action beside the graph filters and report the generated version from package metadata.
+- Mark external web links with a distinct treatment and an accessible external-site name while keeping same-tab navigation.
+- Serve a custom not-found page with no-JavaScript recovery, search, and a scoped note recommendation, and return HTTP 404 for unknown in-base routes from preview and live serving.
+- Keep global graph legends inside small and coarse-pointer viewports.
+
 ## 1.4.0 - 2026-09-01
 
 - Move Brain selection into the full-graph controls and show each note's owning Brain in its metadata, keeping shared navigation compact and graph context explicit.
