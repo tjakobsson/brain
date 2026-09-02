@@ -1,0 +1,24 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import GlobalGraph from "./GlobalGraph.astro";
+import { getWorkspaceSnapshot } from "../lib/vault-state";
+
+/**
+ * A note's focused-neighborhood page at `<note path>/graph/`. It is the
+ * context graph (full workspace or vault) with the note persistently focused,
+ * so the pathname alone identifies the neighborhood.
+ */
+interface Props {
+  entry: { id: string; data: { title?: string } };
+}
+
+const { entry } = Astro.props;
+const snapshot = getWorkspaceSnapshot();
+const note = snapshot.index.byId.get(entry.id);
+if (!note) throw new Error(`Note ${JSON.stringify(entry.id)} is missing from the workspace index.`);
+const title = entry.data.title ?? note.title;
+---
+
+<BaseLayout title={`${title} neighborhood`} fluid>
+  <GlobalGraph initialFocus={note.compositeId} />
+</BaseLayout>

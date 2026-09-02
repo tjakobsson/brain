@@ -40,6 +40,11 @@ import {
   responsiveLabelSettings,
 } from "./graph-style";
 import {
+  createFocusUrlSync,
+  initialGraphFocus,
+  neighborhoodHref,
+} from "./graph-neighborhood";
+import {
   joinBase,
   routes,
   routesFor,
@@ -664,6 +669,10 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   const data = await fetchGraphData();
   const activeBrainId = ui.host.dataset.activeBrainId;
   const combined = ui.host.dataset.graphMode === "combined";
+  // A note-owned neighborhood page names its note in the host attribute. Its
+  // pathname is the shareable identity, so focus never becomes query state
+  // there and moving focus navigates to the other note's neighborhood page.
+  const neighborhoodPage = ui.host.dataset.neighborhoodPage === "true";
   const relatedBrainsStorageKey = activeBrainId && ui.relatedBrainsToggle
     ? `graph-related-brains:${window.location.pathname}`
     : null;
@@ -802,15 +811,13 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     draggedMoved: false,
     theme,
   };
-  const requestedFocusValue = singularQueryValue(new URLSearchParams(window.location.search), "focus");
-  const requestedFocus = requestedFocusValue.valid && requestedFocusValue.present
-    ? requestedFocusValue.value
-    : null;
+  const requestedFocus = initialGraphFocus(ui.host.dataset.initialFocus, window.location.search);
   setFocusedInspection(
     graph,
     state,
     requestedFocus ? nodeByCompositeId.get(requestedFocus) ?? null : null,
   );
+  const pageNode = neighborhoodPage ? state.focused : null;
   let initialFocusOverride = state.focused !== null;
   const hoverReducers = createHoverReducers(graph, state);
   let query = "";
@@ -842,29 +849,31 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     return deriveGraphData(data, context).nodes.some(({ id }) => id === node);
   };
 
-  const focusedRoute = (): LogicalRoute => {
-    const current = activeBrainId
+  const focusedCompositeId = (): string | null => state.focused
+    ? graph.getNodeAttribute(state.focused, "compositeId") as string
+    : null;
+
+  const syncFocusUrlState = createFocusUrlSync({
+    neighborhoodPage,
+    base: import.meta.env.BASE_URL,
+    graphRoute: activeBrainId
       ? routesFor({ mode: "workspace", brainId: activeBrainId }).graph
-      : routes.home;
-    const compositeId = state.focused
-      ? graph.getNodeAttribute(state.focused, "compositeId") as string
-      : null;
-    return withGraphFocus(current, compositeIds, compositeId);
+      : routes.home,
+    knownCompositeIds: compositeIds,
+    location: window.location,
+    history: window.history,
+  });
+  const syncFocusUrl = () => syncFocusUrlState(focusedCompositeId());
+
+  /** Pathname-only link to a node's own neighborhood page. */
+  const nodeNeighborhoodHref = (node: string): string => {
+    const datum = data.nodes.find(({ id }) => id === node);
+    if (!datum) throw new Error(`graph: unknown node ${node}`);
+    return neighborhoodHref(import.meta.env.BASE_URL, window.location.origin, datum, data.mode);
   };
 
-  const syncFocusUrl = () => {
-    const href = joinBase(import.meta.env.BASE_URL, focusedRoute());
-    if (`${window.location.pathname}${window.location.search}` !== href) {
-      window.history.replaceState(null, "", href);
-    }
-  };
-
-  const noteHref = (route: LogicalRoute): string => {
-    const focus = state.focused
-      ? graph.getNodeAttribute(state.focused, "compositeId") as string
-      : null;
-    return joinBase(import.meta.env.BASE_URL, withGraphFocus(route, compositeIds, focus));
-  };
+  const noteHref = (route: LogicalRoute): string =>
+    joinBase(import.meta.env.BASE_URL, withGraphFocus(route, compositeIds, focusedCompositeId()));
 
   const focusIds = () => state.focused
     ? [state.focused, ...graph.neighbors(state.focused).filter((id) => !hidden.has(id))]
@@ -900,6 +909,15 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   };
 
   const setFocus = (node: string | null, fit = false) => {
+    if (neighborhoodPage) {
+      // The page is one note's neighborhood: another note's focus lives on
+      // that note's page, and clearing has no meaning here.
+      if (node && node !== pageNode && focusAllowed(node)) {
+        window.location.assign(nodeNeighborhoodHref(node));
+        return;
+      }
+      node = pageNode;
+    }
     const next = node && focusAllowed(node) ? node : null;
     initialFocusOverride = false;
     setFocusedInspection(graph, state, next);
@@ -1210,12 +1228,11 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     const route = graph.getNodeAttribute(node, "route") as LogicalRoute;
     window.location.assign(noteHref(route));
   };
-  const copyFocusedLink = async (button: HTMLButtonElement) => {
-    if (!state.focused) return;
+  const copyNeighborhoodLink = async (node: string, button: HTMLButtonElement) => {
     const previous = button.textContent ?? "Copy link";
     window.clearTimeout(copyResetTimer ?? undefined);
     try {
-      await navigator.clipboard.writeText(new URL(joinBase(import.meta.env.BASE_URL, focusedRoute()), window.location.origin).href);
+      await navigator.clipboard.writeText(nodeNeighborhoodHref(node));
       button.textContent = "Copied";
       button.setAttribute("aria-label", "Copied neighborhood link");
     } catch {
@@ -1233,14 +1250,18 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     closeContextMenu();
   });
   ui.contextCopy.addEventListener("click", () => {
-    if (menuNode) setFocus(menuNode);
-    void copyFocusedLink(ui.focusCopy);
+    if (menuNode) {
+      if (!neighborhoodPage) setFocus(menuNode);
+      void copyNeighborhoodLink(menuNode, ui.focusCopy);
+    }
     closeContextMenu();
   });
   ui.contextOpen.addEventListener("click", () => {
     if (menuNode) openNode(menuNode);
   });
-  ui.focusCopy.addEventListener("click", () => void copyFocusedLink(ui.focusCopy));
+  ui.focusCopy.addEventListener("click", () => {
+    if (state.focused) void copyNeighborhoodLink(state.focused, ui.focusCopy);
+  });
   ui.focusClear.addEventListener("click", () => setFocus(null));
   document.addEventListener("pointerdown", (event) => {
     if (!ui.contextMenu.hidden && event.target instanceof Node && !ui.contextMenu.contains(event.target)) {

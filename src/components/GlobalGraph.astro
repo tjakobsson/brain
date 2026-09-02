@@ -5,8 +5,18 @@ import { getWorkspaceSnapshot } from "../lib/vault-state";
 import BrainMark from "./BrainMark.astro";
 import GraphLegend from "./GraphLegend.astro";
 
-interface Props { activeBrainId?: string; combined?: boolean }
-const { activeBrainId, combined = false } = Astro.props;
+interface Props {
+  activeBrainId?: string;
+  combined?: boolean;
+  /**
+   * Composite note ID that a note-owned neighborhood page mounts with. The
+   * page's URL is the destination itself: focus never becomes query state
+   * there, and moving focus navigates to that note's neighborhood page.
+   */
+  initialFocus?: string;
+}
+const { activeBrainId, combined = false, initialFocus } = Astro.props;
+const neighborhoodPage = Boolean(initialFocus);
 const index = getLinkIndex();
 const snapshot = getWorkspaceSnapshot();
 const isWorkspace = snapshot.mode === "workspace";
@@ -27,7 +37,7 @@ if (activeBrainId) {
   }
 }
 const legendBrains = snapshot.registry.brains.filter((brain) =>
-  combined || brain.id === activeBrainId || boundaryBrainIds.has(brain.id)
+  combined || (isWorkspace && !activeBrainId) || brain.id === activeBrainId || boundaryBrainIds.has(brain.id)
 );
 const contextActionLabel = activeBrain
   ? `Brain context: ${activeBrain.title}`
@@ -186,7 +196,7 @@ const brainRouteRegistry = snapshot.registry.brains.map(({ id, title }) => ({ id
         <div>
           <button type="button" data-graph-focus-copy>Copy link</button>
           <a data-graph-focus-open>Open note</a>
-          <button type="button" data-graph-focus-clear>Clear</button>
+          <button type="button" data-graph-focus-clear hidden={neighborhoodPage}>Clear</button>
         </div>
       </section>
       <div class="graph-context-menu" data-graph-context-menu role="menu" hidden>
@@ -199,6 +209,8 @@ const brainRouteRegistry = snapshot.registry.brains.map(({ id, title }) => ({ id
         class="graph-host"
         data-graph-mode={combined ? "combined" : activeBrainId ? "brain" : "all"}
         data-active-brain-id={activeBrainId}
+        data-initial-focus={initialFocus}
+        data-neighborhood-page={neighborhoodPage ? "true" : undefined}
         aria-label={combined ? "Combined brain graph" : activeBrain ? `${activeBrain.title} graph` : "Brain graph"}
       ></div>
     </div>

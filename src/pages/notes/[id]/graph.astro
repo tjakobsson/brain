@@ -1,0 +1,15 @@
+---
+import { getCollection } from "astro:content";
+import NeighborhoodPage from "../../../components/NeighborhoodPage.astro";
+import { vaultNotePagePaths } from "../../../lib/page-paths";
+import { getWorkspaceSnapshot } from "../../../lib/vault-state";
+
+export async function getStaticPaths() {
+  const notes = await getCollection("notes");
+  return vaultNotePagePaths(notes, getWorkspaceSnapshot());
+}
+
+const { entry } = Astro.props;
+---
+
+<NeighborhoodPage entry={entry} />

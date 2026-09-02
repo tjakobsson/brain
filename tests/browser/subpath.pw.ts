@@ -419,8 +419,9 @@ test("all site features stay within the deployment base", async ({ page }, testI
 
   await launcher.click();
   await page.getByRole("link", { name: "Graph", exact: true }).click();
-  await expect(page).toHaveURL(`${origin}${base}/?focus=default%2Fportable-notes`);
+  await expect(page).toHaveURL(`${origin}${base}/notes/portable-notes/graph`);
   await expect(page.locator("#global-graph")).toHaveAttribute("data-focused-node", "portable-notes");
+  await expect(page.locator("[data-graph-focus-status]")).toBeVisible();
   await page.goto(`${base}/notes/welcome`);
   await page.getByRole("button", { name: "Navigation" }).click();
   await page.locator(".nav-actions").getByRole("link", { name: "Tags" }).click();
@@ -633,7 +634,7 @@ test("mobile navigation stays within the deployment base", async ({ page }, test
   await expect(noteHeader.locator(".nav-menu")).toHaveCount(0);
   await expect(noteHeader.getByRole("link", { name: "Graph" })).toHaveAttribute(
     "href",
-    `${base}/`,
+    `${base}/notes/welcome/graph`,
   );
   await expect(noteHeader.getByRole("link", { name: "Tags" })).toHaveAttribute("href", `${base}/tags`);
   await expect(noteHeader.getByRole("link", { name: "Recent" })).toHaveAttribute("href", `${base}/recent`);
@@ -642,7 +643,7 @@ test("mobile navigation stays within the deployment base", async ({ page }, test
   await expect(noteHeader.getByRole("button", { name: "About" })).toHaveCount(0);
   await expect(page.locator(".note-focus-action")).toHaveAttribute(
     "href",
-    `${base}/?focus=default%2Fwelcome`,
+    `${base}/notes/welcome/graph`,
   );
   await expect(noteHeader.getByRole("link", { name: "Orphans" })).toHaveCSS("transform", "none");
   const controlPositions = await noteHeader.evaluate((header) => {
@@ -679,8 +680,54 @@ test("vault QuickSwitcher preserves focused graph return context", async ({ page
   await page.getByRole("button", { name: "Navigation" }).click();
   await expect(page.getByRole("link", { name: "Graph", exact: true })).toHaveAttribute(
     "href",
-    `${base}/?focus=default%2Fwelcome`,
+    `${base}/notes/welcome/graph`,
   );
+});
+
+test("copied neighborhood links are pathname-only and open cold", async ({ browser, page }, testInfo) => {
+  const { origin, base } = deployment(testInfo);
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText(value: string) {
+          (window as unknown as { copiedNeighborhoodLink?: string }).copiedNeighborhoodLink = value;
+          return Promise.resolve();
+        },
+      },
+    });
+  });
+  await page.goto(`${base}/?focus=default%2Fwelcome`);
+  await expect(page.locator("#global-graph")).toHaveAttribute("data-focused-node", "welcome");
+  await page.locator("[data-graph-focus-copy]").click();
+  await expect(page.locator("[data-graph-focus-copy]")).toHaveText("Copied");
+  const copied = await page.evaluate(() =>
+    (window as unknown as { copiedNeighborhoodLink?: string }).copiedNeighborhoodLink
+  );
+  expect(copied).toBe(`${origin}${base}/notes/welcome/graph`);
+
+  const context = await browser.newContext();
+  const recipient = await context.newPage();
+  await recipient.goto(copied!);
+  await expect(recipient).toHaveURL(copied!);
+  await expect(recipient).toHaveTitle("Welcome neighborhood");
+  const recipientGraph = recipient.locator("#global-graph");
+  await expect(recipientGraph).toHaveAttribute("data-focused-node", "welcome");
+  await expect(recipientGraph).toHaveAttribute("data-neighborhood-page", "true");
+  await expect(recipient.locator("[data-graph-focus-status]")).toBeVisible();
+  await expect(recipient.locator("[data-graph-focus-clear]")).toBeHidden();
+  await expect(recipient.locator("[data-graph-focus-open]")).toHaveAttribute(
+    "href",
+    `${base}/notes/welcome?focus=default%2Fwelcome`,
+  );
+  await recipient.locator("[data-graph-focus-open]").click();
+  await expect(recipient).toHaveURL(`${origin}${base}/notes/welcome?focus=default%2Fwelcome`);
+  await recipient.getByRole("button", { name: "Navigation" }).click();
+  await expect(recipient.getByRole("link", { name: "Graph", exact: true })).toHaveAttribute(
+    "href",
+    `${base}/notes/welcome/graph`,
+  );
+  await context.close();
 });
 
 test("nested missing routes serve deterministic base-safe recovery", async ({ page }, testInfo) => {

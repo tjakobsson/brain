@@ -6,9 +6,9 @@
 
 ## 2. Neighborhood Pages
 
-- [ ] 2.1 Add `notes/[slug]/graph` pages for workspace and vault modes that render `GlobalGraph` with the note's composite ID as the initial focus attribute, and verify `npm run build` on the demo vault and demo workspace emits one `graph/index.html` beneath every note directory.
-- [ ] 2.2 Teach `mountGlobalGraph` to take initial focus from the host attribute on neighborhood pages, keep that page's URL free of query state, navigate to another note's neighborhood page when focus moves there, and verify graph-interaction unit tests cover attribute focus, focus moves, and the absence of `replaceState` query writes on neighborhood pages.
-- [ ] 2.3 Point the copied neighborhood link, the note page's Graph action, and the note's focused-neighborhood action at the neighborhood page path with in-session `?focus=` return context resolved to the originating note's page when valid, and verify unit or browser tests assert each emitted link is pathname-only under root and subpath bases.
+- [x] 2.1 Add `notes/[slug]/graph` pages for workspace and vault modes that render `GlobalGraph` with the note's composite ID as the initial focus attribute, and verify `npm run build` on the demo vault and demo workspace emits one `graph/index.html` beneath every note directory.
+- [x] 2.2 Teach `mountGlobalGraph` to take initial focus from the host attribute on neighborhood pages, keep that page's URL free of query state, navigate to another note's neighborhood page when focus moves there, and verify graph-interaction unit tests cover attribute focus, focus moves, and the absence of `replaceState` query writes on neighborhood pages.
+- [x] 2.3 Point the copied neighborhood link, the note page's Graph action, and the note's focused-neighborhood action at the neighborhood page path with in-session `?focus=` return context resolved to the originating note's page when valid, and verify unit or browser tests assert each emitted link is pathname-only under root and subpath bases.
 - [ ] 2.4 Render the connected-domains list on workspace-mode neighborhood pages from the focused node's neighbors with mark, accent, title, count, dimmed-elsewhere state, and lens toggle, omit it in vault mode, and verify a workspace Playwright test checks chip contents for a note with cross-Brain neighbors and a vault Playwright test checks the list is absent.
 
 ## 3. Full Workspace Root and Brain Lens

@@ -186,7 +186,7 @@ test("Home stays visible while About and generator provenance remain on the choo
   const home = page.getByRole("link", { name: "Home" });
   const noteGraph = page.locator(".page-note-nav").getByRole("link", { name: "Graph" });
   await expect(home).toHaveAttribute("href", "/workspace-demo/");
-  await expect(noteGraph).toHaveAttribute("href", "/workspace-demo/brains/engineering");
+  await expect(noteGraph).toHaveAttribute("href", "/workspace-demo/brains/engineering/notes/principles/graph");
   expect(await home.evaluate((link) => {
     const homeBounds = link.getBoundingClientRect();
     const noteNavigationBounds = document.querySelector(".page-note-nav")!.getBoundingClientRect();
@@ -234,127 +234,95 @@ test("Home stays visible while About and generator provenance remain on the choo
     .toHaveAttribute("aria-label", "Filters");
 });
 
-test("combined note browsing retains scope across unpinned and focused Graph actions", async ({ page }) => {
-  await page.goto(`${workspace}/brains/engineering/notes/principles?brains=engineering,design`);
+test("note Graph actions target the note's own neighborhood page", async ({ page }) => {
+  await page.goto(`${workspace}/brains/engineering/notes/principles`);
   await expect(page.locator("article")).toHaveAttribute("data-brain-id", "engineering");
+  const neighborhood = "/workspace-demo/brains/engineering/notes/principles/graph";
 
-  for (const href of await page.locator("a[data-note-route]").evaluateAll((anchors) =>
-    anchors.map((anchor) => (anchor as HTMLAnchorElement).href)
-  )) {
-    expect(new URL(href).searchParams.get("brains")).toBe("engineering,design");
+  const graphAction = page.locator(".page-note-nav").getByRole("link", { name: "Graph" });
+  await expect(graphAction).toHaveAttribute("href", neighborhood);
+  await expect(page.getByRole("link", { name: "Open full graph" })).toHaveAttribute("href", neighborhood);
+  await expect(page.locator(".note-focus-action")).toHaveAttribute("href", neighborhood);
+  for (const href of await page
+    .locator("[data-scoped-graph-route], [data-focused-graph-route]")
+    .evaluateAll((anchors) => anchors.map((anchor) => (anchor as HTMLAnchorElement).href))) {
+    const url = new URL(href);
+    expect(url.search).toBe("");
+    expect(url.hash).toBe("");
+  }
+  for (const href of await page
+    .locator("a[data-note-route]")
+    .evaluateAll((anchors) => anchors.map((anchor) => (anchor as HTMLAnchorElement).href))) {
+    expect(new URL(href).search).toBe("");
   }
 
-  await expect(page.locator(".page-note-nav").getByRole("link", { name: "Graph" })).toHaveAttribute(
-    "href",
-    "/workspace-demo/graph?brains=engineering,design",
-  );
-  await expect(page.getByRole("link", { name: "Open full graph" })).toHaveAttribute(
-    "href",
-    "/workspace-demo/graph?brains=engineering,design&focus=engineering%2Fprinciples",
-  );
-  await expect(page.locator(".note-focus-action")).toHaveAttribute(
-    "href",
-    "/workspace-demo/graph?brains=engineering,design&focus=engineering%2Fprinciples",
-  );
-  await page.getByRole("button", { name: "Navigation" }).click();
-  await page.getByRole("button", { name: "Search" }).click();
-  await expect(page.getByLabel("Quick switcher scope")).toHaveValue("selected");
-  await page.getByLabel("Search notes and tags").fill("Principles");
-  await page.locator("#switcher-results li", { hasText: "@design" }).click();
-  await expect(page).toHaveURL(
-    `${workspace}/brains/design/notes/principles?brains=engineering,design`,
-  );
-  await expect(page.locator("article")).toHaveAttribute("data-brain-id", "design");
-  await expect(page.locator(".page-note-nav").getByRole("link", { name: "Graph" })).toHaveAttribute(
-    "href",
-    "/workspace-demo/graph?brains=engineering,design",
-  );
+  await graphAction.click();
+  await expect(page).toHaveURL(`${new URL(workspace).origin}${neighborhood}`);
+  await expect(page).toHaveTitle("Principles neighborhood");
+  await expect(page.locator("#global-graph")).toHaveAttribute("data-focused-node", "engineering/principles");
+  await expect(page.locator("[data-graph-focus-status]")).toContainText("Principles");
 });
 
-test("fresh visitors can return from shared notes to the originating focused graph", async ({ browser }) => {
+test("fresh visitors open shared neighborhoods and return to them from notes", async ({ browser }) => {
   const context = await browser.newContext();
   const page = await context.newPage();
-  await page.goto(`${workspace}/graph?brains=engineering,design`);
-  await page.getByRole("button", { name: "Filters" }).click();
-  await page.locator("#graph-search").fill("Principles");
-  await page.locator("#graph-search-results button", { hasText: "@engineering" }).click();
+  const neighborhood = `${workspace}/brains/engineering/notes/principles/graph`;
+  await page.goto(neighborhood);
+  const graph = page.locator("#global-graph");
+  await expect(graph).toHaveAttribute("data-focused-node", "engineering/principles");
+  for (const brainId of ["engineering", "design", "research", "research-archive-and-synthesis-source-trails"]) {
+    await expect(graph).toHaveAttribute("data-visible-brain-ids", new RegExp(`(^|,)${brainId}(,|$)`, "u"));
+  }
+  await expect(page.locator("[data-graph-focus-status]")).toBeVisible();
+  await expect(page.locator("[data-graph-focus-status]")).toContainText("Principles");
+  await expect(page.locator("[data-graph-focus-clear]")).toBeHidden();
+  await expect.poll(async () => Number(await graph.getAttribute("data-fit-requests"))).toBeGreaterThan(0);
+  await expect(page).toHaveURL(neighborhood);
 
   const openFocusedNote = page.locator("[data-graph-focus-open]");
   await expect(openFocusedNote).toHaveAttribute(
     "href",
-    "/workspace-demo/brains/engineering/notes/principles?brains=engineering,design&focus=engineering%2Fprinciples",
+    "/workspace-demo/brains/engineering/notes/principles?focus=engineering%2Fprinciples",
   );
   await openFocusedNote.click();
   await expect(page.locator("article")).toHaveAttribute("data-brain-id", "engineering");
   const graphAction = page.locator(".page-note-nav").getByRole("link", { name: "Graph" });
-  await expect(graphAction).toHaveAttribute(
-    "href",
-    "/workspace-demo/graph?brains=engineering,design&focus=engineering%2Fprinciples",
-  );
+  await expect(graphAction).toHaveAttribute("href", "/workspace-demo/brains/engineering/notes/principles/graph");
   await graphAction.click();
-  await expect(page.locator("#global-graph")).toHaveAttribute(
-    "data-focused-node",
-    "engineering/principles",
-  );
+  await expect(page).toHaveURL(neighborhood);
+  await expect(graph).toHaveAttribute("data-focused-node", "engineering/principles");
 
   await page.getByRole("button", { name: "Navigation" }).click();
   await page.getByRole("button", { name: "Search" }).click();
   await page.getByLabel("Search notes and tags").fill("Principles");
   await page.locator("#switcher-results li", { hasText: "@design" }).click();
   await expect(page).toHaveURL(
-    `${workspace}/brains/design/notes/principles?brains=engineering,design&focus=engineering%2Fprinciples`,
+    `${workspace}/brains/design/notes/principles?focus=engineering%2Fprinciples`,
   );
   await expect(page.locator("article")).toHaveAttribute("data-brain-id", "design");
-  await expect(graphAction).toHaveAttribute(
-    "href",
-    "/workspace-demo/graph?brains=engineering,design&focus=engineering%2Fprinciples",
-  );
+  await expect(graphAction).toHaveAttribute("href", "/workspace-demo/brains/engineering/notes/principles/graph");
   await graphAction.click();
-  await expect(page.locator("#global-graph")).toHaveAttribute(
-    "data-focused-node",
-    "engineering/principles",
-  );
+  await expect(page).toHaveURL(neighborhood);
+  await expect(graph).toHaveAttribute("data-focused-node", "engineering/principles");
 
   await page.goto(`${workspace}/brains/engineering?focus=engineering%2Fprinciples`);
-  await expect(page.locator("#global-graph")).toHaveAttribute(
-    "data-focused-node",
-    "engineering/principles",
-  );
+  await expect(graph).toHaveAttribute("data-focused-node", "engineering/principles");
   await page.getByRole("button", { name: "Navigation" }).click();
   await page.getByRole("button", { name: "Search" }).click();
   await page.getByLabel("Search notes and tags").fill("Delivery loops");
   await page.locator("#switcher-results li", { hasText: "Delivery loops" }).click();
   await expect(page).toHaveURL(
-    `${workspace}/brains/engineering/notes/delivery-loops?brains=engineering&focus=engineering%2Fprinciples`,
+    `${workspace}/brains/engineering/notes/delivery-loops?focus=engineering%2Fprinciples`,
   );
+  await expect(graphAction).toHaveAttribute("href", "/workspace-demo/brains/engineering/notes/principles/graph");
 
-  await page.goto(
-    `${workspace}/brains/design/notes/principles?brains=engineering,design&focus=research%2Fevidence`,
-  );
-  await expect(graphAction).toHaveAttribute(
-    "href",
-    "/workspace-demo/graph?brains=engineering,design",
-  );
-  await expect(page).toHaveURL(
-    `${workspace}/brains/design/notes/principles?brains=engineering,design`,
-  );
+  await page.goto(`${workspace}/brains/engineering/notes/delivery-loops`);
+  await expect(graphAction).toHaveAttribute("href", "/workspace-demo/brains/engineering/notes/delivery-loops/graph");
+
+  await page.goto(`${workspace}/brains/design/notes/principles?focus=research%2Fmissing-note`);
+  await expect(graphAction).toHaveAttribute("href", "/workspace-demo/brains/design/notes/principles/graph");
+  await expect(page).toHaveURL(`${workspace}/brains/design/notes/principles`);
   await context.close();
-});
-
-test("invalid shared note scope uses selection recovery instead of owner fallback", async ({ page }) => {
-  await page.goto(
-    `${workspace}/brains/design/notes/principles?brains=engineering,unknown&focus=engineering%2Fprinciples`,
-  );
-  await expect(page).toHaveURL(
-    `${workspace}/graph?brains=engineering,unknown&focus=engineering%2Fprinciples`,
-  );
-  await expect(page.getByRole("alert")).toContainText("Unknown Brain: @unknown");
-
-  await page.goto(
-    `${workspace}/brains/design/notes/principles?brains=engineering&brains=design`,
-  );
-  await expect(page).toHaveURL(`${workspace}/graph?brains=engineering&brains=design`);
-  await expect(page.getByRole("alert")).toContainText("must contain one brains parameter");
 });
 
 test("an isolated note keeps a visible focused-neighborhood action", async ({ page }) => {
@@ -364,33 +332,38 @@ test("an isolated note keeps a visible focused-neighborhood action", async ({ pa
   await expect(action).toBeVisible();
   await expect(action).toHaveAttribute(
     "href",
-    "/workspace-demo/brains/research-archive-and-synthesis-source-trails?focus=research-archive-and-synthesis-source-trails%2Farchive-boundaries",
+    "/workspace-demo/brains/research-archive-and-synthesis-source-trails/notes/archive-boundaries/graph",
+  );
+  await action.click();
+  await expect(page.locator("#global-graph")).toHaveAttribute(
+    "data-focused-node",
+    "research-archive-and-synthesis-source-trails/archive-boundaries",
   );
 });
 
-test("every note-navigation surface traverses without losing combined scope", async ({ page }) => {
-  const scope = "brains=engineering,design";
+test("every note-navigation surface carries in-session return focus", async ({ page }) => {
   const focus = "engineering/principles";
-  const expectRetainedScope = async () => {
-    await expect.poll(() => new URL(page.url()).searchParams.get("brains")).toBe("engineering,design");
-  };
   const expectRetainedFocus = async () => {
     await expect.poll(() => new URL(page.url()).searchParams.get("focus")).toBe(focus);
   };
+  const neighborhood = `${workspace}/brains/engineering/notes/principles/graph`;
 
-  await page.goto(`${workspace}/graph?${scope}`);
+  await page.goto(neighborhood);
   const globalGraph = page.locator("#global-graph");
+  await expect(globalGraph).toHaveAttribute("data-focused-node", focus);
   await expect(globalGraph.locator("canvas.sigma-labels")).toBeVisible();
+  await expect.poll(async () => Number(await globalGraph.getAttribute("data-motion-completions")))
+    .toBeGreaterThan(0);
   await page.waitForTimeout(500);
   let target = await renderedLabelTarget(page, globalGraph);
   await page.mouse.click(target.x, target.y);
-  await expect.poll(() => new URL(page.url()).pathname).toContain("/notes/");
-  await expectRetainedScope();
+  await expect.poll(() => new URL(page.url()).pathname).toMatch(/\/notes\/[^/]+$/u);
+  await expectRetainedFocus();
   await page.locator(".page-note-nav").getByRole("link", { name: "Graph" }).click();
-  await expect(page).toHaveURL(`${workspace}/graph?${scope}`);
-  await expect(page.locator("#global-graph")).not.toHaveAttribute("data-focused-inspection");
+  await expect(page).toHaveURL(neighborhood);
+  await expect(globalGraph).toHaveAttribute("data-focused-node", focus);
 
-  const note = `${workspace}/brains/engineering/notes/principles?${scope}&focus=engineering%2Fprinciples`;
+  const note = `${workspace}/brains/engineering/notes/principles?focus=engineering%2Fprinciples`;
   for (const selector of ["article a.wiki-link", ".mentions a", ".local-graph-links a"]) {
     await page.goto(note);
     const startingPath = new URL(page.url()).pathname;
@@ -398,7 +371,6 @@ test("every note-navigation surface traverses without losing combined scope", as
     await expect(link).toBeVisible();
     await link.click();
     await expect.poll(() => new URL(page.url()).pathname).not.toBe(startingPath);
-    await expectRetainedScope();
     await expectRetainedFocus();
   }
 
@@ -410,14 +382,13 @@ test("every note-navigation surface traverses without losing combined scope", as
   target = await renderedLabelTarget(page, localGraph, await localGraph.getAttribute("data-slug"));
   await page.mouse.click(target.x, target.y);
   await expect.poll(() => new URL(page.url()).pathname).not.toBe(new URL(note).pathname);
-  await expectRetainedScope();
   await expectRetainedFocus();
 
-  const invalidFocusNote = `${workspace}/brains/engineering/notes/principles?${scope}&focus=research%2Fevidence`;
+  const invalidFocusNote = `${workspace}/brains/engineering/notes/principles?focus=research%2Fmissing-note`;
   await page.goto(invalidFocusNote);
   await expect(page.locator(".page-note-nav").getByRole("link", { name: "Graph" })).toHaveAttribute(
     "href",
-    "/workspace-demo/graph?brains=engineering,design",
+    "/workspace-demo/brains/engineering/notes/principles/graph",
   );
   await expect(localGraph.locator("canvas.sigma-labels")).toBeVisible();
   await localGraph.scrollIntoViewIfNeeded();
@@ -425,7 +396,6 @@ test("every note-navigation surface traverses without losing combined scope", as
   target = await renderedLabelTarget(page, localGraph, await localGraph.getAttribute("data-slug"));
   await page.mouse.click(target.x, target.y);
   await expect.poll(() => new URL(page.url()).pathname).not.toBe(new URL(invalidFocusNote).pathname);
-  await expectRetainedScope();
   expect(new URL(page.url()).searchParams.has("focus")).toBe(false);
 });
 
@@ -1087,19 +1057,19 @@ test("graph payload and scoped views keep ownership boundaries and canonical bra
   await expect(page.getByText("No matches.")).toBeVisible();
 });
 
-test("graph search restores focused neighborhoods and explicit exclusion clears them", async ({ page }) => {
+test("graph search pins in-session focus and copies the neighborhood path", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: {
         writeText(value: string) {
-          (window as unknown as { copiedCombinedFocus?: string }).copiedCombinedFocus = value;
+          (window as unknown as { copiedNeighborhoodLink?: string }).copiedNeighborhoodLink = value;
           return Promise.resolve();
         },
       },
     });
   });
-  await page.goto(`${workspace}/graph?brains=engineering,design`);
+  await page.goto(`${workspace}/brains/engineering`);
   const graph = page.locator("#global-graph");
   await expect(graph.locator("canvas.sigma-nodes")).toBeVisible();
   await page.getByRole("button", { name: "Filters" }).click();
@@ -1107,23 +1077,22 @@ test("graph search restores focused neighborhoods and explicit exclusion clears 
   const result = page.locator("#graph-search-results button", { hasText: "@engineering" });
   await result.focus();
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(
-    `${workspace}/graph?brains=engineering,design&focus=engineering%2Fprinciples`,
-  );
+  await expect(page).toHaveURL(`${workspace}/brains/engineering?focus=engineering%2Fprinciples`);
   await expect(graph).toHaveAttribute("data-focused-node", "engineering/principles");
   await expect(page.locator("[data-graph-focus-status]")).toContainText("Principles");
   await page.locator("[data-graph-focus-copy]").click();
+  await expect(page.locator("[data-graph-focus-copy]")).toHaveText("Copied");
   const copied = await page.evaluate(() =>
-    (window as unknown as { copiedCombinedFocus?: string }).copiedCombinedFocus
+    (window as unknown as { copiedNeighborhoodLink?: string }).copiedNeighborhoodLink
   );
-  expect(new URL(copied!).searchParams.get("brains")).toBe("engineering,design");
-  expect(new URL(copied!).searchParams.get("focus")).toBe("engineering/principles");
+  expect(copied).toBe(`${workspace}/brains/engineering/notes/principles/graph`);
   const recipient = await page.context().newPage();
   await recipient.setViewportSize({ width: 390, height: 844 });
   await recipient.goto(copied!);
+  await expect(recipient).toHaveURL(copied!);
   const recipientGraph = recipient.locator("#global-graph");
   await expect(recipientGraph).toHaveAttribute("data-focused-node", "engineering/principles");
-  await expect(recipientGraph).toHaveAttribute("data-visible-brain-ids", "engineering,design");
+  await expect(recipientGraph).toHaveAttribute("data-visible-brain-ids", /engineering,design,research/u);
   await expect.poll(async () => Number(await recipientGraph.getAttribute("data-fit-requests")))
     .toBeGreaterThan(0);
   await expect.poll(async () => Number(await recipientGraph.getAttribute("data-motion-completions")))
@@ -1162,7 +1131,7 @@ test("graph search restores focused neighborhoods and explicit exclusion clears 
   if (await filters.getAttribute("aria-expanded") === "false") await filters.click();
   await page.locator(`[data-filter="type"][value="${focusedType}"]`).uncheck();
   await expect(graph).not.toHaveAttribute("data-focused-node");
-  await expect(page).toHaveURL(`${workspace}/graph?brains=engineering,design`);
+  await expect(page).toHaveURL(`${workspace}/brains/engineering`);
 
   await page.goto(`${workspace}/brains/engineering?focus=design%2Fprinciples`);
   await expect(page.locator("#graph-related-toggle")).toHaveAttribute("aria-pressed", "false");
@@ -1170,10 +1139,53 @@ test("graph search restores focused neighborhoods and explicit exclusion clears 
   await expect(graph).toHaveAttribute("data-foreign-nodes", /[1-9]\d*/u);
 
   await page.goto(
-    `${workspace}/graph?brains=engineering,design&focus=engineering%2Fprinciples&focus=design%2Fprinciples`,
+    `${workspace}/brains/engineering?focus=engineering%2Fprinciples&focus=design%2Fprinciples`,
   );
-  await expect(page).toHaveURL(`${workspace}/graph?brains=engineering,design`);
+  await expect(page).toHaveURL(`${workspace}/brains/engineering`);
   await expect(graph).not.toHaveAttribute("data-focused-node");
+});
+
+test("neighborhood pages keep query-free URLs and move focus by navigation", async ({ page }) => {
+  await page.addInitScript(() => {
+    const calls: string[] = [];
+    (window as unknown as { replaceStateCalls: string[] }).replaceStateCalls = calls;
+    const original = history.replaceState.bind(history);
+    history.replaceState = (data, unused, url) => {
+      calls.push(String(url));
+      original(data, unused, url);
+    };
+  });
+  const neighborhood = `${workspace}/brains/engineering/notes/principles/graph`;
+  await page.goto(neighborhood);
+  const graph = page.locator("#global-graph");
+  await expect(graph).toHaveAttribute("data-focused-node", "engineering/principles");
+  await expect(graph).toHaveAttribute("data-neighborhood-page", "true");
+  await expect(page.locator("[data-graph-focus-clear]")).toBeHidden();
+  await expect(page.locator("[data-graph-focus-copy]")).toBeVisible();
+  await expect(page).toHaveURL(neighborhood);
+
+  await page.getByRole("button", { name: "Filters" }).click();
+  await page.locator("#graph-search").fill("Principles");
+  await page.locator("#graph-search-results button", { hasText: "@design" }).click();
+  await expect(page).toHaveURL(`${workspace}/brains/design/notes/principles/graph`);
+  await expect(graph).toHaveAttribute("data-focused-node", "design/principles");
+  await expect(page.locator("[data-graph-focus-status]")).toContainText("Principles");
+  expect(page.url()).not.toContain("?");
+  expect(await page.evaluate(() =>
+    (window as unknown as { replaceStateCalls: string[] }).replaceStateCalls
+  )).toEqual([]);
+
+  const focusedType = (await page.evaluate(async () =>
+    (await fetch("/workspace-demo/graph-data.json")).json()
+  )).nodes.find((node: { compositeId: string }) => node.compositeId === "design/principles").type;
+  const filters = page.getByRole("button", { name: /Filters|Close filters/ });
+  if (await filters.getAttribute("aria-expanded") === "false") await filters.click();
+  await page.locator(`[data-filter="type"][value="${focusedType}"]`).uncheck();
+  await expect(graph).not.toHaveAttribute("data-focused-node");
+  await expect(page).toHaveURL(`${workspace}/brains/design/notes/principles/graph`);
+  expect(await page.evaluate(() =>
+    (window as unknown as { replaceStateCalls: string[] }).replaceStateCalls
+  )).toEqual([]);
 });
 
 test("graph ownership legend remains non-color-readable on mobile", async ({ page }) => {

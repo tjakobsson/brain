@@ -2,7 +2,7 @@
 import "../styles/global.css";
 import QuickSwitcher from "../components/QuickSwitcher.astro";
 import packageMetadata from "../../package.json";
-import { joinBase, routes, routesFor } from "../lib/routes";
+import { joinBase, routes, routesFor, type LogicalRoute } from "../lib/routes";
 import { getWorkspaceSnapshot } from "../lib/vault-state";
 
 interface Props {
@@ -12,7 +12,7 @@ interface Props {
   fluid?: boolean;
   activeBrainId?: string;
   combined?: boolean;
-  noteContext?: { ownerBrainId: string; compositeId: string };
+  noteContext?: { ownerBrainId: string; compositeId: string; neighborhoodRoute: LogicalRoute };
   chooser?: boolean;
 }
 
@@ -37,10 +37,14 @@ const contextualRoutes = activeBrain
   ? routesFor({ mode: "workspace", brainId: activeBrain.id })
   : routesFor({ mode: "vault" });
 const baseGraphRoute = activeBrain ? contextualRoutes.graph : combined ? routes.graphAlias : routes.home;
+// A note page's Graph action opens the note's own neighborhood page unless
+// valid in-session return context redirects it client-side to the originating
+// note's neighborhood page. Both are pathname-only destinations.
+const noteGraphRoute = noteContext?.neighborhoodRoute ?? baseGraphRoute;
 const hasGraphRoute = !isWorkspace || Boolean(activeBrain) || combined;
 const hasContextReports = !isWorkspace || Boolean(activeBrain);
 const hasNoteNavigation = isWorkspace && Boolean(noteContext) && !fluid && !chooser;
-const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.meta.env.BASE_URL, route);
+const url = (route: LogicalRoute) => joinBase(import.meta.env.BASE_URL, route);
 const brainRegistry = snapshot.registry.brains.map(({ id, title }) => ({ id, title }));
 const generatorLabel = `Brain v${packageMetadata.version}`;
 ---
@@ -51,6 +55,7 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
   data-brain-registry={JSON.stringify(brainRegistry)}
   data-note-focus={noteContext?.compositeId}
   data-note-owner={noteContext?.ownerBrainId}
+  data-note-neighborhood={noteContext?.neighborhoodRoute}
   data-workspace-mode={isWorkspace ? "true" : "false"}
 >
   <head>
@@ -79,7 +84,7 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
           </a>
           <a
             class="nav-action note-graph-trigger"
-            href={url(baseGraphRoute)}
+            href={url(noteGraphRoute)}
             aria-label="Graph"
             title="Graph"
             data-scoped-graph-route
@@ -116,7 +121,7 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
             {!hasNoteNavigation && (
               <a
                 class="nav-action graph-trigger"
-                href={url(baseGraphRoute)}
+                href={url(noteGraphRoute)}
                 aria-label="Graph"
                 title="Graph"
                 data-combined-route={combined ? "" : undefined}
@@ -190,13 +195,13 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
       import {
         joinBase,
         routes,
-        routesFor,
         singularQueryValue,
         withGraphFocus,
         withoutGraphFocus,
         type LogicalRoute,
       } from "../lib/routes";
-      import { deriveGraphData, normalizeGraphData } from "../lib/graph-data";
+      import { normalizeGraphData } from "../lib/graph-data";
+      import { noteGraphActionRoute } from "../lib/graph-neighborhood";
 
       const header = document.querySelector<HTMLElement>(".site-header")!;
       const launcher = header.querySelector<HTMLButtonElement>(".nav-launcher")!;
@@ -259,24 +264,24 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
         window.history.replaceState(null, "", withoutGraphFocus(current));
       };
       if (noteOwner && requestedFocus.present && !requestedFocus.valid) clearInvalidFocus();
-      if (noteOwner && requestedFocus.valid && requestedFocus.present) {
-        const noteGraphRoute = workspaceMode
-          ? routesFor({ mode: "workspace", brainId: noteOwner }).graph
-          : routes.home;
+      const ownNeighborhood = document.documentElement.dataset.noteNeighborhood as LogicalRoute | undefined;
+      if (noteOwner && ownNeighborhood && requestedFocus.valid && requestedFocus.present) {
+        // Return context names the note whose neighborhood the reader came
+        // from. Resolve it against the whole graph so the Graph action becomes
+        // that note's neighborhood page; unknown context degrades to this
+        // note's own page. Either way the link is a pathname.
         const restoreOriginatingFocus = async () => {
           const response = await fetch(joinBase(import.meta.env.BASE_URL, routes.graphData));
           if (!response.ok) throw new Error(`Graph data request failed: ${response.status}`);
           const data = normalizeGraphData(await response.json());
-          const context = workspaceMode
-            ? { mode: "brain" as const, brainId: noteOwner, includeForeign: true }
-            : { mode: "all" as const };
-          const knownCompositeIds = deriveGraphData(data, context).nodes.map(({ compositeId }) => compositeId);
+          const knownCompositeIds = data.nodes.map(({ compositeId }) => compositeId);
           if (!knownCompositeIds.includes(requestedFocus.value)) {
             clearInvalidFocus();
             return;
           }
+          const mode = workspaceMode ? "workspace" : "vault";
+          const graphRoute = noteGraphActionRoute(ownNeighborhood, requestedFocus.value, data.nodes, mode);
           document.documentElement.dataset.originatingGraphFocus = requestedFocus.value;
-          const graphRoute = withGraphFocus(noteGraphRoute, knownCompositeIds, requestedFocus.value);
           for (const anchor of document.querySelectorAll<HTMLAnchorElement>("[data-scoped-graph-route]")) {
             anchor.href = joinBase(import.meta.env.BASE_URL, graphRoute);
           }
