@@ -20,11 +20,28 @@ export interface BrainRouteRegistryEntry {
 
 export type BrainSelectionInput = string | readonly string[];
 
+export type SingularQueryValue =
+  | { readonly present: false; readonly valid: true }
+  | { readonly present: true; readonly valid: true; readonly value: string }
+  | { readonly present: true; readonly valid: false };
+
 export type CanonicalBrainSelection =
   | {
       readonly valid: true;
       readonly brainIds: readonly string[];
       readonly value: string;
+    }
+  | {
+      readonly valid: false;
+      readonly unknownBrainIds: readonly string[];
+    };
+
+export type BrainScopedRoute =
+  | {
+      readonly valid: true;
+      readonly brainIds: readonly string[];
+      readonly value: string;
+      readonly route: LogicalRoute;
     }
   | {
       readonly valid: false;
@@ -57,6 +74,36 @@ export type CombinedRoutes =
 
 function segment(value: string): string {
   return encodeURIComponent(value);
+}
+
+function queryKey(entry: string): string {
+  const key = entry.split("=", 1)[0];
+  try {
+    return decodeURIComponent(key.replaceAll("+", " "));
+  } catch {
+    return key;
+  }
+}
+
+function withQueryValue(
+  route: LogicalRoute,
+  key: "brains" | "focus",
+  value?: string,
+): LogicalRoute {
+  const fragmentIndex = route.indexOf("#");
+  const fragment = fragmentIndex < 0 ? "" : route.slice(fragmentIndex);
+  const beforeFragment = fragmentIndex < 0 ? route : route.slice(0, fragmentIndex);
+  const queryIndex = beforeFragment.indexOf("?");
+  const pathname = queryIndex < 0 ? beforeFragment : beforeFragment.slice(0, queryIndex);
+  const entries = queryIndex < 0 ? [] : beforeFragment.slice(queryIndex + 1).split("&");
+  const retained = entries.filter((entry) => entry && queryKey(entry) !== key);
+
+  if (value !== undefined) {
+    const entry = `${key}=${value}`;
+    key === "brains" ? retained.unshift(entry) : retained.push(entry);
+  }
+
+  return `${pathname}${retained.length > 0 ? `?${retained.join("&")}` : ""}${fragment}`;
 }
 
 export const routes = {
@@ -129,6 +176,47 @@ export function canonicalBrainSelection(
   };
 }
 
+export function singularQueryValue(
+  parameters: URLSearchParams,
+  key: string,
+): SingularQueryValue {
+  const values = parameters.getAll(key);
+  if (values.length === 0) return { present: false, valid: true };
+  if (values.length !== 1) return { present: true, valid: false };
+  return { present: true, valid: true, value: values[0] };
+}
+
+export function withBrainScope(
+  registry: readonly BrainRouteRegistryEntry[],
+  route: LogicalRoute,
+  selection?: BrainSelectionInput | null,
+): BrainScopedRoute {
+  const canonical = canonicalBrainSelection(registry, selection ?? []);
+  if (!canonical.valid) return canonical;
+
+  return {
+    ...canonical,
+    route: withQueryValue(
+      route,
+      "brains",
+      canonical.brainIds.length > 0 ? canonical.value : undefined,
+    ),
+  };
+}
+
+export function withGraphFocus(
+  route: LogicalRoute,
+  knownCompositeIds: readonly string[],
+  focus?: string | null,
+): LogicalRoute {
+  const validFocus = focus && new Set(knownCompositeIds).has(focus) ? segment(focus) : undefined;
+  return withQueryValue(route, "focus", validFocus);
+}
+
+export function withoutGraphFocus(route: LogicalRoute): LogicalRoute {
+  return withQueryValue(route, "focus");
+}
+
 export function combinedRoutes(
   registry: readonly BrainRouteRegistryEntry[],
   selection: BrainSelectionInput,
@@ -182,4 +270,16 @@ export function joinBase(base: string, route: LogicalRoute): string {
   }
   if (!prefix) return route;
   return route === "/" ? `${prefix}/` : `${prefix}${route}`;
+}
+
+export function stripBase(base: string, pathname: string): LogicalRoute | null {
+  const prefix = base === "/" ? "" : base.endsWith("/") ? base.slice(0, -1) : base;
+  if (prefix && (!prefix.startsWith("/") || prefix.startsWith("//"))) {
+    throw new Error(`Invalid deployment base: ${base}`);
+  }
+  if (!pathname.startsWith("/") || pathname.startsWith("//")) return null;
+  if (!prefix) return pathname as LogicalRoute;
+  if (pathname === `${prefix}/`) return "/";
+  if (!pathname.startsWith(`${prefix}/`)) return null;
+  return pathname.slice(prefix.length) as LogicalRoute;
 }

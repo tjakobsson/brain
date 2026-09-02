@@ -43,7 +43,7 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
                 <article class="brain-card" style={`--brain-accent: ${brain.accent}`}>
                   <label class="brain-card__select">
                     <input type="checkbox" name="brain" value={brain.id} />
-                    <span>Select <span class="visually-hidden">{brain.title}</span></span>
+                    <span>Combine <span class="visually-hidden">{brain.title}</span></span>
                   </label>
                   <div class="brain-card__identity">
                     <BrainMark />
@@ -51,8 +51,8 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
                   </div>
                   <h3>{brain.title}</h3>
                   {brain.description && <p>{brain.description}</p>}
-                  <a href={url(routesFor({ mode: "workspace", brainId: brain.id }).graph)} aria-label={`Open ${brain.title}`}>
-                    Enter brain <span aria-hidden="true">→</span>
+                  <a href={url(routesFor({ mode: "workspace", brainId: brain.id }).graph)} aria-label={`Enter ${brain.title}`}>
+                    Enter Brain <span aria-hidden="true">→</span>
                   </a>
                 </article>
               ))}
@@ -68,7 +68,7 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
               <article class="brain-card" style={`--brain-accent: ${brain.accent}`}>
                 <label class="brain-card__select">
                   <input type="checkbox" name="brain" value={brain.id} />
-                  <span>Select <span class="visually-hidden">{brain.title}</span></span>
+                  <span>Combine <span class="visually-hidden">{brain.title}</span></span>
                 </label>
                 <div class="brain-card__identity">
                   <BrainMark />
@@ -76,8 +76,8 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
                 </div>
                 <h3>{brain.title}</h3>
                 {brain.description && <p>{brain.description}</p>}
-                <a href={url(routesFor({ mode: "workspace", brainId: brain.id }).graph)} aria-label={`Open ${brain.title}`}>
-                  Enter brain <span aria-hidden="true">→</span>
+                <a href={url(routesFor({ mode: "workspace", brainId: brain.id }).graph)} aria-label={`Enter ${brain.title}`}>
+                  Enter Brain <span aria-hidden="true">→</span>
                 </a>
               </article>
             ))}
@@ -85,7 +85,7 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
         </section>
       )}
     </div>
-    <footer class="brain-selection__action">
+    <footer class="brain-selection__action" hidden>
       <span data-selection-count aria-live="polite">Select at least two brains to combine.</span>
       <button type="submit" disabled>Open combined graph</button>
     </footer>
@@ -101,11 +101,13 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
     const controls = [...form.querySelectorAll<HTMLInputElement>('input[name="brain"]')];
     const button = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
     const count = form.querySelector<HTMLElement>("[data-selection-count]")!;
+    const action = form.querySelector<HTMLElement>(".brain-selection__action")!;
     const update = () => {
       const selected = controls.filter((control) => control.checked).length;
+      action.hidden = selected === 0;
       button.disabled = selected < 2;
-      count.textContent = selected < 2
-        ? "Select at least two brains to combine."
+      count.textContent = selected === 1
+        ? "Choose another Brain to create a combined graph."
         : `${selected} brains selected.`;
     };
     for (const control of controls) control.addEventListener("change", update);

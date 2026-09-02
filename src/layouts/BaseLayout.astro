@@ -1,6 +1,7 @@
 ---
 import "../styles/global.css";
 import QuickSwitcher from "../components/QuickSwitcher.astro";
+import packageMetadata from "../../package.json";
 import { joinBase, routes, routesFor } from "../lib/routes";
 import { getWorkspaceSnapshot } from "../lib/vault-state";
 
@@ -11,9 +12,19 @@ interface Props {
   fluid?: boolean;
   activeBrainId?: string;
   combined?: boolean;
+  noteContext?: { ownerBrainId: string; compositeId: string };
+  chooser?: boolean;
 }
 
-const { title, wide = false, fluid = false, activeBrainId, combined = false } = Astro.props;
+const {
+  title,
+  wide = false,
+  fluid = false,
+  activeBrainId,
+  combined = false,
+  noteContext,
+  chooser = false,
+} = Astro.props;
 const snapshot = getWorkspaceSnapshot();
 const isWorkspace = snapshot.mode === "workspace";
 const activeBrain = activeBrainId
@@ -25,23 +36,37 @@ if (isWorkspace && activeBrainId && !activeBrain) {
 const contextualRoutes = activeBrain
   ? routesFor({ mode: "workspace", brainId: activeBrain.id })
   : routesFor({ mode: "vault" });
-const graphRoute = activeBrain ? contextualRoutes.graph : combined ? routes.graphAlias : routes.home;
+const baseGraphRoute = activeBrain ? contextualRoutes.graph : combined ? routes.graphAlias : routes.home;
 const hasGraphRoute = !isWorkspace || Boolean(activeBrain) || combined;
 const hasContextReports = !isWorkspace || Boolean(activeBrain);
 const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.meta.env.BASE_URL, route);
+const brainRegistry = snapshot.registry.brains.map(({ id, title }) => ({ id, title }));
+const generatorLabel = `Brain v${packageMetadata.version}`;
 ---
 
 <!doctype html>
-<html lang="en">
+<html
+  lang="en"
+  data-brain-registry={JSON.stringify(brainRegistry)}
+  data-note-focus={noteContext?.compositeId}
+>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width" />
+    <meta name="generator" content={generatorLabel} />
     <slot name="head" />
     <link rel="icon" type="image/svg+xml" href={url(routes.faviconSvg)} />
     <title>{title}</title>
   </head>
   <body>
     <div class="site-header-slot">
+      {isWorkspace && !fluid && !chooser && (
+        <a class="page-home-action nav-action" href={url(routes.home)} aria-label="Home" title="Home">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m4 10 8-6 8 6v9a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1Z"></path>
+          </svg>
+        </a>
+      )}
       <header class="site-header">
         <nav class="site-nav-pill" aria-label="Primary navigation">
           <div class="nav-menu-pill">
@@ -63,11 +88,12 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
             <div id="nav-actions" class="nav-actions" inert aria-hidden="true">
             <a
               class="nav-action graph-trigger"
-              href={url(graphRoute)}
+               href={url(baseGraphRoute)}
               aria-label="Graph"
               title="Graph"
               data-combined-route={combined ? "" : undefined}
               data-combined-graph-route={combined ? "" : undefined}
+               data-scoped-graph-route={noteContext ? "" : undefined}
               hidden={!hasGraphRoute || combined}
             >
               <svg class="nav-icon graph-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -122,12 +148,26 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
         </nav>
       </header>
     </div>
-    <main class:list={[{ wide, fluid }]}>
+    <main class:list={[{ wide, fluid, "has-home": isWorkspace && !fluid && !chooser }]}>
       <slot />
     </main>
-    <QuickSwitcher activeBrainId={activeBrainId} combined={combined} workspace={isWorkspace} />
+    <QuickSwitcher
+      activeBrainId={activeBrainId}
+      combined={combined}
+      workspace={isWorkspace}
+      brainRegistry={brainRegistry}
+    />
     <script>
-      import { joinBase, type BrainSelectionContext } from "../lib/routes";
+      import {
+        brainSelectionContext,
+        canonicalBrainSelection,
+        joinBase,
+        singularQueryValue,
+        withBrainScope,
+        withGraphFocus,
+        type BrainSelectionContext,
+        type LogicalRoute,
+      } from "../lib/routes";
 
       const header = document.querySelector<HTMLElement>(".site-header")!;
       const launcher = header.querySelector<HTMLButtonElement>(".nav-launcher")!;
@@ -181,6 +221,31 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
       });
       new ResizeObserver(applyNavigationState).observe(actions);
       applyNavigationState();
+
+      const registry = JSON.parse(document.documentElement.dataset.brainRegistry ?? "[]") as { id: string }[];
+      const requestedScope = singularQueryValue(new URLSearchParams(window.location.search), "brains");
+      const retainedScope = !requestedScope.valid || !requestedScope.present
+        ? null
+        : canonicalBrainSelection(registry, requestedScope.value);
+      if (retainedScope?.valid && retainedScope.brainIds.length > 0) {
+        for (const anchor of document.querySelectorAll<HTMLAnchorElement>("a[data-note-route]")) {
+          const route = anchor.dataset.noteRoute as LogicalRoute | undefined;
+          if (!route) continue;
+          const scoped = withBrainScope(registry, route, retainedScope.brainIds);
+          if (scoped.valid) anchor.href = joinBase(import.meta.env.BASE_URL, scoped.route);
+        }
+        const focus = document.documentElement.dataset.noteFocus;
+        const graphContext = brainSelectionContext(registry, retainedScope.brainIds);
+        if (focus && graphContext.valid && graphContext.kind !== "chooser") {
+          const route = withGraphFocus(graphContext.graph, [focus], focus);
+          for (const anchor of document.querySelectorAll<HTMLAnchorElement>("[data-focused-graph-route]")) {
+            anchor.href = joinBase(import.meta.env.BASE_URL, route);
+          }
+          for (const anchor of document.querySelectorAll<HTMLAnchorElement>("[data-scoped-graph-route]")) {
+            anchor.href = joinBase(import.meta.env.BASE_URL, graphContext.graph);
+          }
+        }
+      }
       const combinedGraph = header.querySelector<HTMLAnchorElement>("[data-combined-graph-route]");
       if (combinedGraph) {
         combinedGraph.setAttribute("href", `${window.location.pathname}${window.location.search}`);

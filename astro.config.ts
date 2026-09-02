@@ -2,11 +2,12 @@ import { defineConfig } from "astro/config";
 import path from "node:path";
 import remarkCallout from "@r4ai/remark-callout";
 import { unified } from "@astrojs/markdown-remark";
+import rehypeRaw from "rehype-raw";
 import { remarkPotentialLinks, remarkWikiLinks } from "./src/lib/remark-wiki-links";
 import { remarkHighlights } from "./src/lib/remark-highlights";
-import { joinBase, routes } from "./src/lib/routes";
 import { internalSettings } from "./src/lib/internal-settings";
 import { remarkAttachments } from "./src/lib/remark-attachments";
+import { rehypeExternalLinks } from "./src/lib/rehype-external-links";
 import { attachmentIntegration } from "./src/integrations/attachments";
 
 export default defineConfig({
@@ -15,9 +16,6 @@ export default defineConfig({
   outDir: internalSettings.output,
   cacheDir: internalSettings.work ? path.join(internalSettings.work, "astro") : undefined,
   integrations: [attachmentIntegration()],
-  redirects: internalSettings.mode === "vault"
-    ? { [routes.graphAlias]: joinBase(internalSettings.base, routes.home) }
-    : {},
   markdown: {
     shikiConfig: {
       themes: {
@@ -32,6 +30,10 @@ export default defineConfig({
         remarkHighlights,
         remarkCallout,
         remarkPotentialLinks,
+      ],
+      rehypePlugins: [
+        rehypeRaw,
+        [rehypeExternalLinks, { site: internalSettings.site }],
       ],
     }),
   },

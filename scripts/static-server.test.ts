@@ -24,6 +24,22 @@ function generation(name: string, body: string) {
   return directory;
 }
 
+function writeFallback(directory: string, body: string) {
+  fs.writeFileSync(path.join(directory, "404.html"), `<html><body>${body}</body></html>`);
+}
+
+async function startServer(output: string, options: { base?: string; liveReload?: boolean } = {}) {
+  const port = await availablePort();
+  const controller = await serveStaticSite({
+    output,
+    host: "127.0.0.1",
+    port,
+    ...options,
+  });
+  controllers.push(controller);
+  return { controller, origin: `http://127.0.0.1:${port}` };
+}
+
 beforeEach(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "brain-static-"));
 });
@@ -48,6 +64,8 @@ describe("static server generations", () => {
   it("switches complete roots and retires the prior root", async () => {
     const first = generation("first", "first");
     const second = generation("second", "second");
+    writeFallback(first, "first missing");
+    writeFallback(second, "second missing");
     const retired: string[] = [];
     const port = await availablePort();
     const controller = await serveStaticSite({
@@ -59,8 +77,22 @@ describe("static server generations", () => {
     controllers.push(controller);
 
     expect(await (await fetch(`http://127.0.0.1:${port}/`)).text()).toContain("first");
+    expect(
+      await (
+        await fetch(`http://127.0.0.1:${port}/missing`, {
+          headers: { Accept: "text/html" },
+        })
+      ).text(),
+    ).toContain("first missing");
     await controller.activate(second);
     expect(await (await fetch(`http://127.0.0.1:${port}/`)).text()).toContain("second");
+    expect(
+      await (
+        await fetch(`http://127.0.0.1:${port}/missing`, {
+          headers: { Accept: "text/html" },
+        })
+      ).text(),
+    ).toContain("second missing");
     expect(retired).toEqual([first]);
   });
 
@@ -99,5 +131,139 @@ describe("static server generations", () => {
     expect(await (await fetch(`http://127.0.0.1:${port}/`)).text()).not.toContain(
       "__brain_reload",
     );
+  });
+});
+
+describe("static server 404 fallback", () => {
+  it.each([
+    { base: undefined, requestPath: "/missing", headers: { Accept: "text/html" } },
+    {
+      base: "/notes",
+      requestPath: "/notes/missing",
+      headers: { "Sec-Fetch-Dest": "document" },
+    },
+  ])("serves the generated page for an in-base document at $requestPath", async (testCase) => {
+    const output = generation(testCase.base ? "subpath" : "root", "home");
+    writeFallback(output, "custom missing");
+    const { origin } = await startServer(output, { base: testCase.base });
+    const requestedUrl = `${origin}${testCase.requestPath}`;
+
+    const response = await fetch(requestedUrl, {
+      headers: testCase.headers,
+      redirect: "manual",
+    });
+
+    expect(response.status).toBe(404);
+    expect(response.url).toBe(requestedUrl);
+    expect(response.redirected).toBe(false);
+    expect(response.headers.get("location")).toBeNull();
+    expect(response.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    expect(response.headers.get("cache-control")).toBeNull();
+    const body = await response.text();
+    expect(body).toContain("custom missing");
+    expect(body).not.toContain("__brain_reload");
+  });
+
+  it("leaves existing pages and resources unchanged", async () => {
+    const output = generation("existing", "home");
+    writeFallback(output, "custom missing");
+    fs.mkdirSync(path.join(output, "known"));
+    fs.writeFileSync(path.join(output, "known", "index.html"), "<html><body>known</body></html>");
+    fs.writeFileSync(path.join(output, "styles.css"), "body { color: black; }");
+    const { origin } = await startServer(output);
+
+    const page = await fetch(`${origin}/known/`, { headers: { Accept: "text/html" } });
+    const resource = await fetch(`${origin}/styles.css`, {
+      headers: { "Sec-Fetch-Dest": "document" },
+    });
+
+    expect(page.status).toBe(200);
+    expect(await page.text()).toContain("known");
+    expect(resource.status).toBe(200);
+    expect(resource.headers.get("content-type")).toBe("text/css; charset=utf-8");
+    expect(await resource.text()).toBe("body { color: black; }");
+  });
+
+  it("does not rewrite an outside-base document request", async () => {
+    const output = generation("outside", "home");
+    writeFallback(output, "custom missing");
+    const { origin } = await startServer(output, { base: "/notes" });
+
+    const response = await fetch(`${origin}/missing`, { headers: { Accept: "text/html" } });
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("content-type")).toBeNull();
+    expect(await response.text()).toBe("Not found");
+  });
+
+  it("does not rewrite a missing resource request", async () => {
+    const output = generation("resource", "home");
+    writeFallback(output, "custom missing");
+    const { origin } = await startServer(output, { base: "/notes" });
+
+    const response = await fetch(`${origin}/notes/missing.css`, {
+      headers: { Accept: "text/css,*/*;q=0.1", "Sec-Fetch-Dest": "style" },
+    });
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("content-type")).toBeNull();
+    expect(await response.text()).toBe("Not found");
+  });
+
+  it("serves the fallback for a document path nested beneath an existing file", async () => {
+    const output = generation("not-a-directory", "home");
+    writeFallback(output, "custom missing");
+    fs.writeFileSync(path.join(output, "styles.css"), "body {}");
+    const { origin } = await startServer(output);
+
+    const response = await fetch(`${origin}/styles.css/missing`, {
+      headers: { Accept: "text/html" },
+    });
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    expect(await response.text()).toContain("custom missing");
+  });
+
+  it("keeps the plain response when the generated fallback is absent", async () => {
+    const output = generation("no-fallback", "home");
+    const { origin } = await startServer(output);
+
+    const response = await fetch(`${origin}/missing`, { headers: { Accept: "text/html" } });
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("content-type")).toBeNull();
+    expect(await response.text()).toBe("Not found");
+  });
+
+  it("returns fallback headers without a body for HEAD", async () => {
+    const output = generation("head", "home");
+    writeFallback(output, "custom missing");
+    const { origin } = await startServer(output);
+
+    const response = await fetch(`${origin}/missing`, {
+      method: "HEAD",
+      headers: { Accept: "text/html" },
+    });
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    expect(await response.text()).toBe("");
+  });
+
+  it("injects reload code and disables caching for a live fallback", async () => {
+    const output = generation("live-fallback", "home");
+    writeFallback(output, "custom missing");
+    const original = fs.readFileSync(path.join(output, "404.html"), "utf8");
+    const { origin } = await startServer(output, { base: "/notes", liveReload: true });
+
+    const response = await fetch(`${origin}/notes/missing`, {
+      headers: { Accept: "text/html" },
+    });
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(await response.text()).toContain('/notes/__brain_reload');
+    expect(fs.readFileSync(path.join(output, "404.html"), "utf8")).toBe(original);
   });
 });

@@ -1,5 +1,6 @@
 ---
 import { getLinkIndex } from "../lib/link-index";
+import { splitHighlightText } from "../lib/remark-highlights";
 import { joinBase } from "../lib/routes";
 import { getWorkspaceSnapshot } from "../lib/vault-state";
 
@@ -25,11 +26,17 @@ const brains = new Map(snapshot.registry.brains.map((brain) => [brain.id, brain]
           class:list={[{ "mention--foreign": source.brainId !== brainId }]}
           style={source.brainId !== brainId ? `--brain-accent: ${brains.get(source.brainId)?.accent}` : undefined}
         >
-          <a href={joinBase(import.meta.env.BASE_URL, source.route)}>{source.title}</a>
+          <a href={joinBase(import.meta.env.BASE_URL, source.route)} data-note-route={source.route}>{source.title}</a>
           {source.brainId !== brainId && (
             <span class="brain-badge"><span aria-hidden="true">↗</span> @{source.brainId}</span>
           )}
-          {context && <span class="context">{context}</span>}
+          {context && (
+            <span class="context">
+              {splitHighlightText(context).map(({ value, highlighted }) =>
+                highlighted ? <mark>{value}</mark> : value
+              )}
+            </span>
+          )}
         </li>
       ))}
     </ul>
@@ -42,7 +49,7 @@ const brains = new Map(snapshot.registry.brains.map((brain) => [brain.id, brain]
     <ul>
       {unlinked.map((source) => (
         <li>
-          <a href={joinBase(import.meta.env.BASE_URL, source.route)}>{source.title}</a>
+          <a href={joinBase(import.meta.env.BASE_URL, source.route)} data-note-route={source.route}>{source.title}</a>
         </li>
       ))}
     </ul>

@@ -4,29 +4,41 @@ import { transformTextNodes } from "./mdast-text";
 
 const HIGHLIGHT_RE = /==([^=]+?)==/g;
 
-function splitHighlights(node: Text): PhrasingContent[] {
-  const matches = [...node.value.matchAll(HIGHLIGHT_RE)];
-  if (matches.length === 0) return [node];
+export interface HighlightSegment {
+  value: string;
+  highlighted: boolean;
+}
 
-  const out: PhrasingContent[] = [];
+export function splitHighlightText(value: string): HighlightSegment[] {
+  const matches = [...value.matchAll(HIGHLIGHT_RE)];
+  if (matches.length === 0) return [{ value, highlighted: false }];
+
+  const segments: HighlightSegment[] = [];
   let cursor = 0;
   for (const match of matches) {
     const index = match.index;
     if (index > cursor) {
-      out.push({ type: "text", value: node.value.slice(cursor, index) });
+      segments.push({ value: value.slice(cursor, index), highlighted: false });
     }
-    const mark: Emphasis = {
-      type: "emphasis",
-      children: [{ type: "text", value: match[1] }],
-      data: { hName: "mark" },
-    };
-    out.push(mark);
+    segments.push({ value: match[1], highlighted: true });
     cursor = index + match[0].length;
   }
-  if (cursor < node.value.length) {
-    out.push({ type: "text", value: node.value.slice(cursor) });
+  if (cursor < value.length) {
+    segments.push({ value: value.slice(cursor), highlighted: false });
   }
-  return out;
+  return segments;
+}
+
+function splitHighlights(node: Text): PhrasingContent[] {
+  const segments = splitHighlightText(node.value);
+  if (segments.length === 1 && !segments[0].highlighted) return [node];
+  return segments.map(({ value, highlighted }) => highlighted
+    ? {
+        type: "emphasis",
+        children: [{ type: "text", value }],
+        data: { hName: "mark" },
+      } satisfies Emphasis
+    : { type: "text", value });
 }
 
 /** Renders Brain `==highlighted text==` syntax as `<mark>`. */

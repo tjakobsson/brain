@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { WorkspaceDefinition } from "./workspace.mjs";
-import { buildGraphData, deriveGraphData, deriveNoteNeighborhood, normalizeGraphData } from "./graph-data";
+import { buildGraphData, deriveFocusedGraphData, deriveGraphData, deriveNoteNeighborhood, normalizeGraphData } from "./graph-data";
 import type { LinkIndex, VaultNote } from "./vault-scan";
 
 const registry = {
@@ -18,7 +18,7 @@ const registry = {
 function note(id: string, brainId: string, title: string): VaultNote {
   return {
     id,
-    compositeId: id,
+    compositeId: `${brainId}/${title.toLowerCase()}`,
     brainId,
     title,
     slug: title.toLowerCase(),
@@ -58,6 +58,10 @@ describe("workspace graph data", () => {
     expect(principles.map(({ route }) => route)).toEqual([
       "/brains/design/notes/principles",
       "/brains/engineering/notes/principles",
+    ]);
+    expect(principles.map(({ compositeId }) => compositeId)).toEqual([
+      "design/principles",
+      "engineering/principles",
     ]);
     expect(principles[0]).toMatchObject({ brainId: "design", brainTitle: "Design", brainAccent: "#b56cff" });
     expect(data.edges.filter((edge) => edge.crossBrain)).toHaveLength(2);
@@ -101,6 +105,52 @@ describe("workspace graph data", () => {
     expect(view.edges[0].crossBrain).toBe(false);
   });
 
+  it("reveals only a focused subject's direct foreign boundary", () => {
+    const data = buildGraphData(index, registry, "workspace");
+    const view = deriveFocusedGraphData(data, {
+      mode: "brain",
+      brainId: "engineering",
+      includeForeign: false,
+    }, "engineering:principles");
+    expect(view.nodes.map(({ id }) => id)).toEqual([
+      "design:principles",
+      "engineering:delivery",
+      "engineering:principles",
+    ]);
+    expect(view.edges.map(({ source, target }) => `${source}->${target}`)).toEqual([
+      "engineering:principles->design:principles",
+      "engineering:principles->engineering:delivery",
+    ]);
+    expect(view.nodes.some(({ id }) => id === "research:evidence")).toBe(false);
+    expect(view.edges.every(({ source, target }) =>
+      view.nodes.some(({ id }) => id === source) && view.nodes.some(({ id }) => id === target)
+    )).toBe(true);
+  });
+
+  it("ignores focus outside the selected graph", () => {
+    const data = buildGraphData(index, registry, "workspace");
+    const view = deriveFocusedGraphData(data, {
+      mode: "combined",
+      brainIds: ["engineering"],
+    }, "research:evidence");
+    expect(new Set(view.nodes.map(({ brainId }) => brainId))).toEqual(new Set(["engineering"]));
+  });
+
+  it("does not reveal an unselected Brain through in-scope combined focus", () => {
+    const data = buildGraphData(index, registry, "workspace");
+    const view = deriveFocusedGraphData(data, {
+      mode: "combined",
+      brainIds: ["engineering", "design"],
+    }, "engineering:principles");
+    expect(new Set(view.nodes.map(({ brainId }) => brainId))).toEqual(
+      new Set(["engineering", "design"]),
+    );
+    expect(view.nodes.some(({ id }) => id === "research:evidence")).toBe(false);
+    expect(view.edges.some(({ source, target }) =>
+      source === "research:evidence" || target === "research:evidence"
+    )).toBe(false);
+  });
+
   it("includes exactly selected brains and drops every incident edge for hidden brains", () => {
     const view = deriveGraphData(buildGraphData(index, registry, "workspace"), {
       mode: "combined",
@@ -129,7 +179,11 @@ describe("workspace graph data", () => {
     const vaultNote = note("principles", "default", "Principles");
     vaultNote.route = "/notes/principles";
     const data = buildGraphData({ notes: [vaultNote], edges: [] } as LinkIndex, vaultRegistry, "vault");
-    expect(data.nodes[0]).toMatchObject({ id: "principles", route: "/notes/principles" });
+    expect(data.nodes[0]).toMatchObject({
+      id: "principles",
+      compositeId: "default/principles",
+      route: "/notes/principles",
+    });
   });
 
   it("normalizes the original single-vault payload contract", () => {
@@ -150,7 +204,7 @@ describe("workspace graph data", () => {
     expect(data).toMatchObject({
       mode: "vault",
       brains: [{ id: "default", title: "Brain" }],
-      nodes: [{ id: "principles", brainId: "default", route: "/notes/principles" }],
+      nodes: [{ id: "principles", compositeId: "default/principles", brainId: "default", route: "/notes/principles" }],
     });
   });
 });

@@ -1,6 +1,82 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
+import fs from "node:fs";
+
+const packageMetadata = JSON.parse(
+  fs.readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
+) as { version: string };
 
 const workspace = "http://127.0.0.1:4331/workspace-demo";
+
+async function renderedLabelTarget(page: Page, graph: Locator, excludeNode?: string | null) {
+  const label = await graph.locator("canvas.sigma-labels").evaluate((canvas) => {
+    const element = canvas as HTMLCanvasElement;
+    const context = element.getContext("2d")!;
+    const pixels = context.getImageData(0, 0, element.width, element.height).data;
+    const bands: { top: number; bottom: number; left: number; right: number }[] = [];
+    let band: (typeof bands)[number] | null = null;
+    for (let y = 0; y < element.height; y += 1) {
+      let left = element.width;
+      let right = -1;
+      for (let x = 0; x < element.width; x += 1) {
+        if (pixels[(y * element.width + x) * 4 + 3] === 0) continue;
+        left = Math.min(left, x);
+        right = x;
+      }
+      if (right < 0) {
+        if (band) bands.push(band);
+        band = null;
+      } else if (band) {
+        band.bottom = y;
+        band.left = Math.min(band.left, left);
+        band.right = Math.max(band.right, right);
+      } else {
+        band = { top: y, bottom: y, left, right };
+      }
+    }
+    if (band) bands.push(band);
+    const longest = bands.sort((a, b) => b.right - b.left - (a.right - a.left))[0];
+    if (!longest) throw new Error("No rendered graph title found");
+    const bounds = element.getBoundingClientRect();
+    return {
+      left: bounds.left + (longest.left / element.width) * bounds.width,
+      right: bounds.left + (longest.right / element.width) * bounds.width,
+      y: bounds.top + ((longest.top + longest.bottom) / 2 / element.height) * bounds.height,
+    };
+  });
+  for (let x = label.left; x <= label.right; x += 2) {
+    await page.mouse.move(x, label.y);
+    const canvasTarget = await page.evaluate(
+      ({ x, y }) => document.elementFromPoint(x, y) instanceof HTMLCanvasElement,
+      { x, y: label.y },
+    );
+    if (
+      canvasTarget &&
+      (await graph.evaluate((host) => host.style.cursor)) === "pointer" &&
+      await graph.getAttribute("data-transient-inspection") !== excludeNode
+    ) {
+      return { x, y: label.y };
+    }
+  }
+  const target = await graph.evaluate((host, excluded) => {
+    const bounds = host.getBoundingClientRect();
+    for (let y = 60; y < bounds.height; y += 3) {
+      for (let x = 2; x < bounds.width; x += 3) {
+        host.dispatchEvent(new PointerEvent("pointermove", {
+          bubbles: true,
+          clientX: bounds.left + x,
+          clientY: bounds.top + y,
+          pointerType: "mouse",
+        }));
+        if (host.dataset.transientInspection && host.dataset.transientInspection !== excluded) {
+          return { x: bounds.left + x, y: bounds.top + y };
+        }
+      }
+    }
+    return null;
+  }, excludeNode ?? null);
+  if (target) return target;
+  throw new Error("No interactive graph title target found");
+}
 
 test.beforeEach(({}, testInfo) => {
   test.skip(testInfo.project.name !== "chromium-root", "Workspace behavior needs one browser project.");
@@ -17,7 +93,7 @@ test("desktop chooser follows hierarchy and keeps brain context in graph control
   await expect(page.locator(".site-header .context-switcher")).toHaveCount(0);
   await expect(page.locator(".context-switcher")).toHaveCount(0);
 
-  await page.getByRole("link", { name: "Open Engineering" }).click();
+  await page.getByRole("link", { name: "Enter Engineering" }).click();
   await expect(page).toHaveURL(`${workspace}/brains/engineering`);
   await expect(page.locator(".context-switcher > summary"))
     .toHaveAttribute("aria-label", "Brain context: Engineering");
@@ -89,6 +165,9 @@ test("workspace navigation is standalone, ordered, and viewport-safe", async ({ 
   await expect((await reports)[0]).toBeFocused();
 
   await expect(header.locator(".nav-menu")).toHaveCount(0);
+  await expect(header.locator(".nav-actions > .nav-action").evaluateAll((controls) =>
+    controls.filter((control) => !(control as HTMLElement).hidden).map((control) => control.getAttribute("aria-label"))
+  )).resolves.toEqual(["Graph", "Search", "Tags", "Recent", "Orphans"]);
   for (const control of [launcher, graph, search, ...(await reports)]) {
     await expect(control).toHaveAttribute("title", await control.getAttribute("aria-label") ?? "");
   }
@@ -98,6 +177,147 @@ test("workspace navigation is standalone, ordered, and viewport-safe", async ({ 
   await expect(page.getByLabel("Search notes and tags")).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(launcher).toBeFocused();
+});
+
+test("Home stays visible while About and generator provenance remain on the chooser", async ({ page }) => {
+  await page.goto(`${workspace}/brains/engineering/notes/principles`);
+  await expect(page.locator('meta[name="generator"]')).toHaveAttribute(
+    "content",
+    `Brain v${packageMetadata.version}`,
+  );
+  const home = page.getByRole("link", { name: "Home" });
+  await expect(home).toHaveAttribute("href", "/workspace-demo/");
+  expect(await home.evaluate((link) => {
+    const homeBounds = link.getBoundingClientRect();
+    const navigationBounds = document.querySelector(".site-header")!.getBoundingClientRect();
+    return {
+      homeWidth: homeBounds.width,
+      homeHeight: homeBounds.height,
+      navigationWidth: navigationBounds.width,
+      navigationTop: navigationBounds.top,
+      homeTop: homeBounds.top,
+      leftInset: homeBounds.left,
+      rightInset: innerWidth - navigationBounds.right,
+    };
+  })).toEqual({
+    homeWidth: 48,
+    homeHeight: 48,
+    navigationWidth: 48,
+    navigationTop: 12,
+    homeTop: 12,
+    leftInset: 12,
+    rightInset: 12,
+  });
+  await page.getByRole("button", { name: "Navigation" }).click();
+  await expect(page.getByRole("link", { name: "Brains" })).toHaveCount(0);
+  await expect(page.locator(".site-header").getByRole("button", { name: "About" })).toHaveCount(0);
+  await home.click();
+  await expect(page).toHaveURL(`${workspace}/`);
+  await expect(page.getByRole("link", { name: "Home" })).toHaveCount(0);
+  const about = page.getByRole("button", { name: "About" });
+  await about.click();
+  await expect(about).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByLabel("About Brain")).toContainText(`Brain v${packageMetadata.version}`);
+  await expect(page.getByLabel("About Brain").locator(".about-version")).toHaveCSS("user-select", "text");
+  await page.keyboard.press("Escape");
+  await expect(page.getByLabel("About Brain")).toBeHidden();
+  await expect(about).toBeFocused();
+
+  await page.goto(`${workspace}/brains/engineering`);
+  const graphHome = page.locator(".graph-controls").getByRole("link", { name: "Home" });
+  await expect(graphHome).toHaveAttribute("href", "/workspace-demo/");
+  await expect(graphHome.locator("xpath=following-sibling::*[1]"))
+    .toHaveAttribute("aria-label", "Filters");
+});
+
+test("combined note browsing retains scope across unpinned and focused Graph actions", async ({ page }) => {
+  await page.goto(`${workspace}/brains/engineering/notes/principles?brains=engineering,design`);
+  await expect(page.locator("article")).toHaveAttribute("data-brain-id", "engineering");
+
+  for (const href of await page.locator("a[data-note-route]").evaluateAll((anchors) =>
+    anchors.map((anchor) => (anchor as HTMLAnchorElement).href)
+  )) {
+    expect(new URL(href).searchParams.get("brains")).toBe("engineering,design");
+  }
+
+  await page.getByRole("button", { name: "Navigation" }).click();
+  await expect(page.getByRole("link", { name: "Graph", exact: true })).toHaveAttribute(
+    "href",
+    "/workspace-demo/graph?brains=engineering,design",
+  );
+  await expect(page.getByRole("link", { name: "Open full graph" })).toHaveAttribute(
+    "href",
+    "/workspace-demo/graph?brains=engineering,design&focus=engineering%2Fprinciples",
+  );
+  await expect(page.locator(".note-focus-action")).toHaveAttribute(
+    "href",
+    "/workspace-demo/graph?brains=engineering,design&focus=engineering%2Fprinciples",
+  );
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page.getByLabel("Quick switcher scope")).toHaveValue("selected");
+  await page.getByLabel("Search notes and tags").fill("Principles");
+  await page.locator("#switcher-results li", { hasText: "@design" }).click();
+  await expect(page).toHaveURL(
+    `${workspace}/brains/design/notes/principles?brains=engineering,design`,
+  );
+  await expect(page.locator("article")).toHaveAttribute("data-brain-id", "design");
+  await page.getByRole("button", { name: "Navigation" }).click();
+  await expect(page.getByRole("link", { name: "Graph", exact: true })).toHaveAttribute(
+    "href",
+    "/workspace-demo/graph?brains=engineering,design",
+  );
+});
+
+test("an isolated note keeps a visible focused-neighborhood action", async ({ page }) => {
+  await page.goto(`${workspace}/brains/research-archive-and-synthesis-source-trails/notes/archive-boundaries`);
+  await expect(page.locator(".local-graph-panel")).toHaveCount(0);
+  const action = page.locator(".note-focus-action");
+  await expect(action).toBeVisible();
+  await expect(action).toHaveAttribute(
+    "href",
+    "/workspace-demo/brains/research-archive-and-synthesis-source-trails?focus=research-archive-and-synthesis-source-trails%2Farchive-boundaries",
+  );
+});
+
+test("every note-navigation surface traverses without losing combined scope", async ({ page }) => {
+  const scope = "brains=engineering,design";
+  const expectRetainedScope = async () => {
+    await expect.poll(() => new URL(page.url()).searchParams.get("brains")).toBe("engineering,design");
+  };
+
+  await page.goto(`${workspace}/graph?${scope}`);
+  const globalGraph = page.locator("#global-graph");
+  await expect(globalGraph.locator("canvas.sigma-labels")).toBeVisible();
+  await page.waitForTimeout(500);
+  let target = await renderedLabelTarget(page, globalGraph);
+  await page.mouse.click(target.x, target.y);
+  await expect.poll(() => new URL(page.url()).pathname).toContain("/notes/");
+  await expectRetainedScope();
+  await page.getByRole("button", { name: "Navigation" }).click();
+  await page.getByRole("link", { name: "Graph", exact: true }).click();
+  await expect(page).toHaveURL(`${workspace}/graph?${scope}`);
+  await expect(page.locator("#global-graph")).not.toHaveAttribute("data-focused-inspection");
+
+  const note = `${workspace}/brains/engineering/notes/principles?${scope}`;
+  for (const selector of ["article a.wiki-link", ".mentions a", ".local-graph-links a"]) {
+    await page.goto(note);
+    const startingPath = new URL(page.url()).pathname;
+    const link = page.locator(selector).first();
+    await expect(link).toBeVisible();
+    await link.click();
+    await expect.poll(() => new URL(page.url()).pathname).not.toBe(startingPath);
+    await expectRetainedScope();
+  }
+
+  await page.goto(note);
+  const localGraph = page.locator(".local-graph");
+  await expect(localGraph.locator("canvas.sigma-labels")).toBeVisible();
+  await localGraph.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(500);
+  target = await renderedLabelTarget(page, localGraph, await localGraph.getAttribute("data-slug"));
+  await page.mouse.click(target.x, target.y);
+  await expect.poll(() => new URL(page.url()).pathname).not.toBe(new URL(note).pathname);
+  await expectRetainedScope();
 });
 
 test("standalone navigation clears a wrapped long note title", async ({ page }) => {
@@ -114,7 +334,10 @@ test("standalone navigation clears a wrapped long note title", async ({ page }) 
     const range = document.createRange();
     range.selectNodeContents(element);
     const textRects = [...range.getClientRects()];
-    const controls = [document.querySelector(".nav-menu-pill")!.getBoundingClientRect()];
+    const controls = [
+      document.querySelector(".page-home-action")!.getBoundingClientRect(),
+      document.querySelector(".nav-menu-pill")!.getBoundingClientRect(),
+    ];
     return {
       lines: textRects.length,
       overlaps: textRects.some((text) => controls.some((control) => !(
@@ -161,7 +384,7 @@ test("Brain identity reuses one mark and reserves accent boundaries for selectio
   expect(engineeringBefore.widths).toEqual(["1px", "1px", "1px", "1px"]);
   expect(new Set(engineeringBefore.colors).size).toBe(1);
 
-  const checkbox = page.getByRole("checkbox", { name: "Select Engineering" });
+  const checkbox = page.getByRole("checkbox", { name: "Combine Engineering" });
   await checkbox.check();
   await expect(checkbox).toBeChecked();
   const engineeringAfter = await boundary(engineering);
@@ -171,7 +394,7 @@ test("Brain identity reuses one mark and reserves accent boundaries for selectio
   expect(engineeringAfter.background).not.toBe(engineeringBefore.background);
   expect(await boundary(design)).toEqual(designBefore);
 
-  await page.getByRole("link", { name: "Open Engineering" }).click();
+  await page.getByRole("link", { name: "Enter Engineering" }).click();
   const currentMark = page.locator(".graph-controls > .context-switcher > summary [data-brain-mark]");
   await expect(page.locator(".context-switcher > summary"))
     .toHaveAttribute("title", "Brain context: Engineering");
@@ -274,8 +497,11 @@ test("note metadata identifies owning brains and wraps long IDs", async ({ page 
 
 test("combined selection is canonical, shareable, reloadable, and rejects unknown brains", async ({ page }) => {
   await page.goto(`${workspace}/`);
-  await page.getByRole("checkbox", { name: "Select Engineering" }).check();
-  await page.getByRole("checkbox", { name: "Select Design" }).check();
+  await expect(page.locator(".brain-selection__action")).toBeHidden();
+  await page.getByRole("checkbox", { name: "Combine Engineering" }).check();
+  await expect(page.locator(".brain-selection__action")).toContainText("Choose another Brain");
+  await expect(page.getByRole("link", { name: "Enter Engineering" })).toBeVisible();
+  await page.getByRole("checkbox", { name: "Combine Design" }).check();
   await expect(page.getByRole("button", { name: "Open combined graph" })).toBeEnabled();
   await page.getByRole("button", { name: "Open combined graph" }).click();
 
@@ -307,10 +533,14 @@ test("combined selection is canonical, shareable, reloadable, and rejects unknow
   await expect(page).toHaveURL(`${workspace}/graph?brains=engineering,design`);
 
   await page.goto(`${workspace}/graph?brains=engineering,unknown`);
-  await expect(page.getByRole("alert")).toContainText("Unknown brain: @unknown");
+  await expect(page.getByRole("alert")).toContainText("Unknown Brain: @unknown");
   await expect(page.locator("[data-combined-graph]")).toBeHidden();
-  await page.getByRole("link", { name: "Return to the brain chooser" }).click();
+  await page.getByRole("link", { name: "Return to the Brain chooser" }).click();
   await expect(page).toHaveURL(`${workspace}/`);
+
+  await page.goto(`${workspace}/graph?brains=engineering,design&brains=unknown`);
+  await expect(page.getByRole("alert")).toContainText("must contain one brains parameter");
+  await expect(page.locator("[data-combined-graph]")).toBeHidden();
 });
 
 test("mobile chooser and combined selection remain usable without horizontal overflow", async ({ page }) => {
@@ -326,11 +556,12 @@ test("mobile chooser and combined selection remain usable without horizontal ove
   await expect(launcher).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByRole("link", { name: "Graph" })).toBeHidden();
   await expect(page.getByRole("button", { name: "Search" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "About" })).toBeVisible();
   await expect(page.locator(".nav-direct-action")).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(launcher).toBeFocused();
-  await page.getByRole("checkbox", { name: "Select Engineering" }).check();
-  await page.getByRole("checkbox", { name: "Select Research", exact: true }).check();
+  await page.getByRole("checkbox", { name: "Combine Engineering" }).check();
+  await page.getByRole("checkbox", { name: "Combine Research", exact: true }).check();
   const action = page.locator(".brain-selection__action");
   await expect(action).toBeVisible();
   await action.getByRole("button", { name: "Open combined graph" }).click();
@@ -389,12 +620,36 @@ test("persistent context and graph controls stay contained across supported widt
       noOverflow: true,
     });
 
+    await page.getByRole("button", { name: "Legend" }).click();
+    expect(await page.getByRole("region", { name: "Graph legend" }).evaluate((panel) => {
+      const bounds = panel.getBoundingClientRect();
+      return bounds.left >= 0 && bounds.top >= 0 && bounds.right <= innerWidth && bounds.bottom <= innerHeight;
+    })).toBe(true);
+
     await page.locator(".context-switcher > summary").click();
     expect(await page.locator(".context-switcher__panel").evaluate((panel) => {
       const bounds = panel.getBoundingClientRect();
       return bounds.left >= 0 && bounds.right <= innerWidth && bounds.bottom <= innerHeight;
     })).toBe(true);
   }
+
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto(`${workspace}/brains/engineering`);
+  const activeBrainGeometry = await page.evaluate(() => {
+    const navigation = document.querySelector(".site-header")!.getBoundingClientRect();
+    const controls = document.querySelector(".graph-controls")!.getBoundingClientRect();
+    const children = [...document.querySelectorAll(".graph-controls > *")]
+      .map((control) => control.getBoundingClientRect())
+      .filter((control) => control.width > 0);
+    return {
+      childrenContained: children.every((control) =>
+        control.left >= controls.left && control.right <= controls.right
+      ),
+      overlap: !(controls.right <= navigation.left || controls.left >= navigation.right),
+      noOverflow: document.documentElement.scrollWidth <= innerWidth,
+    };
+  });
+  expect(activeBrainGeometry).toEqual({ childrenContained: true, overlap: false, noOverflow: true });
 });
 
 test("active-brain mobile launcher has direct actions and predictable disclosure focus", async ({ page }) => {
@@ -482,7 +737,7 @@ test("launcher is bounded in short viewports and disables motion when requested"
   expect(geometry.inViewport).toBe(true);
   expect(geometry.scrollHeight).toBeGreaterThan(geometry.clientHeight);
   expect((await page.locator(".site-header").boundingBox())!.y).toBe(collapsed!.y);
-
+  await expect(page.locator(".site-header").getByRole("button", { name: "About" })).toHaveCount(0);
 });
 
 test("foreign links and backlinks expose owner text, shape markers, accents, and keyboard links", async ({ page }) => {
@@ -493,6 +748,8 @@ test("foreign links and backlinks expose owner text, shape markers, accents, and
   await expect(alias).toHaveAttribute("href", "/workspace-demo/brains/design/notes/principles");
   await expect(alias.locator(".brain-badge")).toContainText("↗ @design");
   await expect(alias).toHaveCSS("text-decoration-style", "dashed");
+  expect(await alias.locator("xpath=..").evaluate((element) => element.tagName)).toBe("MARK");
+  await expect(alias.locator("xpath=../..")).not.toContainText("==");
   expect(await alias.evaluate((link) => getComputedStyle(link).getPropertyValue("--brain-accent").trim()))
     .toBe("#b56cff");
   await expect(heading).toHaveAttribute("href", "/workspace-demo/brains/research/notes/evidence#confidence");
@@ -521,6 +778,11 @@ test("mention sections precede the connection map and empty regions stay omitted
   await expect(page.getByRole("heading", { name: "Linked mentions", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Potential links", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Connection map" })).toBeVisible();
+  const highlightedMention = page.locator(".mention--foreign .context mark", {
+    hasText: "the design principles",
+  });
+  await expect(highlightedMention).toHaveCount(1);
+  await expect(highlightedMention.locator("xpath=..")).not.toContainText("==");
   expect(await page.locator("main > .mentions, main > .local-graph-panel").evaluateAll((regions) =>
     regions.map((region) => region.querySelector("h2")?.textContent?.trim())
   )).toEqual(["Linked mentions", "Potential links", "Connection map"]);
@@ -551,6 +813,7 @@ test("potential links are static, subtle, and non-clickable", async ({ browser }
   await expect(potential).toHaveCSS("text-decoration-style", "dotted");
   await expect(potential).toHaveCSS("cursor", "help");
   expect(await potential.evaluate((element) => element.tagName)).toBe("SPAN");
+  expect(await potential.locator("xpath=..").evaluate((element) => element.tagName)).toBe("MARK");
   await expect(potential.locator("a")).toHaveCount(0);
   expect(await potential.evaluate((element) =>
     getComputedStyle(element).color === getComputedStyle(element.parentElement!).color
@@ -666,10 +929,11 @@ test("graph payload and scoped views keep ownership boundaries and canonical bra
     Object.keys(sessionStorage).filter((key) =>
       /graph-(motion|view):/.test(key) && key.includes(":brain:engineering:false:")
     ).length
-  )).toBe(0);
+  )).toBeGreaterThan(0);
   await page.reload();
   await expect(relatedBrains).toHaveAttribute("aria-pressed", "false");
-  await expect(graph).toHaveAttribute("data-foreign-nodes", "0");
+  await expect(graph).toHaveAttribute("data-focused-node", "engineering/principles");
+  await expect(graph).toHaveAttribute("data-foreign-nodes", "2");
 
   await page.goto(`${workspace}/graph?brains=engineering,design,research`);
   await expect(graph).toHaveAttribute("data-visible-nodes", "5");
@@ -691,6 +955,89 @@ test("graph payload and scoped views keep ownership boundaries and canonical bra
   await expect(page.getByLabel("Quick switcher scope")).toHaveValue("selected");
   await page.getByLabel("Search notes and tags").fill("Evidence");
   await expect(page.getByText("No matches.")).toBeVisible();
+});
+
+test("graph search restores focused neighborhoods and explicit exclusion clears them", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText(value: string) {
+          (window as unknown as { copiedCombinedFocus?: string }).copiedCombinedFocus = value;
+          return Promise.resolve();
+        },
+      },
+    });
+  });
+  await page.goto(`${workspace}/graph?brains=engineering,design`);
+  const graph = page.locator("#global-graph");
+  await expect(graph.locator("canvas.sigma-nodes")).toBeVisible();
+  await page.getByRole("button", { name: "Filters" }).click();
+  await page.locator("#graph-search").fill("Principles");
+  const result = page.locator("#graph-search-results button", { hasText: "@engineering" });
+  await result.focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(
+    `${workspace}/graph?brains=engineering,design&focus=engineering%2Fprinciples`,
+  );
+  await expect(graph).toHaveAttribute("data-focused-node", "engineering/principles");
+  await expect(page.locator("[data-graph-focus-status]")).toContainText("Principles");
+  await page.locator("[data-graph-focus-copy]").click();
+  const copied = await page.evaluate(() =>
+    (window as unknown as { copiedCombinedFocus?: string }).copiedCombinedFocus
+  );
+  expect(new URL(copied!).searchParams.get("brains")).toBe("engineering,design");
+  expect(new URL(copied!).searchParams.get("focus")).toBe("engineering/principles");
+  const recipient = await page.context().newPage();
+  await recipient.setViewportSize({ width: 390, height: 844 });
+  await recipient.goto(copied!);
+  const recipientGraph = recipient.locator("#global-graph");
+  await expect(recipientGraph).toHaveAttribute("data-focused-node", "engineering/principles");
+  await expect(recipientGraph).toHaveAttribute("data-visible-brain-ids", "engineering,design");
+  await expect.poll(async () => Number(await recipientGraph.getAttribute("data-fit-requests")))
+    .toBeGreaterThan(0);
+  await expect.poll(async () => Number(await recipientGraph.getAttribute("data-motion-completions")))
+    .toBeGreaterThan(0);
+  const labelBounds = await recipientGraph.locator("canvas.sigma-labels").evaluate((canvas) => {
+    const element = canvas as HTMLCanvasElement;
+    const pixels = element.getContext("2d")!.getImageData(0, 0, element.width, element.height).data;
+    let left = element.width;
+    let top = element.height;
+    let right = -1;
+    let bottom = -1;
+    for (let y = 0; y < element.height; y += 1) {
+      for (let x = 0; x < element.width; x += 1) {
+        if (pixels[(y * element.width + x) * 4 + 3] === 0) continue;
+        left = Math.min(left, x);
+        top = Math.min(top, y);
+        right = Math.max(right, x);
+        bottom = Math.max(bottom, y);
+      }
+    }
+    return { left, top, right, bottom, width: element.width, height: element.height };
+  });
+  expect(labelBounds.left).toBeGreaterThanOrEqual(0);
+  expect(labelBounds.top).toBeGreaterThanOrEqual(0);
+  expect(labelBounds.right).toBeLessThan(labelBounds.width);
+  expect(labelBounds.bottom).toBeLessThan(labelBounds.height);
+  await recipient.close();
+  await page.reload();
+  await expect(graph).toHaveAttribute("data-focused-node", "engineering/principles");
+
+  const payload = await page.evaluate(async () => (await fetch("/workspace-demo/graph-data.json")).json());
+  const focusedType = payload.nodes.find(
+    (node: { compositeId: string }) => node.compositeId === "engineering/principles",
+  ).type;
+  const filters = page.getByRole("button", { name: /Filters|Close filters/ });
+  if (await filters.getAttribute("aria-expanded") === "false") await filters.click();
+  await page.locator(`[data-filter="type"][value="${focusedType}"]`).uncheck();
+  await expect(graph).not.toHaveAttribute("data-focused-node");
+  await expect(page).toHaveURL(`${workspace}/graph?brains=engineering,design`);
+
+  await page.goto(`${workspace}/brains/engineering?focus=design%2Fprinciples`);
+  await expect(page.locator("#graph-related-toggle")).toHaveAttribute("aria-pressed", "false");
+  await expect(graph).toHaveAttribute("data-focused-node", "design/principles");
+  await expect(graph).toHaveAttribute("data-foreign-nodes", /[1-9]\d*/u);
 });
 
 test("graph ownership legend remains non-color-readable on mobile", async ({ page }) => {
@@ -829,6 +1176,11 @@ test("coarse-pointer tablet keeps graph controls clear of mobile navigation", as
     };
   });
   expect(geometry).toEqual({ compact: true, overlapsNavigation: false });
+  await page.getByRole("button", { name: "Legend" }).click();
+  expect(await page.getByRole("region", { name: "Graph legend" }).evaluate((panel) => {
+    const bounds = panel.getBoundingClientRect();
+    return bounds.left >= 0 && bounds.top >= 0 && bounds.right <= innerWidth && bounds.bottom <= innerHeight;
+  })).toBe(true);
   await context.close();
 });
 
@@ -974,6 +1326,36 @@ test("dedicated Search routes are absent", async ({ request }) => {
   expect((await request.get(`${workspace}/brains/engineering/search`)).status()).toBe(404);
   expect((await request.get(`${workspace}/pagefind/`)).status()).toBe(404);
   expect((await request.get(`${workspace}/search-index.json`)).status()).toBe(200);
+});
+
+test("workspace 404 recovery honors valid query scope before namespaced paths", async ({ page }) => {
+  const response = await page.goto(
+    `${workspace}/brains/research/notes/missing?brains=engineering,design`,
+  );
+  expect(response?.status()).toBe(404);
+  await expect(page).toHaveURL(
+    `${workspace}/brains/research/notes/missing?brains=engineering,design`,
+  );
+  await expect(page.getByRole("link", { name: "Return to the selected graph" })).toHaveAttribute(
+    "href",
+    "/workspace-demo/graph?brains=engineering,design",
+  );
+  const owner = page.locator("[data-recommendation-owner]");
+  await expect(owner).toContainText(/@(engineering|design)/u);
+  const initial = await page.locator("[data-recommendation-title]").textContent();
+  await page.reload();
+  await expect(page.locator("[data-recommendation-title]")).toHaveText(initial ?? "");
+  const recommendedHref = await page.locator("[data-recommendation-link]").getAttribute("href");
+  expect(new URL(recommendedHref!, workspace).searchParams.get("brains")).toBe("engineering,design");
+  await page.locator("[data-recommendation-link]").click();
+  expect(new URL(page.url()).searchParams.get("brains")).toBe("engineering,design");
+
+  await page.goto(`${workspace}/brains/unknown/notes/missing?brains=unknown`);
+  await expect(page.getByRole("link", { name: "Return to the Brain chooser" })).toHaveAttribute(
+    "href",
+    "/workspace-demo/",
+  );
+  await expect(page.locator("[data-recommendation-owner]")).not.toContainText("@unknown");
 });
 
 test("contextual reports retain brain scope and foreign relationships", async ({ page }) => {

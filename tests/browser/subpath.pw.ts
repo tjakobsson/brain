@@ -418,6 +418,7 @@ test("all site features stay within the deployment base", async ({ page }, testI
   await launcher.click();
   await page.getByRole("link", { name: "Graph", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`${base}/?$`));
+  await expect(page.locator("#global-graph")).not.toHaveAttribute("data-focused-inspection");
   await page.goto(`${base}/notes/welcome`);
   await page.getByRole("button", { name: "Navigation" }).click();
   await page.locator(".nav-actions").getByRole("link", { name: "Tags" }).click();
@@ -594,7 +595,7 @@ test("mobile navigation stays within the deployment base", async ({ page }, test
   await expect(localLegend).toBeHidden();
   await expect(localLegendTrigger).toBeFocused();
   await localLegendTrigger.click();
-  await page.locator("article h1").click();
+  await page.locator("article h1").dispatchEvent("pointerdown");
   await expect(localLegend).toBeHidden();
   await expect(localLegendTrigger).toBeFocused();
   await localGraphCanvas.hover();
@@ -628,10 +629,20 @@ test("mobile navigation stays within the deployment base", async ({ page }, test
   await expect(noteHeader).toHaveCSS("width", "48px");
   await launcher.click();
   await expect(noteHeader.locator(".nav-menu")).toHaveCount(0);
-  await expect(noteHeader.getByRole("link", { name: "Graph" })).toHaveAttribute("href", `${base}/`);
+  await expect(noteHeader.getByRole("link", { name: "Graph" })).toHaveAttribute(
+    "href",
+    `${base}/`,
+  );
   await expect(noteHeader.getByRole("link", { name: "Tags" })).toHaveAttribute("href", `${base}/tags`);
   await expect(noteHeader.getByRole("link", { name: "Recent" })).toHaveAttribute("href", `${base}/recent`);
   await expect(noteHeader.getByRole("link", { name: "Orphans" })).toHaveAttribute("href", `${base}/orphans`);
+  await expect(noteHeader.getByRole("link", { name: "Brains" })).toHaveCount(0);
+  await expect(noteHeader.getByRole("button", { name: "About" })).toHaveCount(0);
+  await expect(page.locator(".note-focus-action")).toHaveAttribute(
+    "href",
+    `${base}/?focus=default%2Fwelcome`,
+  );
+  await expect(noteHeader.getByRole("link", { name: "Orphans" })).toHaveCSS("transform", "none");
   const controlPositions = await noteHeader.evaluate((header) => {
     const controls = [...header.querySelectorAll(".nav-actions > .nav-action")]
       .filter((control) => !(control as HTMLElement).hidden)
@@ -650,6 +661,44 @@ test("mobile navigation stays within the deployment base", async ({ page }, test
   await expect(page.locator(".site-header")).toHaveCSS("width", "48px");
   await expect(page.getByRole("button", { name: "Navigation" })).toHaveAttribute("aria-expanded", "false");
   expect(await initialListContentClearsNavigation(page)).toBe(true);
+});
+
+test("nested missing routes serve deterministic base-safe recovery", async ({ page }, testInfo) => {
+  const { base } = deployment(testInfo);
+  const missing = `${base}/notes/missing/deeply?source=fixture`;
+  const response = await page.goto(missing);
+  expect(response?.status()).toBe(404);
+  await expect(page).toHaveURL(new RegExp(`${missing.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}$`));
+  await expect(page.getByRole("heading", { name: "This path has no note yet" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Return to the graph" })).toHaveAttribute("href", `${base}/`);
+  const missingUrl = page.url();
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page.getByRole("dialog", { name: "Quick switcher" })).toBeVisible();
+  await expect(page).toHaveURL(missingUrl);
+  await page.keyboard.press("Escape");
+  const recommendation = page.locator("[data-recommendation-title]");
+  await expect(recommendation).not.toHaveText("");
+  const initial = await recommendation.textContent();
+  await page.reload();
+  await expect(recommendation).toHaveText(initial ?? "");
+  const another = page.getByRole("button", { name: "Another note" });
+  if (await another.isVisible()) {
+    await another.click();
+    await expect(recommendation).not.toHaveText(initial ?? "");
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test("404 recovery keeps root navigation visible without JavaScript", async ({ browser }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium-root", "No-JavaScript fallback is deployment-independent.");
+  const { base } = deployment(testInfo);
+  const context = await browser.newContext({ javaScriptEnabled: false });
+  const page = await context.newPage();
+  const response = await page.goto(`${base}/missing-without-javascript`);
+  expect(response?.status()).toBe(404);
+  await expect(page.getByRole("link", { name: "Return to the graph" })).toHaveAttribute("href", `${base}/`);
+  await expect(page.getByRole("button", { name: "Search" })).toBeVisible();
+  await context.close();
 });
 
 test("mobile local graphs reveal titles relative to their fitted view", async ({ page }, testInfo) => {

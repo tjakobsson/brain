@@ -1,5 +1,6 @@
 ---
 import { getLinkIndex } from "../lib/link-index";
+import { joinBase, routes } from "../lib/routes";
 import { getWorkspaceSnapshot } from "../lib/vault-state";
 import BrainMark from "./BrainMark.astro";
 import GraphLegend from "./GraphLegend.astro";
@@ -37,6 +38,14 @@ const brainRouteRegistry = snapshot.registry.brains.map(({ id, title }) => ({ id
 <div class="graph-page">
   <div class:list={["graph-shell", "filters-closed", { "has-related-brains": activeBrainId && boundaryBrainIds.size > 0 }]}>
     <div class="graph-controls">
+      {isWorkspace && (
+        <a class="graph-control graph-home-action" href={joinBase(import.meta.env.BASE_URL, routes.home)} aria-label="Home" title="Home">
+          <svg class="graph-control-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m4 10 8-6 8 6v9a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1Z"></path>
+          </svg>
+          <span class="graph-control-label">Home</span>
+        </a>
+      )}
       <button
         id="graph-filter-toggle"
         class="graph-control graph-filter-toggle"
@@ -172,6 +181,19 @@ const brainRouteRegistry = snapshot.registry.brains.map(({ id, title }) => ({ id
       <p id="graph-count" class="graph-count"></p>
     </aside>
     <div class="graph-container">
+      <section class="graph-focus-status" data-graph-focus-status hidden aria-label="Focused graph neighborhood">
+        <span>Focused: <strong data-graph-focus-title></strong></span>
+        <div>
+          <button type="button" data-graph-focus-copy>Copy link</button>
+          <a data-graph-focus-open>Open note</a>
+          <button type="button" data-graph-focus-clear>Clear</button>
+        </div>
+      </section>
+      <div class="graph-context-menu" data-graph-context-menu role="menu" hidden>
+        <button type="button" role="menuitem" data-graph-menu-focus>Pin neighborhood</button>
+        <button type="button" role="menuitem" data-graph-menu-copy>Copy neighborhood link</button>
+        <button type="button" role="menuitem" data-graph-menu-open>Open note</button>
+      </div>
       <div
         id="global-graph"
         class="graph-host"
@@ -185,7 +207,7 @@ const brainRouteRegistry = snapshot.registry.brains.map(({ id, title }) => ({ id
 
 <script>
   import { mountGlobalGraph } from "../lib/graph-view";
-  import { brainSelectionContext, joinBase, type BrainSelectionContext } from "../lib/routes";
+  import { brainSelectionContext, joinBase, singularQueryValue, type BrainSelectionContext } from "../lib/routes";
 
   const q = <T extends Element>(selector: string): T => {
     const element = document.querySelector<T>(selector);
@@ -289,8 +311,9 @@ const brainRouteRegistry = snapshot.registry.brains.map(({ id, title }) => ({ id
     const satellite = summary.querySelector<HTMLElement>(".context-switcher__satellite")!;
     const registry = JSON.parse(context.dataset.registry ?? "[]") as { id: string; title: string }[];
     const activeBrainId = context.dataset.activeBrainId;
-    const initialInput = context.dataset.combined === "true"
-      ? new URLSearchParams(window.location.search).get("brains") ?? ""
+    const query = singularQueryValue(new URLSearchParams(window.location.search), "brains");
+    const initialInput = context.dataset.combined === "true" && query.valid && query.present
+      ? query.value
       : activeBrainId ? [activeBrainId] : [];
     let current = brainSelectionContext(registry, initialInput);
 
@@ -360,5 +383,14 @@ const brainRouteRegistry = snapshot.registry.brains.map(({ id, title }) => ({ id
     count: q("#graph-count"),
     fitViewButton: q<HTMLButtonElement>("#graph-fit-view"),
     relatedBrainsToggle: document.querySelector<HTMLButtonElement>("#graph-related-toggle"),
+    focusStatus: q("[data-graph-focus-status]"),
+    focusTitle: q("[data-graph-focus-title]"),
+    focusCopy: q<HTMLButtonElement>("[data-graph-focus-copy]"),
+    focusOpen: q<HTMLAnchorElement>("[data-graph-focus-open]"),
+    focusClear: q<HTMLButtonElement>("[data-graph-focus-clear]"),
+    contextMenu: q("[data-graph-context-menu]"),
+    contextFocus: q<HTMLButtonElement>("[data-graph-menu-focus]"),
+    contextCopy: q<HTMLButtonElement>("[data-graph-menu-copy]"),
+    contextOpen: q<HTMLButtonElement>("[data-graph-menu-open]"),
   }).catch((error) => console.error("[graph] failed to mount", error));
 </script>

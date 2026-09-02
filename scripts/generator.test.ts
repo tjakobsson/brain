@@ -10,11 +10,23 @@ let vault: string;
 let output: string;
 const generator = path.resolve("scripts/generator.mjs");
 const compareOutputTrees = path.resolve("scripts/compare-output-trees.mjs");
+const packageMetadata = JSON.parse(fs.readFileSync(path.resolve("package.json"), "utf8"));
+
+function expectGeneratorMetadata(directory: string): void {
+  const htmlFiles = fs
+    .readdirSync(directory, { recursive: true, encoding: "utf8" })
+    .filter((entry) => entry.endsWith(".html"));
+  expect(htmlFiles.length).toBeGreaterThan(0);
+  for (const entry of htmlFiles) {
+    const html = fs.readFileSync(path.join(directory, entry), "utf8");
+    expect(html.match(/<meta name="generator"/gu), entry).toHaveLength(1);
+    expect(html, entry).toContain(`content="Brain v${packageMetadata.version}"`);
+  }
+}
 
 describe("generator command metadata", () => {
   it("prints the package version", () => {
     const result = spawnSync(process.execPath, [generator, "--version"], { encoding: "utf8" });
-    const packageMetadata = JSON.parse(fs.readFileSync(path.resolve("package.json"), "utf8"));
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout.trim()).toBe(packageMetadata.version);
   });
@@ -75,6 +87,7 @@ describe("generator build command", () => {
     expect(result.status, result.stderr).toBe(0);
     expect(fs.existsSync(path.join(output, "notes", "welcome", "index.html"))).toBe(true);
     expect(fs.existsSync(path.join(output, "search-index.json"))).toBe(true);
+    expect(fs.existsSync(path.join(output, "404.html"))).toBe(true);
     expect(fs.existsSync(path.join(output, "search", "index.html"))).toBe(false);
     expect(fs.existsSync(path.join(output, "pagefind"))).toBe(false);
     expect(fs.existsSync(path.join(output, "vault-assets", "media", "diagram.svg"))).toBe(true);
@@ -89,6 +102,7 @@ describe("generator build command", () => {
       .map((entry) => fs.readFileSync(path.join(output, entry), "utf8"))
       .join("\n");
     expect(generatedText).not.toContain(".staging-");
+    expectGeneratorMetadata(output);
     expect(hashes(vault)).toEqual(vaultBefore);
   }, 30_000);
 
@@ -134,6 +148,7 @@ describe("generator build command", () => {
     expect(fs.existsSync(path.join(first, "brains", "design", "notes", "principles", "index.html"))).toBe(true);
     expect(fs.existsSync(path.join(first, "brains", "engineering", "search", "index.html"))).toBe(false);
     expect(fs.existsSync(path.join(first, "search", "index.html"))).toBe(false);
+    expect(fs.existsSync(path.join(first, "404.html"))).toBe(true);
     expect(fs.existsSync(path.join(first, "pagefind"))).toBe(false);
 
     const comparison = spawnSync(
@@ -151,5 +166,6 @@ describe("generator build command", () => {
     expect(generatedText).not.toContain(path.resolve("examples/demo-workspace"));
     expect(generatedText).not.toContain(root);
     expect(generatedText).not.toContain(".staging-");
+    expectGeneratorMetadata(first);
   }, 60_000);
 });

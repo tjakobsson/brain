@@ -88,7 +88,10 @@ describe("remarkWikiLinks", () => {
     expect(link.type).toBe("link");
     expect(link.url).toBe("/notes/note-b");
     expect((link.children[0] as Text).value).toBe("Note B");
-    expect(link.data?.hProperties).toEqual({ className: ["wiki-link"] });
+    expect(link.data?.hProperties).toEqual({
+      className: ["wiki-link"],
+      "data-note-route": "/notes/note-b",
+    });
   });
 
   it("renders the alias as display text", () => {
@@ -271,6 +274,31 @@ describe("remarkWikiLinks", () => {
         }],
       },
       { url: "/notes/a-b", children: [{ type: "text", value: "A == B" }] },
+    ]);
+  });
+
+  it("preserves a highlight wrapped around an authored wiki-link", () => {
+    const tree: Root = {
+      type: "root",
+      children: [{
+        type: "paragraph",
+        children: [{ type: "text", value: "See ==[[Note B|the result]]== now." }],
+      }],
+    };
+    const file = new VFile({ path: "/vault/Source Note.md" });
+    const options = { index: fakeIndex(["Note B"]), brainAccents: new Map() };
+
+    remarkWikiLinks(options)(tree, file);
+    remarkHighlights()(tree, file);
+
+    expect((tree.children[0] as Paragraph).children).toMatchObject([
+      { type: "text", value: "See " },
+      {
+        type: "emphasis",
+        data: { hName: "mark" },
+        children: [{ type: "link", children: [{ type: "text", value: "the result" }] }],
+      },
+      { type: "text", value: " now." },
     ]);
   });
 

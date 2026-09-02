@@ -3,7 +3,7 @@ import type Sigma from "sigma";
 
 export interface GraphHoverState {
   hovered: string | null;
-  pinned: string | null;
+  focused: string | null;
   neighbors: Set<string>;
   theme: {
     fadedEdge: string;
@@ -18,7 +18,7 @@ export const GRAPH_DRAG_TOLERANCE = 3;
 export const GRAPH_LONG_PRESS_DURATION = 500;
 
 export function activeInspectionNode(state: GraphHoverState): string | null {
-  return state.hovered ?? state.pinned;
+  return state.focused ?? state.hovered;
 }
 
 export function isInspectionNeighborhoodNode(state: GraphHoverState, node: string): boolean {
@@ -31,12 +31,13 @@ function updateInspectionNeighbors(graph: Graph, state: GraphHoverState): void {
   state.neighbors = new Set(active ? graph.neighbors(active) : []);
 }
 
-export function setPinnedInspection(
+export function setFocusedInspection(
   graph: Graph,
   state: GraphHoverState,
   node: string | null,
 ): void {
-  state.pinned = node;
+  state.focused = node;
+  state.hovered = null;
   updateInspectionNeighbors(graph, state);
 }
 
@@ -45,10 +46,28 @@ export function setTransientInspection(
   state: GraphHoverState,
   node: string | null,
 ): boolean {
+  if (state.focused !== null) return false;
   if (state.hovered === node) return false;
   state.hovered = node;
   updateInspectionNeighbors(graph, state);
   return true;
+}
+
+export function permitsNodeDrag(event: Pick<MouseEvent, "button" | "ctrlKey" | "type">): boolean {
+  return event.type.startsWith("touch") || (event.button === 0 && !event.ctrlKey);
+}
+
+export function resolveFocusedVisibility(
+  hidden: Set<string>,
+  focused: string | null,
+  neighbors: Iterable<string>,
+  restoreSharedFocus: boolean,
+): string | null {
+  if (!focused) return null;
+  if (!restoreSharedFocus) return hidden.has(focused) ? null : focused;
+  hidden.delete(focused);
+  for (const neighbor of neighbors) hidden.delete(neighbor);
+  return focused;
 }
 
 export function createHoverReducers(graph: Graph, state: GraphHoverState) {
@@ -180,15 +199,15 @@ export function wireGraphHover(
 ): void {
   renderer.on("enterNode", ({ node, event }) => {
     if (event?.original?.type?.startsWith("touch")) return;
-    onNodeEnter?.();
-    setTransientInspection(graph, state, node);
     renderer.getContainer().style.cursor = "pointer";
+    if (!setTransientInspection(graph, state, node)) return;
+    onNodeEnter?.();
     renderer.refresh({ skipIndexation: true });
   });
   renderer.on("leaveNode", ({ event }) => {
     if (event?.original?.type?.startsWith("touch")) return;
-    setTransientInspection(graph, state, null);
     if (!isDragging()) renderer.getContainer().style.cursor = "";
+    if (!setTransientInspection(graph, state, null)) return;
     renderer.refresh({ skipIndexation: true });
   });
 }

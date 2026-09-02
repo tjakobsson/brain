@@ -12,6 +12,7 @@ export interface GraphBrainDatum {
 
 export interface GraphNodeDatum {
   id: string;
+  compositeId: string;
   brainId: string;
   brainTitle: string;
   brainAccent: string;
@@ -42,8 +43,8 @@ export type GraphContext =
 interface LegacyGraphData {
   mode?: InputMode;
   brains?: GraphBrainDatum[];
-  nodes: Array<Omit<GraphNodeDatum, "brainId" | "brainTitle" | "brainAccent"> &
-    Partial<Pick<GraphNodeDatum, "brainId" | "brainTitle" | "brainAccent">>>;
+  nodes: Array<Omit<GraphNodeDatum, "brainId" | "brainTitle" | "brainAccent" | "compositeId"> &
+    Partial<Pick<GraphNodeDatum, "brainId" | "brainTitle" | "brainAccent" | "compositeId">>>;
   edges: Array<Pick<GraphEdgeDatum, "source" | "target"> & Partial<GraphEdgeDatum>>;
 }
 
@@ -61,6 +62,11 @@ export function normalizeGraphData(data: LegacyGraphData): GraphData {
     return {
       ...node,
       brainId,
+      compositeId: node.compositeId ?? (
+        data.mode === "workspace" && node.id.startsWith(`${brainId}/`)
+          ? node.id
+          : `${brainId}/${node.id}`
+      ),
       brainTitle: node.brainTitle ?? brain.title,
       brainAccent: node.brainAccent ?? brain.accent,
     };
@@ -115,6 +121,7 @@ export function buildGraphData(
       if (!brain) throw new Error(`Graph note ${JSON.stringify(note.id)} has unknown brain ${JSON.stringify(note.brainId)}.`);
       return {
         id: note.id,
+        compositeId: note.compositeId,
         brainId: note.brainId,
         brainTitle: brain.title,
         brainAccent: brain.accent,
@@ -164,6 +171,50 @@ export function deriveGraphData(data: GraphData, context: GraphContext): GraphDa
         edge.sourceBrainId === context.brainId ||
         edge.targetBrainId === context.brainId;
     }),
+  };
+}
+
+export function deriveFocusedGraphData(
+  data: GraphData,
+  context: GraphContext,
+  focusedId?: string | null,
+): GraphData {
+  const contextual = deriveGraphData(data, context);
+  if (!focusedId) return contextual;
+
+  const eligibleContext = context.mode === "brain"
+    ? { ...context, includeForeign: true }
+    : context;
+  const eligible = new Set(
+    deriveGraphData(data, eligibleContext).nodes.map(({ id }) => id),
+  );
+  if (!eligible.has(focusedId)) {
+    return contextual;
+  }
+
+  const included = new Set(contextual.nodes.map(({ id }) => id));
+  const focusedEdges = data.edges.filter((edge) =>
+    (edge.source === focusedId || edge.target === focusedId) &&
+    eligible.has(edge.source) && eligible.has(edge.target)
+  );
+  included.add(focusedId);
+  for (const edge of focusedEdges) {
+    included.add(edge.source);
+    included.add(edge.target);
+  }
+  const contextualEdges = new Set(contextual.edges.map((edge) =>
+    `${edge.source}\u001f${edge.target}`
+  ));
+  const focusEdgeKeys = new Set(focusedEdges.map((edge) =>
+    `${edge.source}\u001f${edge.target}`
+  ));
+  return {
+    ...data,
+    nodes: data.nodes.filter(({ id }) => included.has(id)),
+    edges: data.edges.filter((edge) =>
+      contextualEdges.has(`${edge.source}\u001f${edge.target}`) ||
+      focusEdgeKeys.has(`${edge.source}\u001f${edge.target}`)
+    ),
   };
 }
 

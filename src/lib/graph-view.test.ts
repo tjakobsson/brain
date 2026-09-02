@@ -19,6 +19,7 @@ const data: GraphData = {
   nodes: [
     {
       id: "engineering/principles",
+      compositeId: "engineering/principles",
       brainId: "engineering",
       brainTitle: "Engineering",
       brainAccent: "#3366cc",
@@ -33,6 +34,7 @@ const data: GraphData = {
     },
     {
       id: "design/principles",
+      compositeId: "design/principles",
       brainId: "design",
       brainTitle: "Design",
       brainAccent: "#b56cff",

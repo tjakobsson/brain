@@ -110,3 +110,68 @@ test("Brain callouts use compact semantic fields without decorative edges", asyn
     expect(presentation.bodyStyle).toBe("normal");
   }
 });
+
+test("external web links are persistent, accessible, and phone-safe", async ({ page }, testInfo) => {
+  const { base } = deployment(testInfo);
+  await page.goto(`${base}/notes/portable-notes`);
+
+  const markdownLink = page.getByRole("link", { name: /CommonMark specification.*external site/i });
+  const rawLink = page.getByRole("link", { name: /HTML anchor reference.*external site/i });
+  for (const link of [markdownLink, rawLink]) {
+    await expect(link).toHaveClass(/external-link/);
+    await expect(link).not.toHaveAttribute("target");
+    await expect(link.locator(".external-link__icon")).toHaveAttribute("aria-hidden", "true");
+  }
+
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    await expect(markdownLink).toHaveCSS("text-decoration-style", "solid");
+    const contrast = await markdownLink.evaluate((element) => {
+      const rgb = (value: string) => value.match(/[\d.]+/gu)!.slice(0, 3).map(Number);
+      const luminance = (value: string) => {
+        const channels = rgb(value).map((channel) => {
+          const normalized = channel / 255;
+          return normalized <= 0.04045
+            ? normalized / 12.92
+            : ((normalized + 0.055) / 1.055) ** 2.4;
+        });
+        return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+      };
+      const foreground = luminance(getComputedStyle(element).color);
+      const background = luminance(getComputedStyle(document.body).backgroundColor);
+      return (Math.max(foreground, background) + 0.05) /
+        (Math.min(foreground, background) + 0.05);
+    });
+    expect(contrast).toBeGreaterThanOrEqual(4.5);
+  }
+
+  const punctuation = await rawLink.evaluate((element) => {
+    const text = element.nextSibling;
+    if (!(text instanceof Text)) throw new Error("Expected punctuation after raw external link");
+    const index = text.data.indexOf(".");
+    if (index < 0) throw new Error("Expected trailing punctuation");
+    const range = document.createRange();
+    range.setStart(text, index);
+    range.setEnd(text, index + 1);
+    const punctuationRect = range.getBoundingClientRect();
+    const iconRect = element.querySelector(".external-link__icon")!.getBoundingClientRect();
+    return {
+      followsIcon: punctuationRect.top > iconRect.top || punctuationRect.left >= iconRect.right,
+      visible: punctuationRect.width > 0,
+    };
+  });
+  expect(punctuation).toEqual({ followsIcon: true, visible: true });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const longLink = page.getByRole("link", { name: /Astro Markdown guide.*external site/i });
+  const geometry = await longLink.evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    return {
+      lines: range.getClientRects().length,
+      pageFits: document.documentElement.scrollWidth <= innerWidth,
+    };
+  });
+  expect(geometry.lines).toBeGreaterThan(1);
+  expect(geometry.pageFits).toBe(true);
+});

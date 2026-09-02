@@ -33,7 +33,7 @@ const graphData = {
     {
       id: "unrelated-a",
       title: "Other A",
-      route: "/notes/portable-notes",
+      route: "/notes/atomic-notes",
       type: "fleeting",
       status: "draft",
       tags: [],
@@ -44,7 +44,7 @@ const graphData = {
     {
       id: "unrelated-b",
       title: "Other B",
-      route: "/notes/portable-notes",
+      route: "/notes/maps-of-content",
       type: "fleeting",
       status: "draft",
       tags: [],
@@ -58,9 +58,13 @@ const graphData = {
     { source: "unrelated-a", target: "unrelated-b" },
   ],
 };
+const contextGraphData = {
+  ...graphData,
+  edges: [...graphData.edges, { source: "neighbor", target: "unrelated-a" }],
+};
 
-async function longestLabelAnchor(labelsCanvas: Locator) {
-  return labelsCanvas.evaluate((canvas) => {
+async function renderedLabelAnchor(labelsCanvas: Locator, selection: "longest" | "shortest" = "longest") {
+  return labelsCanvas.evaluate((canvas, selection) => {
     const element = canvas as HTMLCanvasElement;
     const context = element.getContext("2d")!;
     const pixels = context.getImageData(0, 0, element.width, element.height).data;
@@ -86,15 +90,16 @@ async function longestLabelAnchor(labelsCanvas: Locator) {
       }
     }
     if (band) bands.push(band);
-    const longest = bands.sort((a, b) => b.right - b.left - (a.right - a.left))[0];
-    if (!longest) throw new Error("No rendered graph title found");
+    const ordered = bands.sort((a, b) => b.right - b.left - (a.right - a.left));
+    const selected = selection === "longest" ? ordered[0] : ordered.at(-1);
+    if (!selected) throw new Error("No rendered graph title found");
     const bounds = element.getBoundingClientRect();
     return {
-      left: bounds.left + (longest.left / element.width) * bounds.width,
-      right: bounds.left + (longest.right / element.width) * bounds.width,
-      y: bounds.top + ((longest.top + longest.bottom) / 2 / element.height) * bounds.height,
+      left: bounds.left + (selected.left / element.width) * bounds.width,
+      right: bounds.left + (selected.right / element.width) * bounds.width,
+      y: bounds.top + ((selected.top + selected.bottom) / 2 / element.height) * bounds.height,
     };
-  });
+  }, selection);
 }
 
 async function nodeLeftOfLabel(page: Page, graph: Locator, label: { left: number; y: number }) {
@@ -119,6 +124,40 @@ async function targetWithinLabel(
   throw new Error("Could not find graph target within its rendered label");
 }
 
+async function unrelatedContextTarget(page: Page, graph: Locator, menu: Locator, close = true) {
+  const point = await graph.evaluate((host) => {
+    const bounds = host.getBoundingClientRect();
+    const menu = document.querySelector<HTMLElement>("[data-graph-context-menu]")!;
+    for (let y = 30; y < bounds.height - 30; y += 18) {
+      for (let x = 30; x < bounds.width - 30; x += 18) {
+        const clientX = bounds.left + x;
+        const clientY = bounds.top + y;
+        host.dispatchEvent(new PointerEvent("pointermove", {
+          bubbles: true,
+          clientX,
+          clientY,
+          pointerType: "mouse",
+        }));
+        if (host.style.cursor === "pointer") continue;
+        host.dispatchEvent(new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          button: 2,
+          clientX,
+          clientY,
+        }));
+        if (!menu.hidden) return { x: clientX, y: clientY };
+      }
+    }
+    return null;
+  });
+  if (!point) throw new Error("Could not find a lower-emphasis context node");
+  await expect(menu.getByRole("menuitem", { name: "Move focus here" })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "Open note" })).toBeVisible();
+  if (close) await page.keyboard.press("Escape");
+  return point;
+}
+
 async function graphCounts(graph: Locator) {
   return graph.evaluate((host) => ({
     responsive: Number((host as HTMLElement).dataset.responsiveUpdates ?? 0),
@@ -130,6 +169,18 @@ async function graphCounts(graph: Locator) {
       ?? 0,
     ),
   }));
+}
+
+async function canvasInkPixels(canvas: Locator) {
+  return canvas.evaluate((element) => {
+    const target = element as HTMLCanvasElement;
+    const pixels = target.getContext("2d")!.getImageData(0, 0, target.width, target.height).data;
+    let count = 0;
+    for (let index = 3; index < pixels.length; index += 4) {
+      if (pixels[index] > 0) count += 1;
+    }
+    return count;
+  });
 }
 
 async function verifyStableResponsiveInspection(
@@ -155,7 +206,7 @@ async function verifyStableResponsiveInspection(
   await expect(graph).toHaveAttribute("data-responsive-policy", finalPolicy);
 
   const labelsCanvas = graph.locator("canvas.sigma-labels");
-  const label = await longestLabelAnchor(labelsCanvas);
+  const label = await renderedLabelAnchor(labelsCanvas);
   const target = await targetWithinLabel(page, graph, label);
   await expect(graph).toHaveAttribute("data-transient-inspection", /.+/u);
   await expect(graph).toHaveAttribute("data-inspection-target-geometry", /"kind":"marker"/u);
@@ -211,7 +262,7 @@ test(`a hovered graph node stays emphasized and clickable in ${colorScheme} mode
   const normalNodes = await nodesCanvas.screenshot();
   const normalLabels = await labelsCanvas.screenshot();
 
-  const label = await longestLabelAnchor(labelsCanvas);
+  const label = await renderedLabelAnchor(labelsCanvas);
   const target = await nodeLeftOfLabel(page, graph, label);
   await page.waitForTimeout(50);
 
@@ -342,7 +393,7 @@ test("global inspection flushes a pending fractional breakpoint change", async (
   await expect(graph.locator("canvas.sigma-nodes")).toBeVisible();
   await expect.poll(async () => (await graphCounts(graph)).completions).toBeGreaterThan(0);
   await graph.scrollIntoViewIfNeeded();
-  const point = await nodeLeftOfLabel(page, graph, await longestLabelAnchor(graph.locator("canvas.sigma-labels")));
+  const point = await nodeLeftOfLabel(page, graph, await renderedLabelAnchor(graph.locator("canvas.sigma-labels")));
   const graphBounds = (await graph.boundingBox())!;
   const targetPosition = { x: point.x - graphBounds.x, y: point.y - graphBounds.y };
   await page.mouse.move(0, 0);
@@ -400,15 +451,13 @@ test("global camera actions apply pending responsive state without a resize sett
     await expect(graph).toHaveAttribute("data-responsive-policy", "narrow");
     const dimensions = await graph.evaluate((host) => `${host.clientWidth}:${host.clientHeight}`);
     await expect(graph).toHaveAttribute("data-responsive-dimensions", dimensions);
-    if (action === "fit") {
-      await expect.poll(async () => (await graphCounts(graph)).completions).toBe(before.completions + 1);
-    }
+    await expect.poll(async () => (await graphCounts(graph)).completions).toBe(before.completions + 1);
     await page.waitForTimeout(300);
     expect(await graphCounts(graph)).toEqual({
       responsive: before.responsive + 1,
       settles: before.settles,
-      fits: before.fits + (action === "fit" ? 1 : 0),
-      completions: before.completions + (action === "fit" ? 1 : 0),
+      fits: before.fits + 1,
+      completions: before.completions + 1,
     });
     await page.close();
   }
@@ -431,7 +480,7 @@ test(`local graph inspection fades unrelated content in ${colorScheme} mode`, as
   await page.waitForTimeout(800);
   const normalNodes = await nodesCanvas.screenshot();
   const normalLabels = await labelsCanvas.screenshot();
-  const target = await nodeLeftOfLabel(page, graph, await longestLabelAnchor(labelsCanvas));
+  const target = await nodeLeftOfLabel(page, graph, await renderedLabelAnchor(labelsCanvas));
   await page.mouse.move(target.x, target.y);
   await expect(graph).toHaveCSS("cursor", "pointer");
   await page.waitForTimeout(50);
@@ -454,6 +503,198 @@ test(`local graph inspection fades unrelated content in ${colorScheme} mode`, as
 });
 }
 
+test("desktop marker and title context menus establish shareable focus without replacing empty-stage behavior", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium-root", "Desktop context-menu coverage runs once.");
+  const { base } = deployment(testInfo);
+  await page.route("**/graph-data.json", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(contextGraphData) }),
+  );
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText(value: string) {
+          (window as unknown as { copiedNeighborhoodLink?: string }).copiedNeighborhoodLink = value;
+          return Promise.resolve();
+        },
+      },
+    });
+  });
+  await page.goto(`${base}/?camera=7&filter=draft`);
+  const graph = page.locator("#global-graph");
+  const nodes = graph.locator("canvas.sigma-nodes");
+  const labels = graph.locator("canvas.sigma-labels");
+  const hovers = graph.locator("canvas.sigma-hovers");
+  await expect(labels).toBeVisible();
+  await expect(hovers).toBeVisible();
+  await page.waitForTimeout(800);
+  await page.emulateMedia({ colorScheme: "light" });
+  const normalLight = await nodes.screenshot();
+  await page.evaluate(() => {
+    document.addEventListener("contextmenu", (event) => {
+      document.body.dataset.lastContextPrevented = String(event.defaultPrevented);
+    });
+  });
+
+  const initialLabel = await renderedLabelAnchor(labels);
+  const target = await targetWithinLabel(page, graph, initialLabel);
+  const graphBounds = (await graph.boundingBox())!;
+  const emptyPoint = {
+    x: graphBounds.x + graphBounds.width - 8,
+    y: graphBounds.y + graphBounds.height - 8,
+  };
+  await page.mouse.move(target.x, target.y);
+  await page.mouse.down({ button: "right" });
+  await page.mouse.move(emptyPoint.x, emptyPoint.y);
+  await page.waitForTimeout(50);
+  const labelDuringSecondaryPress = await renderedLabelAnchor(labels);
+  expect(labelDuringSecondaryPress.left).toBeCloseTo(initialLabel.left, 0);
+  expect(labelDuringSecondaryPress.y).toBeCloseTo(initialLabel.y, 0);
+  await page.mouse.up({ button: "right" });
+  const menu = page.getByRole("menu");
+  if (await menu.isVisible()) await page.keyboard.press("Escape");
+  const targetAfterSecondaryPress = await targetWithinLabel(
+    page,
+    graph,
+    await renderedLabelAnchor(labels),
+  );
+  await page.mouse.click(targetAfterSecondaryPress.x, targetAfterSecondaryPress.y, { button: "right" });
+  await expect(menu).toBeVisible();
+  await page.mouse.move(emptyPoint.x, emptyPoint.y);
+  await page.waitForTimeout(50);
+  const labelAfterContextMove = await renderedLabelAnchor(labels);
+  expect(labelAfterContextMove.left).toBeCloseTo(initialLabel.left, 0);
+  expect(labelAfterContextMove.y).toBeCloseTo(initialLabel.y, 0);
+  expect(await menu.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return bounds.left >= 0 && bounds.top >= 0 && bounds.right <= innerWidth && bounds.bottom <= innerHeight;
+  })).toBe(true);
+  await expect(page.locator("body")).toHaveAttribute("data-last-context-prevented", "true");
+  await menu.getByRole("menuitem", { name: "Pin neighborhood" }).click();
+  await expect(graph).toHaveAttribute("data-focused-inspection");
+  await expect(page.locator("[data-graph-focus-status]")).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`${base}/?\\?focus=default%2F.+$`));
+  expect(page.url()).not.toMatch(/[?&](?:camera|x|y|ratio|filter)=/u);
+  await page.waitForTimeout(500);
+  const focusedLight = await nodes.screenshot();
+  expect(focusedLight.equals(normalLight)).toBe(false);
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.waitForTimeout(50);
+  const focusedDark = await nodes.screenshot();
+  const focusedHoverInk = await canvasInkPixels(hovers);
+
+  const focusedNode = await graph.getAttribute("data-focused-node");
+  const focusedLabel = await renderedLabelAnchor(labels);
+  const neighborLabel = await renderedLabelAnchor(labels, "shortest");
+  const neighborTarget = await targetWithinLabel(page, graph, neighborLabel);
+  await page.mouse.move(neighborTarget.x, neighborTarget.y);
+  await page.mouse.down({ button: "right" });
+  await page.mouse.move(emptyPoint.x, emptyPoint.y);
+  await page.waitForTimeout(50);
+  const focusedLabelDuringSecondaryPress = await renderedLabelAnchor(labels);
+  expect(focusedLabelDuringSecondaryPress.left).toBeCloseTo(focusedLabel.left, 0);
+  expect(focusedLabelDuringSecondaryPress.y).toBeCloseTo(focusedLabel.y, 0);
+  await page.mouse.up({ button: "right" });
+  await page.mouse.click(neighborTarget.x, neighborTarget.y, { button: "right" });
+  await expect(menu).toBeVisible();
+  await page.mouse.move(emptyPoint.x, emptyPoint.y);
+  await page.waitForTimeout(50);
+  const focusedLabelAfterContextMove = await renderedLabelAnchor(labels);
+  expect(focusedLabelAfterContextMove.left).toBeCloseTo(focusedLabel.left, 0);
+  expect(focusedLabelAfterContextMove.y).toBeCloseTo(focusedLabel.y, 0);
+  await page.keyboard.press("Escape");
+  await page.mouse.move(neighborTarget.x, neighborTarget.y);
+  await page.waitForTimeout(50);
+  await expect(graph).not.toHaveAttribute("data-transient-inspection");
+  expect(await canvasInkPixels(hovers)).toBe(focusedHoverInk);
+  await expect(graph).toHaveAttribute("data-focused-node", focusedNode ?? "");
+  await graph.dispatchEvent("pointerleave", { pointerType: "mouse" });
+  await expect(graph).not.toHaveAttribute("data-transient-inspection");
+  expect(await canvasInkPixels(hovers)).toBe(focusedHoverInk);
+
+  await page.mouse.move(
+    graphBounds.x + graphBounds.width / 2,
+    graphBounds.y + graphBounds.height / 2,
+  );
+  await page.mouse.wheel(0, 900);
+  await page.waitForTimeout(300);
+  const unrelatedTarget = await unrelatedContextTarget(page, graph, menu);
+  await page.mouse.move(unrelatedTarget.x, unrelatedTarget.y);
+  await expect(graph).toHaveCSS("cursor", "auto");
+  const focusedUrl = page.url();
+  await page.mouse.click(unrelatedTarget.x, unrelatedTarget.y);
+  await page.waitForTimeout(100);
+  await expect(page).toHaveURL(focusedUrl);
+  await expect(graph).toHaveAttribute("data-focused-node", focusedNode ?? "");
+
+  const beforeFocusedFit = await graphCounts(graph);
+  await page.getByRole("button", { name: "Fit view" }).click();
+  await expect.poll(async () => (await graphCounts(graph)).fits).toBe(beforeFocusedFit.fits + 1);
+  await expect.poll(async () => (await graphCounts(graph)).completions)
+    .toBeGreaterThan(beforeFocusedFit.completions);
+  const labelAfterFocusedFit = await renderedLabelAnchor(labels);
+  expect(labelAfterFocusedFit.left).toBeCloseTo(focusedLabel.left, 0);
+  expect(labelAfterFocusedFit.y).toBeCloseTo(focusedLabel.y, 0);
+
+  await expect(page.locator("[data-graph-focus-open]")).toHaveAttribute("href", /\/notes\//u);
+  await page.locator("[data-graph-focus-clear]").click();
+  await expect(graph).not.toHaveAttribute("data-focused-inspection");
+  await expect(page).toHaveURL(new RegExp(`${base}/?$`));
+  expect((await nodes.screenshot()).equals(focusedDark)).toBe(false);
+
+  const marker = await nodeLeftOfLabel(page, graph, await renderedLabelAnchor(labels));
+  await page.mouse.click(marker.x, marker.y, { button: "right" });
+  await expect(menu).toBeVisible();
+  await menu.getByRole("menuitem", { name: "Copy neighborhood link" }).click();
+  const focusCopy = page.locator("[data-graph-focus-copy]");
+  await expect(focusCopy).toHaveText("Copied");
+  const copied = await page.evaluate(() =>
+    (window as unknown as { copiedNeighborhoodLink?: string }).copiedNeighborhoodLink
+  );
+  expect(copied).toBeTruthy();
+  expect(copied).not.toMatch(/[?&](?:camera|x|y|ratio|filter|position)=/u);
+  expect(new URL(copied!).searchParams.get("focus")).toBe(`default/${focusedNode}`);
+  const recipient = await page.context().newPage();
+  await recipient.setViewportSize({ width: 390, height: 844 });
+  await recipient.route("**/graph-data.json", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(graphData) }),
+  );
+  await recipient.goto(copied!);
+  const recipientGraph = recipient.locator("#global-graph");
+  await expect(recipientGraph).toHaveAttribute("data-focused-node", focusedNode ?? "");
+  await expect.poll(async () => Number(await recipientGraph.getAttribute("data-fit-requests")))
+    .toBeGreaterThan(0);
+  await expect(recipientGraph).toHaveAttribute("data-rendered-label-ids", "hover-target,neighbor");
+  await expect(recipient.locator("[data-graph-focus-status]")).toBeVisible();
+  await recipient.close();
+
+  const bounds = (await graph.boundingBox())!;
+  await page.mouse.click(bounds.x + bounds.width - 8, bounds.y + bounds.height - 8, { button: "right" });
+  await expect(menu).toBeHidden();
+  await expect(page.locator("body")).toHaveAttribute("data-last-context-prevented", "false");
+
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  await page.mouse.wheel(0, 900);
+  await page.waitForTimeout(300);
+  await unrelatedContextTarget(page, graph, menu, false);
+  await menu.getByRole("menuitem", { name: "Move focus here" }).click();
+  const movedFocusedNode = await graph.getAttribute("data-focused-node");
+  expect(movedFocusedNode).toMatch(/^unrelated-[ab]$/u);
+  expect(new URL(page.url()).searchParams.get("focus")).toBe(`default/${movedFocusedNode}`);
+
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  await page.mouse.wheel(0, 900);
+  await page.waitForTimeout(300);
+  await unrelatedContextTarget(page, graph, menu, false);
+  await menu.getByRole("menuitem", { name: "Open note" }).click();
+  await expect(page).toHaveURL(new RegExp(`${base}/notes/.+`));
+  const openedPath = new URL(page.url()).pathname.replace(/\/$/u, "");
+  const expectedPaths = movedFocusedNode === "unrelated-a"
+    ? [`${base}/notes/welcome`]
+    : [`${base}/notes/welcome`, `${base}/notes/portable-notes`];
+  expect(expectedPaths).toContain(openedPath);
+});
+
 test("touch long press pins and clears graph inspection", async ({ browser }, testInfo) => {
   test.skip(testInfo.project.name !== "chromium-root", "Trusted touch dispatch uses Chromium CDP once.");
   const { base } = deployment(testInfo);
@@ -473,7 +714,7 @@ test("touch long press pins and clears graph inspection", async ({ browser }, te
   const labelsCanvas = graph.locator("canvas.sigma-labels");
   await expect(nodesCanvas).toBeVisible();
   await page.waitForTimeout(800);
-  const target = await nodeLeftOfLabel(page, graph, await longestLabelAnchor(labelsCanvas));
+  const target = await nodeLeftOfLabel(page, graph, await renderedLabelAnchor(labelsCanvas));
   await page.mouse.move(0, 0);
   await page.waitForTimeout(50);
   const normal = await nodesCanvas.screenshot();
@@ -515,20 +756,22 @@ test("touch long press pins and clears graph inspection", async ({ browser }, te
   };
 
   await addSecondTouch(target);
-  await expect(graph).not.toHaveAttribute("data-pinned-inspection");
+  await expect(graph).not.toHaveAttribute("data-focused-inspection");
   await touch(target, 550);
-  await expect(page).toHaveURL(new RegExp(`${base}/?$`));
-  await expect(graph).toHaveAttribute("data-pinned-inspection");
+  await expect(page).toHaveURL(new RegExp(`${base}/?\\?focus=default%2F.+$`));
+  await expect(graph).toHaveAttribute("data-focused-inspection");
+  await expect(page.locator("[data-graph-focus-status]")).toBeVisible();
   const pinned = await nodesCanvas.screenshot();
   expect(pinned.equals(normal)).toBe(false);
 
   const bounds = (await graph.boundingBox())!;
   const empty = { x: bounds.x + bounds.width - 12, y: bounds.y + bounds.height - 12 };
   await drag(empty, { x: empty.x - 50, y: empty.y - 50 });
-  await expect(graph).toHaveAttribute("data-pinned-inspection");
+  await expect(graph).toHaveAttribute("data-focused-inspection");
 
   await touch(empty);
-  await expect(graph).not.toHaveAttribute("data-pinned-inspection");
+  await expect(graph).not.toHaveAttribute("data-focused-inspection");
+  await expect(page).toHaveURL(new RegExp(`${base}/?$`));
   expect((await nodesCanvas.screenshot()).equals(pinned)).toBe(false);
   await context.close();
 });

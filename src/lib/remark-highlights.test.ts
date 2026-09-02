@@ -1,7 +1,7 @@
 import type { Emphasis, Paragraph, Root, Text } from "mdast";
 import { VFile } from "vfile";
 import { describe, expect, it } from "vitest";
-import { remarkHighlights } from "./remark-highlights";
+import { remarkHighlights, splitHighlightText } from "./remark-highlights";
 
 function run(text: string): Paragraph {
   const tree: Root = {
@@ -13,6 +13,14 @@ function run(text: string): Paragraph {
 }
 
 describe("remarkHighlights", () => {
+  it("shares safe text segments with non-Markdown excerpts", () => {
+    expect(splitHighlightText("before ==<tag> & text== after")).toEqual([
+      { value: "before ", highlighted: false },
+      { value: "<tag> & text", highlighted: true },
+      { value: " after", highlighted: false },
+    ]);
+  });
+
   it("renders ==text== as a mark element", () => {
     const para = run("this ==matters a lot== here");
     expect(para.children.map((c) => c.type)).toEqual(["text", "emphasis", "text"]);

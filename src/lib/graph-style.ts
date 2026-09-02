@@ -107,6 +107,7 @@ export function graphNodeAttributes(node: GraphNodeDatum, context: GraphContext)
         ? accentColor(node.brainAccent, node.status)
         : nodeColor(node.type, node.status),
     route: node.route,
+    compositeId: node.compositeId,
     noteType: node.type,
     status: node.status,
     tags: node.tags,
