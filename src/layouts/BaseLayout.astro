@@ -51,6 +51,7 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
   data-brain-registry={JSON.stringify(brainRegistry)}
   data-note-focus={noteContext?.compositeId}
   data-note-owner={noteContext?.ownerBrainId}
+  data-workspace-mode={isWorkspace ? "true" : "false"}
 >
   <head>
     <meta charset="utf-8" />
@@ -195,6 +196,7 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
         withGraphContext,
         withBrainScope,
         withGraphFocus,
+        withoutGraphFocus,
         type BrainSelectionContext,
         type LogicalRoute,
       } from "../lib/routes";
@@ -258,6 +260,14 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
       const retainedScope = !requestedScope.valid || !requestedScope.present
         ? null
         : canonicalBrainSelection(registry, requestedScope.value);
+      const noteOwner = document.documentElement.dataset.noteOwner;
+      const workspaceMode = document.documentElement.dataset.workspaceMode === "true";
+      if (workspaceMode && noteOwner && requestedScope.present && (!requestedScope.valid || !retainedScope?.valid)) {
+        window.location.replace(joinBase(
+          import.meta.env.BASE_URL,
+          `${routes.graphAlias}${window.location.search}` as LogicalRoute,
+        ));
+      }
       if (retainedScope?.valid && retainedScope.brainIds.length > 0) {
         for (const anchor of document.querySelectorAll<HTMLAnchorElement>("a[data-note-route]")) {
           const route = anchor.dataset.noteRoute as LogicalRoute | undefined;
@@ -277,14 +287,18 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
           }
         }
       }
-      const noteOwner = document.documentElement.dataset.noteOwner;
       const requestedFocus = singularQueryValue(new URLSearchParams(window.location.search), "focus");
+      const clearInvalidFocus = () => {
+        const current = `${window.location.pathname}${window.location.search}${window.location.hash}` as LogicalRoute;
+        window.history.replaceState(null, "", withoutGraphFocus(current));
+      };
+      if (noteOwner && requestedFocus.present && !requestedFocus.valid) clearInvalidFocus();
       const noteGraphContext = retainedScope?.valid && retainedScope.brainIds.length > 0
         ? brainSelectionContext(registry, retainedScope.brainIds)
-        : noteOwner ? brainSelectionContext(registry, [noteOwner]) : null;
+        : workspaceMode && noteOwner ? brainSelectionContext(registry, [noteOwner]) : null;
       if (
-        noteGraphContext?.valid &&
-        noteGraphContext.kind !== "chooser" &&
+        noteOwner &&
+        (!workspaceMode || (noteGraphContext?.valid && noteGraphContext.kind !== "chooser")) &&
         requestedFocus.valid &&
         requestedFocus.present
       ) {
@@ -292,12 +306,22 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
           const response = await fetch(joinBase(import.meta.env.BASE_URL, routes.graphData));
           if (!response.ok) throw new Error(`Graph data request failed: ${response.status}`);
           const data = normalizeGraphData(await response.json());
-          const context = noteGraphContext.kind === "combined"
-            ? { mode: "combined" as const, brainIds: noteGraphContext.brainIds }
-            : { mode: "brain" as const, brainId: noteGraphContext.brainIds[0], includeForeign: true };
+          const context = !workspaceMode
+            ? { mode: "all" as const }
+            : noteGraphContext!.kind === "combined"
+              ? { mode: "combined" as const, brainIds: noteGraphContext!.brainIds }
+              : { mode: "brain" as const, brainId: noteGraphContext!.brainIds[0], includeForeign: true };
           const knownCompositeIds = deriveGraphData(data, context).nodes.map(({ compositeId }) => compositeId);
-          if (!knownCompositeIds.includes(requestedFocus.value)) return;
-          const graphRoute = withGraphFocus(noteGraphContext.graph, knownCompositeIds, requestedFocus.value);
+          if (!knownCompositeIds.includes(requestedFocus.value)) {
+            clearInvalidFocus();
+            return;
+          }
+          document.documentElement.dataset.originatingGraphFocus = requestedFocus.value;
+          const graphRoute = withGraphFocus(
+            workspaceMode ? noteGraphContext!.graph : routes.home,
+            knownCompositeIds,
+            requestedFocus.value,
+          );
           for (const anchor of document.querySelectorAll<HTMLAnchorElement>("[data-scoped-graph-route]")) {
             anchor.href = joinBase(import.meta.env.BASE_URL, graphRoute);
           }
@@ -308,7 +332,7 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
               registry,
               knownCompositeIds,
               route,
-              noteGraphContext.brainIds,
+              workspaceMode ? noteGraphContext!.brainIds : [],
               requestedFocus.value,
             );
             if (scoped.valid) anchor.href = joinBase(import.meta.env.BASE_URL, scoped.route);

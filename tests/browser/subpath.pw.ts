@@ -327,7 +327,9 @@ test("all site features stay within the deployment base", async ({ page }, testI
     response.url().endsWith(`${base}/vault-assets/media/diagram.svg`),
   );
   await page.getByRole("option", { name: /^Welcome/ }).click();
-  await expect(page).toHaveURL(new RegExp(`${base}/notes/welcome/?$`));
+  await expect(page).toHaveURL(
+    `${origin}${base}/notes/welcome?focus=default%2Fportable-notes`,
+  );
   await expect(page.locator(".local-graph canvas.sigma-nodes")).toBeVisible();
   await expect(page.locator(".note-meta")).toContainText("created 2026-08-27 00:00 UTC");
   await expect(page.getByRole("heading", { name: "Connection map" })).toBeVisible();
@@ -417,8 +419,8 @@ test("all site features stay within the deployment base", async ({ page }, testI
 
   await launcher.click();
   await page.getByRole("link", { name: "Graph", exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`${base}/?$`));
-  await expect(page.locator("#global-graph")).not.toHaveAttribute("data-focused-inspection");
+  await expect(page).toHaveURL(`${origin}${base}/?focus=default%2Fportable-notes`);
+  await expect(page.locator("#global-graph")).toHaveAttribute("data-focused-node", "portable-notes");
   await page.goto(`${base}/notes/welcome`);
   await page.getByRole("button", { name: "Navigation" }).click();
   await page.locator(".nav-actions").getByRole("link", { name: "Tags" }).click();
@@ -661,6 +663,24 @@ test("mobile navigation stays within the deployment base", async ({ page }, test
   await expect(page.locator(".site-header")).toHaveCSS("width", "48px");
   await expect(page.getByRole("button", { name: "Navigation" })).toHaveAttribute("aria-expanded", "false");
   expect(await initialListContentClearsNavigation(page)).toBe(true);
+});
+
+test("vault QuickSwitcher preserves focused graph return context", async ({ page }, testInfo) => {
+  const { origin, base } = deployment(testInfo);
+  await page.goto(`${base}/?focus=default%2Fwelcome`);
+  await expect(page.locator("#global-graph")).toHaveAttribute("data-focused-node", "welcome");
+  await page.getByRole("button", { name: "Navigation" }).click();
+  await page.getByRole("button", { name: "Search" }).click();
+  await page.getByLabel("Search notes and tags").fill("Atomic notes");
+  await page.locator("#switcher-results li", { hasText: "Atomic notes" }).click();
+  await expect(page).toHaveURL(
+    `${origin}${base}/notes/atomic-notes?focus=default%2Fwelcome`,
+  );
+  await page.getByRole("button", { name: "Navigation" }).click();
+  await expect(page.getByRole("link", { name: "Graph", exact: true })).toHaveAttribute(
+    "href",
+    `${base}/?focus=default%2Fwelcome`,
+  );
 });
 
 test("nested missing routes serve deterministic base-safe recovery", async ({ page }, testInfo) => {
