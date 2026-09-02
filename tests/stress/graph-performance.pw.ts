@@ -5,7 +5,7 @@ interface GraphPerformance {
   longTasks: { start: number; duration: number }[];
 }
 
-test("a 2,000-note combined graph stays interactive while motion runs", async ({ page }) => {
+test("a 2,000-note full workspace graph stays interactive while motion runs", async ({ page }) => {
   await page.addInitScript(() => {
     const measurements: GraphPerformance = { frameGaps: [], longTasks: [] };
     (window as unknown as { __graphPerformance: GraphPerformance }).__graphPerformance = measurements;
@@ -24,7 +24,7 @@ test("a 2,000-note combined graph stays interactive while motion runs", async ({
     }).observe({ type: "longtask", buffered: true });
   });
 
-  await page.goto("graph?brains=brain-01,brain-02,brain-03,brain-04");
+  await page.goto("./");
   const graph = page.locator("#global-graph");
   await expect(graph.locator("canvas.sigma-nodes")).toBeVisible();
   await expect(graph).toHaveAttribute("data-visible-nodes", "2000");

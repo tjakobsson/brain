@@ -19,6 +19,7 @@ import {
   type GraphHoverState,
 } from "./graph-interaction";
 import { fitRenderedGraph } from "./graph-fit";
+import { createLensReducers, createLensStore, normalizeLens } from "./graph-lens";
 import { wireLocalGraphLabelReveal } from "./graph-local-labels";
 import { GraphMotionController } from "./graph-motion";
 import { ResponsiveGraphScheduler } from "./graph-motion-core";
@@ -663,12 +664,20 @@ export interface GlobalGraphUI {
   contextFocus: HTMLButtonElement;
   contextCopy: HTMLButtonElement;
   contextOpen: HTMLButtonElement;
+  /** The Brain lens control; absent in vault mode. */
+  lens?: GraphLensUI | null;
+}
+
+export interface GraphLensUI {
+  control: HTMLElement;
+  summary: HTMLElement;
+  checkboxes: readonly HTMLInputElement[];
+  reset: HTMLButtonElement;
 }
 
 export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   const data = await fetchGraphData();
   const activeBrainId = ui.host.dataset.activeBrainId;
-  const combined = ui.host.dataset.graphMode === "combined";
   // A note-owned neighborhood page names its note in the host attribute. Its
   // pathname is the shareable identity, so focus never becomes query state
   // there and moving focus navigates to the other note's neighborhood page.
@@ -701,19 +710,11 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       ui.relatedBrainsToggle.querySelector<HTMLElement>("[data-control-label]")!.textContent = label;
     }
   }
-  // TODO(default-to-full-workspace-graph): removed in task group 3. The combined
-  // graph mode has no selection source now that the ?brains= grammar is gone.
-  const selectedBrainIds: string[] = [];
-  const motionScope = () => {
-    if (activeBrainId) return `brain:${activeBrainId}:${showRelatedBrains}`;
-    if (combined) return `combined:${[...selectedBrainIds].sort().join(",")}`;
-    return "all";
-  };
+  const motionScope = () =>
+    activeBrainId ? `brain:${activeBrainId}:${showRelatedBrains}` : "all";
   const visualContext: GraphContext = activeBrainId
     ? { mode: "brain", brainId: activeBrainId }
-    : combined
-      ? { mode: "combined", brainIds: selectedBrainIds }
-      : { mode: "all" };
+    : { mode: "all", encodeBrains: data.mode === "workspace" };
   const graph = buildGraph(data, visualContext);
   const nodeByCompositeId = new Map(data.nodes.map((node) => [node.compositeId, node.id]));
   const compositeIds = [...nodeByCompositeId.keys()];
@@ -819,7 +820,12 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   );
   const pageNode = neighborhoodPage ? state.focused : null;
   let initialFocusOverride = state.focused !== null;
-  const hoverReducers = createHoverReducers(graph, state);
+  // The personal Brain lens: dimmed Brain IDs remembered per site base in the
+  // reader's own browser. It lowers emphasis in place and never reaches a URL.
+  const knownBrainIds = data.brains.map(({ id }) => id);
+  const lensStore = createLensStore(import.meta.env.BASE_URL);
+  let dimmedBrains: ReadonlySet<string> = new Set(normalizeLens(lensStore.read(), knownBrainIds));
+  const lensReducers = createLensReducers(graph, state, { dimmed: () => dimmedBrains, hidden });
   let query = "";
 
   const activeTypes = () =>
@@ -833,8 +839,16 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     if (activeBrainId) {
       return { mode: "brain", brainId: activeBrainId, includeForeign: showRelatedBrains };
     }
-    if (combined) return { mode: "combined", brainIds: selectedBrainIds };
     return { mode: "all" };
+  }
+
+  function updateLensStats(): void {
+    ui.host.dataset.lens = [...dimmedBrains].join(",");
+    ui.host.dataset.dimmedNodes = String(graph.nodes().filter((id) =>
+      !hidden.has(id) &&
+      dimmedBrains.has(graph.getNodeAttribute(id, "brainId") as string) &&
+      !(state.focused !== null && isInspectionNeighborhoodNode(state, id))
+    ).length);
   }
 
   function edgeKey(source: string, target: string): string {
@@ -973,6 +987,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     );
     ui.host.dataset.crossEdges = String(visibleCrossEdges.length);
     ui.host.dataset.relatedBrainsVisible = String(Boolean(activeBrainId && showRelatedBrains));
+    updateLensStats();
   }
 
   let revealNarrowLabels = forceLabelsOnNarrowZoom(
@@ -1008,24 +1023,22 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
         res.highlighted = true;
       }
       if (state.focused && node !== state.focused) res.suppressHover = true;
-      if (activeNode) {
-        return hoverReducers.nodeReducer(node, res as typeof attrs);
-      } else if (query && !label.includes(query)) {
-        res.color = state.theme.fadedNode;
-        res.label = "";
+      // Precedence: inspected neighborhood at full emphasis, then the lens,
+      // then search fading and normal styling. `res` is already a copy.
+      const styled = lensReducers.nodeReducer(node, res as typeof attrs) as Record<string, unknown>;
+      if (!activeNode && query && !label.includes(query)) {
+        styled.color = state.theme.fadedNode;
+        styled.label = "";
       }
-      return res as typeof attrs;
+      return styled as typeof attrs;
     });
     renderer.setSetting("edgeReducer", (edge, attrs) => {
-      const activeNode = activeInspectionNode(state);
-      const res = { ...attrs } as Record<string, unknown>;
       const source = graph.source(edge);
       const target = graph.target(edge);
       if (!contextEdges.has(edgeKey(source, target)) || hidden.has(source) || hidden.has(target)) {
-        res.hidden = true;
+        return { ...attrs, hidden: true };
       }
-      else if (activeNode) return hoverReducers.edgeReducer(edge, attrs);
-      return res as typeof attrs;
+      return lensReducers.edgeReducer(edge, attrs);
     });
     renderer.refresh();
   }
@@ -1138,6 +1151,32 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     renderSearchResults();
   };
   ui.relatedBrainsToggle?.addEventListener("click", onRelatedBrainsToggle);
+
+  const syncLensControl = () => {
+    const lens = ui.lens;
+    if (!lens) return;
+    for (const control of lens.checkboxes) control.checked = !dimmedBrains.has(control.value);
+    const label = dimmedBrains.size === 0 ? "Brains" : `Brains: ${dimmedBrains.size} dimmed`;
+    lens.summary.setAttribute("aria-label", label);
+    lens.summary.title = label;
+    lens.control.toggleAttribute("data-dimmed", dimmedBrains.size > 0);
+  };
+  const setLens = (dimmed: Iterable<string>) => {
+    dimmedBrains = new Set(normalizeLens(dimmed, knownBrainIds));
+    if (dimmedBrains.size === 0) lensStore.reset();
+    else lensStore.write([...dimmedBrains]);
+    syncLensControl();
+    updateLensStats();
+    applyReducers();
+  };
+  const onLensChange = () => {
+    setLens((ui.lens?.checkboxes ?? []).filter((box) => !box.checked).map((box) => box.value));
+  };
+  const onLensReset = () => setLens([]);
+  for (const control of ui.lens?.checkboxes ?? []) control.addEventListener("change", onLensChange);
+  ui.lens?.reset.addEventListener("click", onLensReset);
+  syncLensControl();
+
   const onNarrowGraphChange = () => {
     const next = responsiveState();
     if (state.dragged) responsiveScheduler.defer(next);
@@ -1330,6 +1369,8 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     window.removeEventListener("pagehide", flushSession);
     ui.fitViewButton.removeEventListener("click", onFitView);
     ui.relatedBrainsToggle?.removeEventListener("click", onRelatedBrainsToggle);
+    for (const control of ui.lens?.checkboxes ?? []) control.removeEventListener("change", onLensChange);
+    ui.lens?.reset.removeEventListener("click", onLensReset);
     narrowGraphQuery.removeEventListener("change", onNarrowGraphChange);
     document.removeEventListener("visibilitychange", onVisibilityChange);
     motion.destroy();

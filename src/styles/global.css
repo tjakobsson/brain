@@ -262,35 +262,41 @@ a:hover {
   user-select: text;
 }
 
-.chooser-about {
-  position: relative;
-  max-width: 68rem;
-  margin: -3.5rem auto 0;
-  padding-bottom: 1rem;
+.graph-about {
+  position: fixed;
+  z-index: 5;
+  right: max(0.75rem, env(safe-area-inset-right));
+  bottom: max(0.75rem, env(safe-area-inset-bottom));
 }
 
-.chooser-about__trigger {
+.graph-about__trigger {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.45rem 0.65rem;
-  border: 1px solid transparent;
-  border-radius: 7px;
+  min-height: 44px;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
   color: var(--text-muted);
-  background: transparent;
+  background: var(--bg-elevated);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
   font: inherit;
   cursor: pointer;
 }
 
-.chooser-about__trigger:hover,
-.chooser-about__trigger:focus-visible,
-.chooser-about__trigger[aria-expanded="true"] {
-  border-color: var(--border);
+.graph-about__trigger:hover,
+.graph-about__trigger:focus-visible,
+.graph-about__trigger[aria-expanded="true"] {
+  border-color: var(--accent);
   color: var(--text);
-  background: var(--bg-elevated);
 }
 
-.chooser-about__trigger svg,
+.graph-about__trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.graph-about__trigger svg,
 .note-focus-action svg {
   width: 1.15rem;
   height: 1.15rem;
@@ -301,12 +307,28 @@ a:hover {
   stroke-linejoin: round;
 }
 
-.chooser-about .about-disclosure {
+.graph-about .about-disclosure {
   top: auto;
-  right: auto;
-  bottom: calc(100% + 0.35rem);
-  left: 0;
-  width: min(15rem, calc(100vw - 3rem));
+  right: 0;
+  bottom: calc(100% + 0.5rem);
+  left: auto;
+  width: min(17rem, calc(100vw - 1.5rem));
+}
+
+.about-title {
+  margin-bottom: 0.35rem;
+  font-weight: 700;
+}
+
+.about-description {
+  margin-bottom: 0.85rem;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+}
+
+/* Keep the focus status clear of the About action on the root graph. */
+main:has(.graph-about) .graph-focus-status {
+  max-width: calc(100% - 8rem);
 }
 
 .visually-hidden {
@@ -329,19 +351,14 @@ a:hover {
   color: var(--brain-accent, var(--accent));
 }
 
-.brain-card__identity .brain-mark {
-  width: 1.25rem;
-  height: 1.25rem;
-}
-
-.context-switcher {
+.brain-lens {
   position: relative;
   width: 44px;
   min-width: 44px;
   height: 44px;
 }
 
-.context-switcher summary {
+.brain-lens summary {
   display: grid;
   place-items: center;
   width: 44px;
@@ -354,15 +371,16 @@ a:hover {
   list-style: none;
 }
 
-.context-switcher__mark {
+.brain-lens__mark {
   position: relative;
   display: block;
 }
 
-.context-switcher__satellite {
+.brain-lens__satellite {
   position: absolute;
   right: -0.28rem;
   bottom: -0.16rem;
+  display: none;
   width: 0.42rem;
   height: 0.42rem;
   border: 1px solid var(--bg-elevated);
@@ -370,49 +388,53 @@ a:hover {
   background: currentColor;
 }
 
-.context-switcher summary:hover,
-.context-switcher[open] > summary {
+.brain-lens[data-dimmed] .brain-lens__satellite {
+  display: block;
+}
+
+.brain-lens summary:hover,
+.brain-lens[open] > summary {
   background: var(--accent-soft);
 }
 
-.context-switcher summary::-webkit-details-marker {
+.brain-lens summary::-webkit-details-marker {
   display: none;
 }
 
-.context-switcher summary:focus-visible {
+.brain-lens summary:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.context-switcher__panel {
+.brain-lens__panel {
   position: fixed;
   top: 4.25rem;
   right: auto;
   left: max(0.75rem, env(safe-area-inset-left));
   display: grid;
-  gap: 0.5rem;
-  width: min(16rem, calc(100vw - max(1.5rem, env(safe-area-inset-left) + env(safe-area-inset-right))));
+  gap: 0.35rem;
+  width: min(22rem, calc(100vw - max(1.5rem, env(safe-area-inset-left) + env(safe-area-inset-right))));
   max-height: calc(100dvh - max(0.75rem, env(safe-area-inset-top)) - max(0.75rem, env(safe-area-inset-bottom)) - 3.5rem);
   box-sizing: border-box;
-  padding: 0.4rem;
+  padding: 0.5rem;
   border: 1px solid var(--border);
   border-radius: 9px;
   background: var(--bg-elevated);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
-.context-switcher__panel fieldset {
-  display: grid;
-  gap: 0.15rem;
-  min-width: 0;
+.brain-lens__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.15rem 0.5rem;
+}
+
+.brain-lens__heading h2 {
   margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.context-switcher__panel legend {
-  padding: 0.35rem 0.65rem;
   color: var(--text-muted);
   font-size: 0.75rem;
   font-weight: 650;
@@ -420,18 +442,84 @@ a:hover {
   text-transform: uppercase;
 }
 
-.context-switcher__panel label {
+.brain-lens__reset {
+  min-height: 2.25rem;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text);
+  background: var(--bg-soft);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.brain-lens__reset:hover,
+.brain-lens__reset:focus-visible {
+  border-color: var(--accent);
+}
+
+.brain-lens__hint {
+  margin: 0;
+  padding: 0 0.5rem 0.25rem;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.brain-lens__group {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+  margin-inline-start: calc(var(--group-depth) * 0.6rem);
+  padding-inline-start: 0.45rem;
+  border-left: 1px solid var(--border);
+}
+
+.brain-lens__group h3 {
+  margin: 0.3rem 0 0.1rem;
+  padding: 0 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.brain-lens__group ul {
+  display: grid;
+  gap: 0.15rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.brain-lens__brain {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0 0.5rem;
+  min-width: 0;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+}
+
+.brain-lens__brain:hover,
+.brain-lens__brain:has(:focus-visible) {
+  background: var(--accent-soft);
+}
+
+.brain-lens__toggle {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
+  gap: 0.5rem;
   min-width: 0;
-  padding: 0.5rem 0.65rem;
-  border-radius: 6px;
+  min-height: 2rem;
   color: var(--text);
   cursor: pointer;
 }
 
-.context-switcher__panel input {
+.brain-lens__toggle input {
   flex: none;
   width: 1rem;
   height: 1rem;
@@ -439,27 +527,52 @@ a:hover {
   accent-color: var(--brain-accent, var(--accent));
 }
 
-.context-switcher__label {
+.brain-lens__name {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.brain-lens__title {
+  font-weight: 600;
+}
+
+.brain-lens__id {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.brain-lens__brain:has(input:not(:checked)) .brain-lens__title {
+  color: var(--text-muted);
+}
+
+.brain-lens__enter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 2rem;
+  padding: 0 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 600;
   white-space: nowrap;
 }
 
-.context-switcher__panel label:hover,
-.context-switcher__panel label:has(input:focus-visible) {
-  background: var(--accent-soft);
+.brain-lens__enter:hover,
+.brain-lens__enter:focus-visible {
+  border-color: var(--brain-accent, var(--accent));
+  text-decoration: none;
 }
 
-.context-switcher__panel button {
-  min-height: 2.5rem;
-  border: 0;
-  border-radius: 7px;
-  color: white;
-  background: var(--accent);
-  font: inherit;
-  font-weight: 650;
-  cursor: pointer;
+.brain-lens__description {
+  grid-column: 1 / -1;
+  margin: 0 0 0.15rem;
+  padding-inline-start: 1.5rem;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
 }
 
 .nav-action {
@@ -529,18 +642,7 @@ main.fluid {
   height: calc(2.9rem + max(0.75rem, env(safe-area-inset-top)));
 }
 
-/* --- Workspace chooser ------------------------------------------------ */
-
-.brain-chooser {
-  max-width: 68rem;
-  margin: 0 auto;
-  padding-bottom: 6rem;
-}
-
-.brain-chooser__intro {
-  max-width: 44rem;
-  margin: 2.5rem 0 3.2rem;
-}
+/* --- Shared page furniture -------------------------------------------- */
 
 .eyebrow {
   margin: 0 0 0.35rem;
@@ -549,196 +651,6 @@ main.fluid {
   font-weight: 700;
   letter-spacing: 0.13em;
   text-transform: uppercase;
-}
-
-.brain-chooser__intro h1 {
-  margin: 0;
-  font-size: clamp(2.35rem, 7vw, 4.7rem);
-  letter-spacing: -0.055em;
-  line-height: 0.98;
-}
-
-.brain-chooser__intro h1 + p {
-  max-width: 38rem;
-  margin-top: 1.15rem;
-  color: var(--text-muted);
-  font-size: 1.05rem;
-}
-
-.brain-hierarchy {
-  display: grid;
-  gap: 2rem;
-}
-
-.brain-group {
-  margin-inline-start: calc(var(--group-depth) * 1.35rem);
-  padding-inline-start: 1rem;
-  border-left: 1px solid var(--border);
-}
-
-.brain-group h2 {
-  margin: 0 0 0.8rem;
-  color: var(--text-muted);
-  font-size: 0.8rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.brain-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
-  gap: 0.85rem;
-}
-
-.brain-card {
-  position: relative;
-  display: flex;
-  min-height: 14rem;
-  flex-direction: column;
-  padding: 1.15rem;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--bg-elevated);
-}
-
-.brain-card:has(.brain-card__select input:checked) {
-  border-color: var(--brain-accent);
-  background: color-mix(in srgb, var(--brain-accent) 8%, var(--bg-elevated));
-}
-
-.brain-card__select {
-  position: absolute;
-  top: 0.85rem;
-  right: 0.85rem;
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  color: var(--text-muted);
-  font-size: 0.76rem;
-  cursor: pointer;
-}
-
-.brain-card__select input {
-  width: 1rem;
-  height: 1rem;
-  margin: 0;
-  accent-color: var(--brain-accent);
-}
-
-.brain-card__identity {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding-right: 5rem;
-  color: var(--text-muted);
-  font-size: 0.8rem;
-  line-height: 1.35;
-}
-
-.brain-card__identity > span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.brain-card h3 {
-  margin: 1.25rem 0 0.35rem;
-  font-size: 1.45rem;
-  line-height: 1.1;
-}
-
-.brain-card p {
-  margin: 0 0 1.25rem;
-  color: var(--text-muted);
-  font-size: 0.9rem;
-}
-
-.brain-card > a {
-  align-self: flex-start;
-  margin-top: auto;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--accent);
-  border-radius: 7px;
-  color: white;
-  background: var(--accent);
-  font-weight: 650;
-}
-
-.brain-card > a:hover {
-  text-decoration: none;
-  filter: brightness(1.08);
-}
-
-@media (min-width: 701px) {
-  .brain-card {
-    display: grid;
-    grid-row: span 4;
-    grid-template-rows: subgrid;
-    row-gap: 0;
-  }
-
-  .brain-card__identity {
-    grid-row: 1;
-  }
-
-  .brain-card h3 {
-    grid-row: 2;
-  }
-
-  .brain-card p {
-    grid-row: 3;
-  }
-
-  .brain-card > a {
-    grid-row: 4;
-  }
-}
-
-.brain-selection__action {
-  position: fixed;
-  z-index: 5;
-  right: max(1rem, env(safe-area-inset-right));
-  bottom: max(1rem, env(safe-area-inset-bottom));
-  left: max(1rem, env(safe-area-inset-left));
-  display: flex;
-  max-width: 68rem;
-  min-height: 4.4rem;
-  margin: 0 auto;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.7rem 0.8rem 0.7rem 1rem;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
-  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.32);
-  backdrop-filter: blur(12px);
-}
-
-.brain-selection__action[hidden] {
-  display: none;
-}
-
-.brain-selection__action span {
-  color: var(--text-muted);
-  font-size: 0.86rem;
-}
-
-.brain-selection__action button {
-  min-height: 2.8rem;
-  padding: 0.45rem 0.9rem;
-  border: 0;
-  border-radius: 8px;
-  color: white;
-  background: var(--accent);
-  font: inherit;
-  font-weight: 650;
-  cursor: pointer;
-}
-
-.brain-selection__action button:disabled {
-  color: var(--text-muted);
-  background: var(--bg-soft);
-  cursor: not-allowed;
 }
 
 .recovery-page {
@@ -1438,7 +1350,7 @@ div[data-callout] [data-callout-body] > :last-child {
 
 .graph-controls > .graph-control,
 .graph-controls > .graph-legend-disclosure > .graph-control,
-.graph-controls > .context-switcher > summary {
+.graph-controls > .brain-lens > summary {
   display: grid;
   place-items: center;
   width: 44px;
@@ -1459,9 +1371,9 @@ div[data-callout] [data-callout-body] > :last-child {
 .graph-controls > .graph-control[aria-expanded="true"],
 .graph-controls > .graph-control[aria-pressed="true"],
 .graph-controls > .graph-legend-disclosure > .graph-control[aria-expanded="true"],
-.graph-controls > .context-switcher > summary:hover,
-.graph-controls > .context-switcher > summary:focus-visible,
-.graph-controls > .context-switcher[open] > summary {
+.graph-controls > .brain-lens > summary:hover,
+.graph-controls > .brain-lens > summary:focus-visible,
+.graph-controls > .brain-lens[open] > summary {
   background: var(--accent-soft);
 }
 
@@ -2107,23 +2019,6 @@ div[data-callout] [data-callout-body] > :last-child {
     margin: 0 0 0.35rem;
   }
 
-  .brain-chooser__intro {
-    margin-top: 3.5rem;
-  }
-
-  .brain-group {
-    margin-inline-start: calc(var(--group-depth) * 0.55rem);
-  }
-
-  .brain-selection__action {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .brain-selection__action button {
-    width: 100%;
-  }
-
   .graph-focus-status {
     align-items: stretch;
     flex-direction: column;
@@ -2212,8 +2107,8 @@ div[data-callout] [data-callout-body] > :last-child {
 @media (max-width: 360px) {
   .graph-controls > .graph-control,
   .graph-controls > .graph-legend-disclosure > .graph-control,
-  .graph-controls > .context-switcher > summary,
-  .graph-controls > .context-switcher {
+  .graph-controls > .brain-lens > summary,
+  .graph-controls > .brain-lens {
     width: 39px;
     min-width: 39px;
   }

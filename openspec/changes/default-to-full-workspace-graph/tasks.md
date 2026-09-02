@@ -13,9 +13,9 @@
 
 ## 3. Full Workspace Root and Brain Lens
 
-- [ ] 3.1 Make the workspace root render the full workspace graph with the About disclosure, redirect `/graph` to the root, remove `graph.astro`'s combined branch and selection recovery card, and verify the workspace Playwright suite opens `/` cold and sees nodes from every configured Brain with no selection step.
-- [ ] 3.2 Replace the Brain context switcher with a checkbox lens control listing every Brain in declared hierarchy with mark, accent, title, Enter action, and reset action, and verify Playwright tests cover unchecking, reset, the all-dimmed fallback, and that no `?brains=` appears in the URL after any interaction.
-- [ ] 3.3 Persist the lens in `localStorage` keyed by site base with an in-memory fallback, apply it through the node and edge reducers as dimming with focus precedence, and verify graph-interaction unit tests cover dim-not-remove, focus-over-lens, filter-removes-before-lens, and storage-unavailable behavior, plus a Playwright test that reloads in the same context and finds the lens restored.
+- [x] 3.1 Make the workspace root render the full workspace graph with the About disclosure, redirect `/graph` to the root, remove `graph.astro`'s combined branch and selection recovery card, and verify the workspace Playwright suite opens `/` cold and sees nodes from every configured Brain with no selection step.
+- [x] 3.2 Replace the Brain context switcher with a checkbox lens control listing every Brain in declared hierarchy with mark, accent, title, Enter action, and reset action, and verify Playwright tests cover unchecking, reset, the all-dimmed fallback, and that no `?brains=` appears in the URL after any interaction.
+- [x] 3.3 Persist the lens in `localStorage` keyed by site base with an in-memory fallback, apply it through the node and edge reducers as dimming with focus precedence, and verify graph-interaction unit tests cover dim-not-remove, focus-over-lens, filter-removes-before-lens, and storage-unavailable behavior, plus a Playwright test that reloads in the same context and finds the lens restored.
 - [ ] 3.4 Update the legend and Brain control copy to describe dimming as emphasis rather than hiding and keep dimmed nodes hoverable and clickable, and verify a Playwright test hovers and opens a dimmed node.
 - [ ] 3.5 Make graph search cover dimmed Brains on the full graph and verify a Playwright test finds and focuses a dimmed Brain's note at full emphasis.
 
@@ -24,7 +24,7 @@
 - [ ] 4.1 Delete `WorkspaceRouteRedirect.astro` and render root `/tags`, `/recent`, and `/orphans` as workspace-wide aggregates with owner labels using the existing report components, and verify Playwright tests open each cold and see entries from more than one Brain with owners identified.
 - [ ] 4.2 Remove `?brains=` propagation from note links, the quick switcher, tag, recent, and orphan links, default the quick switcher scope to the page's namespaced context with a workspace-scope toggle, and verify search unit and Playwright tests cover Brain-page default scope, note-page default scope, and workspace widening without query context.
 - [ ] 4.3 Update shared navigation so Home opens the full workspace graph, workspace-level pages reveal workspace-wide Tags, Recent, and Orphans, and Graph outside note pages targets the page context's graph, and verify workspace and subpath Playwright tests assert each destination.
-- [ ] 4.4 Retire `BrainChooser.astro` as the root page while keeping hierarchy, description, and accent presentation in the lens control panel, and verify a Playwright test confirms the control lists Brains in declared hierarchy order.
+- [x] 4.4 Retire `BrainChooser.astro` as the root page while keeping hierarchy, description, and accent presentation in the lens control panel, and verify a Playwright test confirms the control lists Brains in declared hierarchy order.
 
 ## 5. Verification and Documentation
 

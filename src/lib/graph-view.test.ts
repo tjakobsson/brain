@@ -112,8 +112,8 @@ describe("brain-aware graph rendering data", () => {
     expect(edge).toMatchObject({ crossBrain: true, mutedForeign: true, color: "#8f8b94", size: 0.75 });
   });
 
-  it("labels duplicate titles by owner and status in combined views", () => {
-    const context = { mode: "combined", brainIds: ["engineering", "design"] } as const;
+  it("labels duplicate titles by owner and status on the full workspace graph", () => {
+    const context = { mode: "all", encodeBrains: true } as const;
     const engineering = graphNodeAttributes(data.nodes[0], context);
     const design = graphNodeAttributes(data.nodes[1], context);
     const edge = graphEdgeAttributes(data.edges[0], context);

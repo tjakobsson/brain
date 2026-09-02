@@ -36,9 +36,9 @@ export interface GraphData {
 }
 
 export type GraphContext =
-  | { mode: "all" }
-  | { mode: "brain"; brainId: string; includeForeign?: boolean }
-  | { mode: "combined"; brainIds: readonly string[] };
+  /** Every note; `encodeBrains` marks ownership with accents and `@brain` labels. */
+  | { mode: "all"; encodeBrains?: boolean }
+  | { mode: "brain"; brainId: string; includeForeign?: boolean };
 
 interface LegacyGraphData {
   mode?: InputMode;
@@ -142,35 +142,26 @@ export function buildGraphData(
 export function deriveGraphData(data: GraphData, context: GraphContext): GraphData {
   if (context.mode === "all") return data;
 
-  const included = new Set<string>();
-  if (context.mode === "combined") {
-    const brainIds = new Set(context.brainIds);
-    for (const node of data.nodes) {
-      if (brainIds.has(node.brainId)) included.add(node.id);
-    }
-  } else {
-    const local = new Set(
-      data.nodes.filter((node) => node.brainId === context.brainId).map((node) => node.id),
-    );
-    for (const id of local) included.add(id);
-    if (context.includeForeign !== false) {
-      for (const edge of data.edges) {
-        if (!edge.crossBrain || (!local.has(edge.source) && !local.has(edge.target))) continue;
-        included.add(edge.source);
-        included.add(edge.target);
-      }
+  const local = new Set(
+    data.nodes.filter((node) => node.brainId === context.brainId).map((node) => node.id),
+  );
+  const included = new Set(local);
+  if (context.includeForeign !== false) {
+    for (const edge of data.edges) {
+      if (!edge.crossBrain || (!local.has(edge.source) && !local.has(edge.target))) continue;
+      included.add(edge.source);
+      included.add(edge.target);
     }
   }
 
   return {
     ...data,
     nodes: data.nodes.filter((node) => included.has(node.id)),
-    edges: data.edges.filter((edge) => {
-      if (!included.has(edge.source) || !included.has(edge.target)) return false;
-      return context.mode !== "brain" ||
-        edge.sourceBrainId === context.brainId ||
-        edge.targetBrainId === context.brainId;
-    }),
+    edges: data.edges.filter((edge) =>
+      included.has(edge.source) &&
+      included.has(edge.target) &&
+      (edge.sourceBrainId === context.brainId || edge.targetBrainId === context.brainId)
+    ),
   };
 }
 

@@ -11,9 +11,7 @@ interface Props {
   /** Full-bleed pages (graph): no max-width, no padding. */
   fluid?: boolean;
   activeBrainId?: string;
-  combined?: boolean;
   noteContext?: { ownerBrainId: string; compositeId: string; neighborhoodRoute: LogicalRoute };
-  chooser?: boolean;
 }
 
 const {
@@ -21,9 +19,7 @@ const {
   wide = false,
   fluid = false,
   activeBrainId,
-  combined = false,
   noteContext,
-  chooser = false,
 } = Astro.props;
 const snapshot = getWorkspaceSnapshot();
 const isWorkspace = snapshot.mode === "workspace";
@@ -36,14 +32,14 @@ if (isWorkspace && activeBrainId && !activeBrain) {
 const contextualRoutes = activeBrain
   ? routesFor({ mode: "workspace", brainId: activeBrain.id })
   : routesFor({ mode: "vault" });
-const baseGraphRoute = activeBrain ? contextualRoutes.graph : combined ? routes.graphAlias : routes.home;
+const baseGraphRoute = activeBrain ? contextualRoutes.graph : routes.home;
 // A note page's Graph action opens the note's own neighborhood page unless
 // valid in-session return context redirects it client-side to the originating
 // note's neighborhood page. Both are pathname-only destinations.
 const noteGraphRoute = noteContext?.neighborhoodRoute ?? baseGraphRoute;
-const hasGraphRoute = !isWorkspace || Boolean(activeBrain) || combined;
+const hasGraphRoute = !isWorkspace || Boolean(activeBrain);
 const hasContextReports = !isWorkspace || Boolean(activeBrain);
-const hasNoteNavigation = isWorkspace && Boolean(noteContext) && !fluid && !chooser;
+const hasNoteNavigation = isWorkspace && Boolean(noteContext) && !fluid;
 const url = (route: LogicalRoute) => joinBase(import.meta.env.BASE_URL, route);
 const brainRegistry = snapshot.registry.brains.map(({ id, title }) => ({ id, title }));
 const generatorLabel = `Brain v${packageMetadata.version}`;
@@ -68,7 +64,7 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
   </head>
   <body>
     <div class="site-header-slot">
-      {isWorkspace && !fluid && !chooser && !hasNoteNavigation && (
+      {isWorkspace && !fluid && !hasNoteNavigation && (
         <a class="page-home-action nav-action" href={url(routes.home)} aria-label="Home" title="Home">
           <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
             <path d="m4 10 8-6 8 6v9a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1Z"></path>
@@ -124,10 +120,8 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
                 href={url(noteGraphRoute)}
                 aria-label="Graph"
                 title="Graph"
-                data-combined-route={combined ? "" : undefined}
-                data-combined-graph-route={combined ? "" : undefined}
                 data-scoped-graph-route={noteContext ? "" : undefined}
-                hidden={!hasGraphRoute || combined}
+                hidden={!hasGraphRoute}
               >
                 <svg class="nav-icon graph-icon" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M7.5 7.5 12 5l4.5 2.5v5L12 15l-4.5-2.5z"></path>
@@ -182,12 +176,11 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
         </nav>
       </header>
     </div>
-    <main class:list={[{ wide, fluid, "has-home": isWorkspace && !fluid && !chooser }]}>
+    <main class:list={[{ wide, fluid, "has-home": isWorkspace && !fluid }]}>
       <slot />
     </main>
     <QuickSwitcher
       activeBrainId={activeBrainId}
-      combined={combined}
       workspace={isWorkspace}
       brainRegistry={brainRegistry}
     />
@@ -295,10 +288,6 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
           }
         };
         restoreOriginatingFocus().catch((error) => console.error("[note-navigation] failed to restore graph focus", error));
-      }
-      const combinedGraph = header.querySelector<HTMLAnchorElement>("[data-combined-graph-route]");
-      if (combinedGraph) {
-        combinedGraph.setAttribute("href", `${window.location.pathname}${window.location.search}`);
       }
     </script>
   </body>
