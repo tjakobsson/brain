@@ -11,6 +11,8 @@ export interface ContextualRoutes {
   readonly recent: LogicalRoute;
   readonly orphans: LogicalRoute;
   readonly note: (slug: string) => LogicalRoute;
+  /** The note-owned focused-neighborhood page: `<note path>/graph`. */
+  readonly neighborhood: (slug: string) => LogicalRoute;
   readonly asset: (path: string) => LogicalRoute;
 }
 
@@ -18,61 +20,10 @@ export interface BrainRouteRegistryEntry {
   readonly id: string;
 }
 
-export type BrainSelectionInput = string | readonly string[];
-
 export type SingularQueryValue =
   | { readonly present: false; readonly valid: true }
   | { readonly present: true; readonly valid: true; readonly value: string }
   | { readonly present: true; readonly valid: false };
-
-export type CanonicalBrainSelection =
-  | {
-      readonly valid: true;
-      readonly brainIds: readonly string[];
-      readonly value: string;
-    }
-  | {
-      readonly valid: false;
-      readonly unknownBrainIds: readonly string[];
-    };
-
-export type BrainScopedRoute =
-  | {
-      readonly valid: true;
-      readonly brainIds: readonly string[];
-      readonly value: string;
-      readonly route: LogicalRoute;
-    }
-  | {
-      readonly valid: false;
-      readonly unknownBrainIds: readonly string[];
-    };
-
-export type GraphContextRoute = BrainScopedRoute;
-
-export type BrainSelectionContext =
-  | {
-      readonly valid: true;
-      readonly brainIds: readonly string[];
-      readonly value: string;
-      readonly kind: "chooser" | "brain" | "combined";
-      readonly graph: LogicalRoute;
-    }
-  | {
-      readonly valid: false;
-      readonly unknownBrainIds: readonly string[];
-    };
-
-export type CombinedRoutes =
-  | {
-      readonly valid: true;
-      readonly brainIds: readonly string[];
-      readonly graph: LogicalRoute;
-    }
-  | {
-      readonly valid: false;
-      readonly unknownBrainIds: readonly string[];
-    };
 
 function segment(value: string): string {
   return encodeURIComponent(value);
@@ -87,11 +38,7 @@ function queryKey(entry: string): string {
   }
 }
 
-function withQueryValue(
-  route: LogicalRoute,
-  key: "brains" | "focus",
-  value?: string,
-): LogicalRoute {
+function withQueryValue(route: LogicalRoute, key: "focus", value?: string): LogicalRoute {
   const fragmentIndex = route.indexOf("#");
   const fragment = fragmentIndex < 0 ? "" : route.slice(fragmentIndex);
   const beforeFragment = fragmentIndex < 0 ? route : route.slice(0, fragmentIndex);
@@ -100,12 +47,9 @@ function withQueryValue(
   const entries = queryIndex < 0 ? [] : beforeFragment.slice(queryIndex + 1).split("&");
   const retained = entries.filter((entry) => entry && queryKey(entry) !== key);
 
-  if (value !== undefined) {
-    const entry = `${key}=${value}`;
-    key === "brains" ? retained.unshift(entry) : retained.push(entry);
-  }
+  if (value !== undefined) retained.push(`${key}=${value}`);
 
-  return `${pathname}${retained.length > 0 ? `?${retained.join("&")}` : ""}${fragment}`;
+  return `${pathname}${retained.length > 0 ? `?${retained.join("&")}` : ""}${fragment}` as LogicalRoute;
 }
 
 export const routes = {
@@ -118,6 +62,7 @@ export const routes = {
   recent: "/recent",
   orphans: "/orphans",
   note: (slug: string): LogicalRoute => `/notes/${segment(slug)}`,
+  neighborhood: (slug: string): LogicalRoute => `/notes/${segment(slug)}/graph`,
   vaultAsset: (vaultPath: string): LogicalRoute =>
     `/vault-assets/${vaultPath.split("/").map(segment).join("/")}`,
   faviconSvg: "/favicon.svg",
@@ -133,6 +78,7 @@ export function routesFor(scope: RouteScope): ContextualRoutes {
       recent: routes.recent,
       orphans: routes.orphans,
       note: routes.note,
+      neighborhood: routes.neighborhood,
       asset: routes.vaultAsset,
     };
   }
@@ -145,36 +91,9 @@ export function routesFor(scope: RouteScope): ContextualRoutes {
     recent: `${brain}/recent`,
     orphans: `${brain}/orphans`,
     note: (slug: string): LogicalRoute => `${brain}/notes/${segment(slug)}`,
+    neighborhood: (slug: string): LogicalRoute => `${brain}/notes/${segment(slug)}/graph`,
     asset: (path: string): LogicalRoute =>
       `${brain}/assets/${path.split("/").map(segment).join("/")}`,
-  };
-}
-
-export function canonicalBrainSelection(
-  registry: readonly BrainRouteRegistryEntry[],
-  selection: BrainSelectionInput,
-): CanonicalBrainSelection {
-  const requestedIds = typeof selection === "string" ? selection.split(",") : selection;
-  const registryIds = new Set(registry.map(({ id }) => id));
-  const unknownBrainIds = [...new Set(requestedIds.filter((id) => !registryIds.has(id)))];
-
-  if (unknownBrainIds.length > 0) {
-    return { valid: false, unknownBrainIds };
-  }
-
-  const requested = new Set(requestedIds);
-  const emitted = new Set<string>();
-  const brainIds: string[] = [];
-  for (const { id } of registry) {
-    if (!requested.has(id) || emitted.has(id)) continue;
-    emitted.add(id);
-    brainIds.push(id);
-  }
-
-  return {
-    valid: true,
-    brainIds,
-    value: brainIds.map(segment).join(","),
   };
 }
 
@@ -188,24 +107,11 @@ export function singularQueryValue(
   return { present: true, valid: true, value: values[0] };
 }
 
-export function withBrainScope(
-  registry: readonly BrainRouteRegistryEntry[],
-  route: LogicalRoute,
-  selection?: BrainSelectionInput | null,
-): BrainScopedRoute {
-  const canonical = canonicalBrainSelection(registry, selection ?? []);
-  if (!canonical.valid) return canonical;
-
-  return {
-    ...canonical,
-    route: withQueryValue(
-      route,
-      "brains",
-      canonical.brainIds.length > 0 ? canonical.value : undefined,
-    ),
-  };
-}
-
+/**
+ * In-session graph focus. This is the only query state Brain writes, and only on
+ * graph pages (where losing it degrades to the same page unfocused) or as return
+ * context on note pages. Shareable destinations are identified by pathname alone.
+ */
 export function withGraphFocus(
   route: LogicalRoute,
   knownCompositeIds: readonly string[],
@@ -215,61 +121,8 @@ export function withGraphFocus(
   return withQueryValue(route, "focus", validFocus);
 }
 
-export function withGraphContext(
-  registry: readonly BrainRouteRegistryEntry[],
-  knownCompositeIds: readonly string[],
-  route: LogicalRoute,
-  selection?: BrainSelectionInput | null,
-  focus?: string | null,
-): GraphContextRoute {
-  const scoped = withBrainScope(registry, route, selection);
-  if (!scoped.valid) return scoped;
-  return {
-    ...scoped,
-    route: withGraphFocus(scoped.route, knownCompositeIds, focus),
-  };
-}
-
 export function withoutGraphFocus(route: LogicalRoute): LogicalRoute {
   return withQueryValue(route, "focus");
-}
-
-export function combinedRoutes(
-  registry: readonly BrainRouteRegistryEntry[],
-  selection: BrainSelectionInput,
-): CombinedRoutes {
-  const canonical = canonicalBrainSelection(registry, selection);
-  if (!canonical.valid) return canonical;
-
-  return {
-    valid: true,
-    brainIds: canonical.brainIds,
-    graph: `/graph?brains=${canonical.value}`,
-  };
-}
-
-export function brainSelectionContext(
-  registry: readonly BrainRouteRegistryEntry[],
-  selection: BrainSelectionInput,
-): BrainSelectionContext {
-  const canonical = canonicalBrainSelection(registry, selection);
-  if (!canonical.valid) return canonical;
-
-  if (canonical.brainIds.length === 0) {
-    return { ...canonical, kind: "chooser", graph: routes.home };
-  }
-  if (canonical.brainIds.length === 1) {
-    return {
-      ...canonical,
-      kind: "brain",
-      graph: routesFor({ mode: "workspace", brainId: canonical.brainIds[0] }).graph,
-    };
-  }
-  return {
-    ...canonical,
-    kind: "combined",
-    graph: `/graph?brains=${canonical.value}`,
-  };
 }
 
 export function withFragment(route: LogicalRoute, fragment: string): LogicalRoute {

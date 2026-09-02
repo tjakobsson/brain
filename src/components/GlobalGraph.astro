@@ -207,7 +207,7 @@ const brainRouteRegistry = snapshot.registry.brains.map(({ id, title }) => ({ id
 
 <script>
   import { mountGlobalGraph } from "../lib/graph-view";
-  import { brainSelectionContext, joinBase, singularQueryValue, type BrainSelectionContext } from "../lib/routes";
+  import { joinBase, routes, routesFor, type LogicalRoute } from "../lib/routes";
 
   const q = <T extends Element>(selector: string): T => {
     const element = document.querySelector<T>(selector);
@@ -311,27 +311,25 @@ const brainRouteRegistry = snapshot.registry.brains.map(({ id, title }) => ({ id
     const satellite = summary.querySelector<HTMLElement>(".context-switcher__satellite")!;
     const registry = JSON.parse(context.dataset.registry ?? "[]") as { id: string; title: string }[];
     const activeBrainId = context.dataset.activeBrainId;
-    const query = singularQueryValue(new URLSearchParams(window.location.search), "brains");
-    const initialInput = context.dataset.combined === "true" && query.valid && query.present
-      ? query.value
-      : activeBrainId ? [activeBrainId] : [];
-    let current = brainSelectionContext(registry, initialInput);
+    // TODO(default-to-full-workspace-graph): removed in task group 3 (3.2 replaces
+    // this switcher with the lens control). Without the ?brains= grammar a selection
+    // of more than one Brain opens the workspace root.
+    const current: readonly string[] = activeBrainId ? [activeBrainId] : [];
+    const graphRouteFor = (brainIds: readonly string[]): LogicalRoute =>
+      brainIds.length === 1
+        ? routesFor({ mode: "workspace", brainId: brainIds[0] }).graph
+        : routes.home;
 
-    const updateContext = (selection: BrainSelectionContext) => {
-      if (!selection.valid) return;
-      current = selection;
-      const label = selection.kind === "chooser"
-        ? "Brain context: Brain chooser"
-        : selection.kind === "combined"
-          ? `Brain context: ${selection.brainIds.length} brains combined`
-          : `Brain context: ${registry.find((brain) => brain.id === selection.brainIds[0])?.title ?? selection.brainIds[0]}`;
+    const updateContext = (brainIds: readonly string[]) => {
+      const label = brainIds.length === 1
+        ? `Brain context: ${registry.find((brain) => brain.id === brainIds[0])?.title ?? brainIds[0]}`
+        : "Brain context: Brain chooser";
       summary.setAttribute("aria-label", label);
       summary.title = label;
-      satellite.hidden = selection.kind !== "combined";
+      satellite.hidden = true;
     };
     const resetControls = () => {
-      if (!current.valid) return;
-      for (const control of controls) control.checked = current.brainIds.includes(control.value);
+      for (const control of controls) control.checked = current.includes(control.value);
     };
     context.addEventListener("toggle", () => {
       summary.setAttribute("aria-expanded", String(context.open));
@@ -343,20 +341,8 @@ const brainRouteRegistry = snapshot.registry.brains.map(({ id, title }) => ({ id
     });
     form.addEventListener("submit", (event) => {
       event.preventDefault();
-      const selection = brainSelectionContext(
-        registry,
-        controls.filter((control) => control.checked).map((control) => control.value),
-      );
-      if (!selection.valid) return;
-      const target = joinBase(import.meta.env.BASE_URL, selection.graph);
-      if (selection.kind === "combined" && context.dataset.combined === "true") {
-        window.history.replaceState(null, "", target);
-        updateContext(selection);
-        context.open = false;
-        document.dispatchEvent(new CustomEvent("brain-selection-change", { detail: selection }));
-      } else {
-        window.location.assign(target);
-      }
+      const selected = controls.filter((control) => control.checked).map((control) => control.value);
+      window.location.assign(joinBase(import.meta.env.BASE_URL, graphRouteFor(selected)));
     });
     document.addEventListener("pointerdown", (event) => {
       if (context.open && event.target instanceof Node && !context.contains(event.target)) {

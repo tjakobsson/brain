@@ -1,22 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
-  brainSelectionContext,
-  canonicalBrainSelection,
-  combinedRoutes,
   joinBase,
   routes,
   routesFor,
   singularQueryValue,
   stripBase,
-  withBrainScope,
   withFragment,
-  withGraphContext,
   withGraphFocus,
   withoutGraphFocus,
   type LogicalRoute,
 } from "./routes";
-
-const registry = [{ id: "research" }, { id: "engineering" }, { id: "design" }] as const;
 
 describe("routes", () => {
   it("preserves every single-vault route", () => {
@@ -29,6 +22,7 @@ describe("routes", () => {
     expect(routes.recent).toBe("/recent");
     expect(routes.orphans).toBe("/orphans");
     expect(routes.note("graphs-of-thought")).toBe("/notes/graphs-of-thought");
+    expect(routes.neighborhood("graphs-of-thought")).toBe("/notes/graphs-of-thought/graph");
     expect(routes.vaultAsset("Media/image.png")).toBe("/vault-assets/Media/image.png");
     expect(routes.faviconSvg).toBe("/favicon.svg");
     expect(routes.faviconIco).toBe("/favicon.ico");
@@ -36,6 +30,8 @@ describe("routes", () => {
 
   it("encodes dynamic single-vault route segments", () => {
     expect(routes.tag("Café notes/#1")).toBe("/tags/Caf%C3%A9%20notes%2F%231");
+    expect(routes.note("café / #1?x")).toBe("/notes/caf%C3%A9%20%2F%20%231%3Fx");
+    expect(routes.neighborhood("café / #1?x")).toBe("/notes/caf%C3%A9%20%2F%20%231%3Fx/graph");
     expect(routes.vaultAsset("Média/über diagram.png")).toBe(
       "/vault-assets/M%C3%A9dia/%C3%BCber%20diagram.png",
     );
@@ -58,6 +54,7 @@ describe("routesFor", () => {
     expect(scoped.recent).toBe("/recent");
     expect(scoped.orphans).toBe("/orphans");
     expect(scoped.note("note-a")).toBe("/notes/note-a");
+    expect(scoped.neighborhood("note-a")).toBe("/notes/note-a/graph");
     expect(scoped.asset("Media/image.png")).toBe("/vault-assets/Media/image.png");
   });
 
@@ -70,6 +67,7 @@ describe("routesFor", () => {
     expect(scoped.recent).toBe("/brains/engineering/recent");
     expect(scoped.orphans).toBe("/brains/engineering/orphans");
     expect(scoped.note("note-a")).toBe("/brains/engineering/notes/note-a");
+    expect(scoped.neighborhood("note-a")).toBe("/brains/engineering/notes/note-a/graph");
     expect(scoped.asset("Media/image.png")).toBe(
       "/brains/engineering/assets/Media/image.png",
     );
@@ -82,6 +80,9 @@ describe("routesFor", () => {
     expect(scoped.note("café / #1")).toBe(
       "/brains/R%26D%20%2F%20notes/notes/caf%C3%A9%20%2F%20%231",
     );
+    expect(scoped.neighborhood("café / #1")).toBe(
+      "/brains/R%26D%20%2F%20notes/notes/caf%C3%A9%20%2F%20%231/graph",
+    );
     expect(scoped.tag("systems/web")).toBe(
       "/brains/R%26D%20%2F%20notes/tags/systems%2Fweb",
     );
@@ -91,138 +92,70 @@ describe("routesFor", () => {
   });
 });
 
-describe("combined brain selections", () => {
-  it("deduplicates and serializes selections in registry order", () => {
-    expect(canonicalBrainSelection(registry, ["design", "research", "design"])).toEqual({
-      valid: true,
-      brainIds: ["research", "design"],
-      value: "research,design",
-    });
+describe("note neighborhood routes", () => {
+  const vault = routesFor({ mode: "vault" });
+  const workspace = routesFor({ mode: "workspace", brainId: "engineering" });
+
+  it("places the neighborhood beneath the note path in both modes", () => {
+    expect(vault.neighborhood("note-a")).toBe(`${vault.note("note-a")}/graph`);
+    expect(workspace.neighborhood("note-a")).toBe(`${workspace.note("note-a")}/graph`);
+    expect(routes.neighborhood("note-a")).toBe(vault.neighborhood("note-a"));
   });
 
-  it("canonicalizes comma-separated query selections", () => {
-    expect(canonicalBrainSelection(registry, "engineering,research,engineering")).toEqual({
-      valid: true,
-      brainIds: ["research", "engineering"],
-      value: "research,engineering",
-    });
+  it("keeps a note slug named graph distinct from the neighborhood segment", () => {
+    expect(vault.note("graph")).toBe("/notes/graph");
+    expect(vault.neighborhood("graph")).toBe("/notes/graph/graph");
+    expect(workspace.neighborhood("graph")).toBe("/brains/engineering/notes/graph/graph");
   });
 
-  it("constructs a canonical graph route", () => {
-    expect(combinedRoutes(registry, ["design", "research", "design"])).toEqual({
-      valid: true,
-      brainIds: ["research", "design"],
-      graph: "/graph?brains=research,design",
-    });
+  it("stays base-correct at a domain root", () => {
+    expect(joinBase("/", vault.neighborhood("note-a"))).toBe("/notes/note-a/graph");
+    expect(joinBase("", workspace.neighborhood("note-a"))).toBe(
+      "/brains/engineering/notes/note-a/graph",
+    );
   });
 
-  it("encodes selected IDs while retaining comma separators", () => {
-    const unusualRegistry = [{ id: "brain one" }, { id: "research/design" }] as const;
-
-    expect(combinedRoutes(unusualRegistry, ["research/design", "brain one"])).toEqual({
-      valid: true,
-      brainIds: ["brain one", "research/design"],
-      graph: "/graph?brains=brain%20one,research%2Fdesign",
-    });
-  });
-
-  it("reports distinct unknown IDs instead of returning partial routes", () => {
-    expect(
-      combinedRoutes(registry, ["research", "missing", "other", "missing", "design"]),
-    ).toEqual({
-      valid: false,
-      unknownBrainIds: ["missing", "other"],
-    });
-  });
-
-  it("distinguishes an empty query value from an empty programmatic selection", () => {
-    expect(canonicalBrainSelection(registry, "")).toEqual({
-      valid: false,
-      unknownBrainIds: [""],
-    });
-    expect(canonicalBrainSelection(registry, [])).toEqual({
-      valid: true,
-      brainIds: [],
-      value: "",
-    });
-  });
-
-  it("derives chooser, single-brain, and canonical combined routes", () => {
-    expect(brainSelectionContext(registry, [])).toEqual({
-      valid: true,
-      brainIds: [],
-      value: "",
-      kind: "chooser",
-      graph: "/",
-    });
-    expect(brainSelectionContext(registry, ["engineering"])).toEqual({
-      valid: true,
-      brainIds: ["engineering"],
-      value: "engineering",
-      kind: "brain",
-      graph: "/brains/engineering",
-    });
-    expect(brainSelectionContext(registry, ["design", "research", "design"])).toEqual({
-      valid: true,
-      brainIds: ["research", "design"],
-      value: "research,design",
-      kind: "combined",
-      graph: "/graph?brains=research,design",
-    });
-  });
-
-  it("does not derive a route when any selected brain is unknown", () => {
-    expect(brainSelectionContext(registry, ["research", "missing"])).toEqual({
-      valid: false,
-      unknownBrainIds: ["missing"],
-    });
+  it("stays base-correct below a deployment subpath", () => {
+    expect(joinBase("/vault-repo", vault.neighborhood("note-a"))).toBe(
+      "/vault-repo/notes/note-a/graph",
+    );
+    expect(joinBase("/vault-repo/", workspace.neighborhood("note-a"))).toBe(
+      "/vault-repo/brains/engineering/notes/note-a/graph",
+    );
+    expect(joinBase("/vault-repo", workspace.neighborhood("café / #1?x"))).toBe(
+      "/vault-repo/brains/engineering/notes/caf%C3%A9%20%2F%20%231%3Fx/graph",
+    );
   });
 });
 
-describe("note browsing scope", () => {
-  const note = routesFor({ mode: "workspace", brainId: "engineering" }).note("note-a");
+describe("shareable destinations", () => {
+  const slugs = ["note-a", "café / #1?x=y&z", "graph"];
+  const tags = ["pkm", "systems/web", "Café notes/#1?q"];
+  const scopes = [
+    routesFor({ mode: "vault" }),
+    routesFor({ mode: "workspace", brainId: "engineering" }),
+    routesFor({ mode: "workspace", brainId: "R&D / notes?#" }),
+  ];
+  const shareable: LogicalRoute[] = [
+    ...slugs.map((slug) => routes.note(slug)),
+    ...slugs.map((slug) => routes.neighborhood(slug)),
+    ...scopes.flatMap((scope) => [
+      scope.graph,
+      scope.tags,
+      scope.recent,
+      scope.orphans,
+      ...tags.map((tag) => scope.tag(tag)),
+      ...slugs.map((slug) => scope.note(slug)),
+      ...slugs.map((slug) => scope.neighborhood(slug)),
+    ]),
+  ];
 
-  it("omits absent and empty scope", () => {
-    expect(withBrainScope(registry, note)).toEqual({
-      valid: true,
-      brainIds: [],
-      value: "",
-      route: note,
-    });
-    expect(withBrainScope(registry, `${note}?brains=research#details`, [])).toEqual({
-      valid: true,
-      brainIds: [],
-      value: "",
-      route: `${note}#details`,
-    });
-  });
-
-  it("adds canonical one-Brain and combined scope before other query state", () => {
-    expect(withBrainScope(registry, note, "engineering")).toEqual({
-      valid: true,
-      brainIds: ["engineering"],
-      value: "engineering",
-      route: `${note}?brains=engineering`,
-    });
-    expect(
-      withBrainScope(
-        registry,
-        `${note}?focus=engineering%2Fnote-a#deep-dive`,
-        ["design", "research", "design"],
-      ),
-    ).toEqual({
-      valid: true,
-      brainIds: ["research", "design"],
-      value: "research,design",
-      route: `${note}?brains=research,design&focus=engineering%2Fnote-a#deep-dive`,
-    });
-  });
-
-  it("rejects unknown scope without returning a partial note route", () => {
-    expect(withBrainScope(registry, note, ["research", "missing"])).toEqual({
-      valid: false,
-      unknownBrainIds: ["missing"],
-    });
+  it("identifies every shareable route by pathname alone", () => {
+    expect(shareable.length).toBeGreaterThan(0);
+    for (const route of shareable) {
+      expect(route, route).not.toMatch(/[?#]/);
+      expect(joinBase("/vault-repo", route), route).not.toMatch(/[?#]/);
+    }
   });
 });
 
@@ -232,100 +165,63 @@ describe("focused graph routes", () => {
     "engineering/note-a",
     "design/note-b",
   ] as const;
+  const engineering = routesFor({ mode: "workspace", brainId: "engineering" });
 
-  it("adds focus to root, per-Brain, and canonical combined graph routes", () => {
+  it("adds focus to root and per-Brain graph routes", () => {
     expect(withGraphFocus(routes.home, knownCompositeIds, "research/note-a")).toBe(
       "/?focus=research%2Fnote-a",
     );
-    expect(
-      withGraphFocus(
-        routesFor({ mode: "workspace", brainId: "engineering" }).graph,
-        knownCompositeIds,
-        "engineering/note-a",
-      ),
-    ).toBe("/brains/engineering?focus=engineering%2Fnote-a");
-    expect(
-      withGraphFocus(
-        "/graph?brains=research,design",
-        knownCompositeIds,
-        "design/note-b",
-      ),
-    ).toBe("/graph?brains=research,design&focus=design%2Fnote-b");
+    expect(withGraphFocus(engineering.graph, knownCompositeIds, "engineering/note-a")).toBe(
+      "/brains/engineering?focus=engineering%2Fnote-a",
+    );
   });
 
-  it("replaces focus without changing valid Brain state or fragments", () => {
+  it("adds return-context focus to note routes", () => {
+    expect(withGraphFocus(engineering.note("note-a"), knownCompositeIds, "design/note-b")).toBe(
+      "/brains/engineering/notes/note-a?focus=design%2Fnote-b",
+    );
+    expect(withGraphFocus(routes.note("note-a"), knownCompositeIds, null)).toBe(
+      "/notes/note-a",
+    );
+  });
+
+  it("replaces focus without changing other query state or fragments", () => {
     expect(
       withGraphFocus(
-        "/graph?focus=research%2Fnote-a&brains=research,design#neighborhood",
+        "/brains/engineering?other=1&focus=research%2Fnote-a#neighborhood",
         knownCompositeIds,
         "design/note-b",
       ),
-    ).toBe("/graph?brains=research,design&focus=design%2Fnote-b#neighborhood");
+    ).toBe("/brains/engineering?other=1&focus=design%2Fnote-b#neighborhood");
   });
 
   it("removes absent, unknown, and explicitly cleared focus", () => {
-    const focused = "/graph?brains=research,design&focus=research%2Fnote-a#neighborhood";
+    const focused = "/brains/engineering?focus=research%2Fnote-a#neighborhood";
 
     expect(withGraphFocus(focused, knownCompositeIds, "missing/note")).toBe(
-      "/graph?brains=research,design#neighborhood",
+      "/brains/engineering#neighborhood",
     );
-    expect(withGraphFocus(focused, knownCompositeIds)).toBe(
-      "/graph?brains=research,design#neighborhood",
-    );
-    expect(withoutGraphFocus(focused)).toBe("/graph?brains=research,design#neighborhood");
+    expect(withGraphFocus(focused, knownCompositeIds)).toBe("/brains/engineering#neighborhood");
+    expect(withoutGraphFocus(focused)).toBe("/brains/engineering#neighborhood");
+    expect(withoutGraphFocus("/?other=1&focus=research%2Fnote-a")).toBe("/?other=1");
   });
 
   it("keeps focused routes base-correct at root and below a deployment subpath", () => {
-    const focused = withGraphFocus(
-      "/graph?brains=research,design",
-      knownCompositeIds,
-      "research/note-a",
-    );
+    const focused = withGraphFocus(routes.home, knownCompositeIds, "research/note-a");
 
-    expect(joinBase("", focused)).toBe(
-      "/graph?brains=research,design&focus=research%2Fnote-a",
-    );
-    expect(joinBase("/brain-site", focused)).toBe(
-      "/brain-site/graph?brains=research,design&focus=research%2Fnote-a",
-    );
-  });
-
-  it("composes canonical note scope and originating focus before fragments", () => {
-    const note = `${routesFor({ mode: "workspace", brainId: "engineering" }).note("note-a")}#details` as LogicalRoute;
+    expect(joinBase("", focused)).toBe("/?focus=research%2Fnote-a");
+    expect(joinBase("/brain-site", focused)).toBe("/brain-site/?focus=research%2Fnote-a");
     expect(
-      withGraphContext(
-        registry,
-        knownCompositeIds,
-        note,
-        ["design", "research", "design"],
-        "research/note-a",
+      joinBase(
+        "/brain-site/",
+        withGraphFocus(engineering.graph, knownCompositeIds, "engineering/note-a"),
       ),
-    ).toEqual({
-      valid: true,
-      brainIds: ["research", "design"],
-      value: "research,design",
-      route: "/brains/engineering/notes/note-a?brains=research,design&focus=research%2Fnote-a#details",
-    });
-  });
-
-  it("drops unknown focus while retaining valid scope and rejects unknown scope", () => {
-    const note = routesFor({ mode: "workspace", brainId: "engineering" }).note("note-a");
-    expect(withGraphContext(registry, knownCompositeIds, note, ["engineering"], "missing/note"))
-      .toEqual({
-        valid: true,
-        brainIds: ["engineering"],
-        value: "engineering",
-        route: `${note}?brains=engineering`,
-      });
-    expect(withGraphContext(registry, knownCompositeIds, note, ["engineering", "missing"], "engineering/note-a"))
-      .toEqual({ valid: false, unknownBrainIds: ["missing"] });
+    ).toBe("/brain-site/brains/engineering?focus=engineering%2Fnote-a");
   });
 });
 
 describe("joinBase", () => {
   const workspace = routesFor({ mode: "workspace", brainId: "engineering" });
-  const combined = combinedRoutes(registry, ["design", "research"]);
-  if (!combined.valid) throw new Error("Test registry must contain the selected brains");
 
   const applicationRoutes: LogicalRoute[] = [
     routes.home,
@@ -337,6 +233,7 @@ describe("joinBase", () => {
     routes.recent,
     routes.orphans,
     routes.note("note-a"),
+    routes.neighborhood("note-a"),
     routes.vaultAsset("Media/image.png"),
     routes.faviconSvg,
     routes.faviconIco,
@@ -346,8 +243,8 @@ describe("joinBase", () => {
     workspace.recent,
     workspace.orphans,
     workspace.note("note-a"),
+    workspace.neighborhood("note-a"),
     workspace.asset("Media/image.png"),
-    combined.graph,
   ];
 
   it("preserves root-relative routes at a domain root", () => {
@@ -372,12 +269,12 @@ describe("joinBase", () => {
     );
   });
 
-  it("prefixes workspace and combined routes without changing their selection", () => {
+  it("prefixes workspace routes without changing their Brain path", () => {
     expect(joinBase("/brain-site", workspace.note("note-a"))).toBe(
       "/brain-site/brains/engineering/notes/note-a",
     );
-    expect(joinBase("/brain-site/", combined.graph)).toBe(
-      "/brain-site/graph?brains=research,design",
+    expect(joinBase("/brain-site/", workspace.neighborhood("note-a"))).toBe(
+      "/brain-site/brains/engineering/notes/note-a/graph",
     );
   });
 
@@ -402,13 +299,13 @@ describe("joinBase", () => {
 
 describe("singularQueryValue", () => {
   it("distinguishes absent, singular, and duplicate parameters", () => {
-    expect(singularQueryValue(new URLSearchParams("focus=note"), "brains")).toEqual({
+    expect(singularQueryValue(new URLSearchParams("other=value"), "focus")).toEqual({
       present: false,
       valid: true,
     });
-    expect(singularQueryValue(new URLSearchParams("brains=engineering,design"), "brains"))
-      .toEqual({ present: true, valid: true, value: "engineering,design" });
-    expect(singularQueryValue(new URLSearchParams("brains=engineering&brains=unknown"), "brains"))
+    expect(singularQueryValue(new URLSearchParams("focus=engineering%2Fnote-a"), "focus"))
+      .toEqual({ present: true, valid: true, value: "engineering/note-a" });
+    expect(singularQueryValue(new URLSearchParams("focus=a&focus=b"), "focus"))
       .toEqual({ present: true, valid: false });
   });
 });

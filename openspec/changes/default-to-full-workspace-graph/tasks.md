@@ -1,8 +1,8 @@
 ## 1. Baseline and Route Grammar
 
 - [ ] 1.1 Build the demo workspace from the unchanged `main` and capture before screenshots of the chooser, the combined graph with a pinned neighborhood, a note page, and the "Choose a valid set of Brains" card at desktop and phone widths into `openspec/changes/default-to-full-workspace-graph/screenshots/before/`, and verify the files exist.
-- [ ] 1.2 Add a note-neighborhood route builder to `routes.ts` for both modes (`<note path>/graph/`), remove `withBrainScope`, `withGraphContext`, `combinedRoutes`, `brainSelectionContext`, and `canonicalBrainSelection`, and verify `routes.test.ts` covers the neighborhood route under root and non-root base paths and asserts that no shareable route builder emits `?` or `#`.
-- [ ] 1.3 Simplify `not-found.ts` to infer scope from the namespaced Brain path only and recover to the full workspace graph otherwise, and verify `not-found.test.ts` covers Brain-path recovery, workspace-level recovery, and ignored `brains` query parameters.
+- [x] 1.2 Add a note-neighborhood route builder to `routes.ts` for both modes (`<note path>/graph/`), remove `withBrainScope`, `withGraphContext`, `combinedRoutes`, `brainSelectionContext`, and `canonicalBrainSelection`, and verify `routes.test.ts` covers the neighborhood route under root and non-root base paths and asserts that no shareable route builder emits `?` or `#`.
+- [x] 1.3 Simplify `not-found.ts` to infer scope from the namespaced Brain path only and recover to the full workspace graph otherwise, and verify `not-found.test.ts` covers Brain-path recovery, workspace-level recovery, and ignored `brains` query parameters.
 
 ## 2. Neighborhood Pages
 

@@ -39,7 +39,7 @@ const { activeBrainId, combined = false, workspace = false, brainRegistry = [] }
 
 <script>
   import Fuse from "fuse.js";
-  import { canonicalBrainSelection, joinBase, routes, singularQueryValue, withGraphContext, type LogicalRoute } from "../lib/routes";
+  import { joinBase, routes, withGraphFocus, type LogicalRoute } from "../lib/routes";
 
   interface Entry {
     title: string;
@@ -59,7 +59,6 @@ const { activeBrainId, combined = false, workspace = false, brainRegistry = [] }
   const activeBrainId = input.dataset.activeBrainId;
   const combined = input.dataset.combined === "true";
   const workspace = input.dataset.workspace === "true";
-  const brainRegistry = JSON.parse(input.dataset.brainRegistry ?? "[]") as { id: string; title: string }[];
   const selectedScope = scope.querySelector<HTMLOptionElement>("[data-selected-scope]")!;
 
   let entries: Entry[] | null = null;
@@ -68,7 +67,9 @@ const { activeBrainId, combined = false, workspace = false, brainRegistry = [] }
   let selected = 0;
   let opener: HTMLElement | null = null;
   let previousOverflow = "";
-  let selectedBrainIds: string[] = [];
+  // TODO(default-to-full-workspace-graph): removed in task group 4 (4.2 replaces the
+  // retained "selected brains" scope). Always empty without the ?brains= grammar.
+  const selectedBrainIds: readonly string[] = [];
   const pageRegions = [
     document.querySelector<HTMLElement>(".site-header-slot"),
     document.querySelector<HTMLElement>("main"),
@@ -96,11 +97,6 @@ const { activeBrainId, combined = false, workspace = false, brainRegistry = [] }
     document.body.style.overflow = "hidden";
     for (const region of pageRegions) region.inert = true;
     input.value = "";
-    const requestedScope = singularQueryValue(new URLSearchParams(window.location.search), "brains");
-    const retainedScope = !requestedScope.valid || !requestedScope.present
-      ? null
-      : canonicalBrainSelection(brainRegistry, requestedScope.value);
-    selectedBrainIds = retainedScope?.valid ? [...retainedScope.brainIds] : [];
     selectedScope.hidden = selectedBrainIds.length === 0;
     selectedScope.textContent = selectedBrainIds.length > 0
       ? `Selected brains (${selectedBrainIds.map((id) => `@${id}`).join(", ")})`
@@ -166,17 +162,10 @@ const { activeBrainId, combined = false, workspace = false, brainRegistry = [] }
 
   function navigate(entry: Entry): void {
     close();
-    const navigationScope = scope.value === "selected"
-      ? selectedBrainIds
-      : scope.value === "active" && activeBrainId ? [activeBrainId] : [];
-    const canRetainFocus = !workspace || scope.value === "selected" || (
-      scope.value === "active" && selectedBrainIds.length === 0
-    );
-    const focus = canRetainFocus ? document.documentElement.dataset.originatingGraphFocus : undefined;
-    const scoped = entry.kind === "note" && (navigationScope.length > 0 || focus)
-      ? withGraphContext(brainRegistry, focus ? [focus] : [], entry.route, navigationScope, focus)
-      : null;
-    const route = scoped?.valid ? scoped.route : entry.route;
+    const focus = document.documentElement.dataset.originatingGraphFocus;
+    const route = entry.kind === "note" && focus
+      ? withGraphFocus(entry.route, [focus], focus)
+      : entry.route;
     window.location.assign(joinBase(import.meta.env.BASE_URL, route));
   }
 
@@ -228,10 +217,6 @@ const { activeBrainId, combined = false, workspace = false, brainRegistry = [] }
 
   input.addEventListener("input", () => void search());
   scope.addEventListener("change", () => void search());
-  document.addEventListener("brain-selection-change", (event) => {
-    selectedBrainIds = [...(event as CustomEvent<{ brainIds: readonly string[] }>).detail.brainIds];
-    if (!overlay.hidden && scope.value === "selected") void search();
-  });
   input.addEventListener("keydown", (e) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();

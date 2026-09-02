@@ -1,9 +1,7 @@
 import {
-  canonicalBrainSelection,
   joinBase,
   routes,
   routesFor,
-  withBrainScope,
   stripBase,
   type BrainRouteRegistryEntry,
   type LogicalRoute,
@@ -28,13 +26,14 @@ export interface NotFoundSearchCandidate {
 export interface NotFoundInput {
   readonly deploymentBase: string;
   readonly pathname: string;
+  /** Kept only as part of the deterministic recommendation seed; never treated as scope. */
   readonly search: string;
   readonly brains: readonly PublicBrain[];
   readonly mode: NotFoundMode;
   readonly candidates: readonly NotFoundSearchCandidate[];
 }
 
-export type NotFoundContextSource = "brains-query" | "brain-path" | "unscoped";
+export type NotFoundContextSource = "brain-path" | "unscoped";
 
 export interface NotFoundContext {
   readonly source: NotFoundContextSource;
@@ -58,21 +57,6 @@ export interface NotFoundResult {
   readonly recommendation: NotFoundRecommendation | null;
 }
 
-function canonicalQueryBrainIds(
-  search: string,
-  brains: readonly PublicBrain[],
-): readonly string[] | null {
-  const parameters = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
-  const values = parameters.getAll("brains");
-  if (values.length !== 1) return null;
-
-  const value = values[0];
-  const selection = canonicalBrainSelection(brains, value);
-  if (!selection.valid || selection.brainIds.length === 0) return null;
-
-  return value === selection.brainIds.join(",") ? selection.brainIds : null;
-}
-
 function pathBrainId(pathname: string | null, brains: readonly PublicBrain[]): string | null {
   if (pathname === null) return null;
 
@@ -90,37 +74,33 @@ function pathBrainId(pathname: string | null, brains: readonly PublicBrain[]): s
   return brains.some((brain) => brain.id === brainId) ? brainId : null;
 }
 
+/**
+ * Scope is inferred from the namespaced Brain path alone. Query parameters are
+ * never consulted: a proxy may strip them, and they never identify a destination.
+ */
 export function resolveNotFoundContext(
-  input: Pick<NotFoundInput, "deploymentBase" | "pathname" | "search" | "brains" | "mode">,
+  input: Pick<NotFoundInput, "deploymentBase" | "pathname" | "brains" | "mode">,
 ): NotFoundContext {
-  let source: NotFoundContextSource = "unscoped";
-  let brainIds: readonly string[] = [];
-  let recoveryRoute: LogicalRoute = routes.home;
-
   if (input.mode === "workspace") {
-    const queryBrainIds = canonicalQueryBrainIds(input.search, input.brains);
     const strippedPathname = stripBase(input.deploymentBase, input.pathname);
     const pathnameBrainId = pathBrainId(strippedPathname, input.brains);
 
-    if (queryBrainIds) {
-      source = "brains-query";
-      brainIds = queryBrainIds;
-      recoveryRoute =
-        queryBrainIds.length === 1
-          ? routesFor({ mode: "workspace", brainId: queryBrainIds[0] }).graph
-          : (`/graph?brains=${queryBrainIds.map(encodeURIComponent).join(",")}` as LogicalRoute);
-    } else if (pathnameBrainId) {
-      source = "brain-path";
-      brainIds = [pathnameBrainId];
-      recoveryRoute = routesFor({ mode: "workspace", brainId: pathnameBrainId }).graph;
+    if (pathnameBrainId) {
+      const recoveryRoute = routesFor({ mode: "workspace", brainId: pathnameBrainId }).graph;
+      return {
+        source: "brain-path",
+        brainIds: [pathnameBrainId],
+        recoveryRoute,
+        recoveryHref: joinBase(input.deploymentBase, recoveryRoute),
+      };
     }
   }
 
   return {
-    source,
-    brainIds,
-    recoveryRoute,
-    recoveryHref: joinBase(input.deploymentBase, recoveryRoute),
+    source: "unscoped",
+    brainIds: [],
+    recoveryRoute: routes.home,
+    recoveryHref: joinBase(input.deploymentBase, routes.home),
   };
 }
 
@@ -169,19 +149,13 @@ export function createNotFoundResult(input: NotFoundInput, advance = 0): NotFoun
   const index = (initialIndex + normalizedAdvance) % candidates.length;
   const orderedCandidates = candidates.map(({ candidate }) => candidate);
   const candidate = orderedCandidates[index];
-  const scopedRoute = context.source === "brains-query"
-    ? withBrainScope(input.brains, candidate.route, context.brainIds)
-    : null;
 
   return {
     context,
     candidates: orderedCandidates,
     recommendation: {
       candidate,
-      href: joinBase(
-        input.deploymentBase,
-        scopedRoute?.valid ? scopedRoute.route : candidate.route,
-      ),
+      href: joinBase(input.deploymentBase, candidate.route),
       index,
       initialIndex,
       advance: normalizedAdvance,

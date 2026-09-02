@@ -1,88 +1,28 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
-import GlobalGraph from "../components/GlobalGraph.astro";
-import { getWorkspaceSnapshot } from "../lib/vault-state";
 import { joinBase, routes } from "../lib/routes";
 
-const snapshot = getWorkspaceSnapshot();
-const vaultRedirect = snapshot.mode === "vault"
-  ? joinBase(import.meta.env.BASE_URL, routes.home)
-  : undefined;
-const registry = snapshot.registry.brains.map(({ id, title }) => ({ id, title }));
+// `/graph` is kept only so previously shared combined-view links land on the
+// full workspace graph (or the vault graph) at the site root.
+const redirect = joinBase(import.meta.env.BASE_URL, routes.home);
 ---
 
-<BaseLayout title={vaultRedirect ? "Graph" : "Combined graph"} combined={!vaultRedirect} fluid>
+<BaseLayout title="Graph">
   <Fragment slot="head">
-    {vaultRedirect && <meta http-equiv="refresh" content={`0;url=${vaultRedirect}`} />}
+    <meta http-equiv="refresh" content={`0;url=${redirect}`} />
   </Fragment>
-  {vaultRedirect ? (
-    <div class="recovery-page" data-vault-redirect={vaultRedirect}>
-      <div class="recovery-card">
-        <p class="eyebrow">Graph moved</p>
-        <h1>Continue to the graph</h1>
-        <a href={vaultRedirect}>Open graph</a>
-      </div>
+  <div class="recovery-page" data-graph-redirect={redirect}>
+    <div class="recovery-card">
+      <p class="eyebrow">Graph moved</p>
+      <h1>Continue to the graph</h1>
+      <a href={redirect}>Open graph</a>
     </div>
-  ) : (
-    <>
-      <div
-        class="recovery-page"
-        data-selection-error
-        data-registry={JSON.stringify(registry)}
-        hidden
-        role="alert"
-      >
-        <div class="recovery-card">
-          <p class="eyebrow">Selection not found</p>
-          <h1>Choose a valid set of Brains</h1>
-          <p data-selection-message></p>
-          <div class="recovery-actions">
-            <a href={joinBase(import.meta.env.BASE_URL, routes.home)}>Return to the Brain chooser</a>
-            <button type="button" data-open-switcher>Search</button>
-          </div>
-        </div>
-      </div>
-      <div data-combined-graph hidden>
-        <GlobalGraph combined />
-      </div>
-    </>
-  )}
+  </div>
 </BaseLayout>
 
 <script>
-  import { canonicalBrainSelection, joinBase, routes, singularQueryValue, withBrainScope, type LogicalRoute } from "../lib/routes";
-
-  const redirect = document.querySelector<HTMLElement>("[data-vault-redirect]");
-  if (redirect?.dataset.vaultRedirect) {
-    window.location.replace(redirect.dataset.vaultRedirect);
-  }
-
-  const error = document.querySelector<HTMLElement>("[data-selection-error]");
-  const graph = document.querySelector<HTMLElement>("[data-combined-graph]");
-  if (error && graph) {
-    const registry = JSON.parse(error.dataset.registry ?? "[]") as { id: string; title: string }[];
-    const query = singularQueryValue(new URLSearchParams(window.location.search), "brains");
-    const selection = query.valid
-      ? canonicalBrainSelection(registry, query.present ? query.value : "")
-      : { valid: false as const, unknownBrainIds: [] };
-    if (!selection.valid || selection.brainIds.length < 2) {
-      const message = !query.valid
-        ? "The Brain selection query must contain one brains parameter."
-        : !selection.valid
-        ? `Unknown ${selection.unknownBrainIds.length === 1 ? "Brain" : "Brains"}: ${selection.unknownBrainIds.map((id) => `@${id || "(empty)"}`).join(", ")}.`
-        : "A combined graph requires at least two Brains.";
-      error.querySelector<HTMLElement>("[data-selection-message]")!.textContent = message;
-      error.hidden = false;
-      graph.hidden = true;
-    } else {
-      const current = `${routes.graphAlias}${window.location.search}` as LogicalRoute;
-      const scoped = withBrainScope(registry, current, selection.brainIds);
-      const canonical = joinBase(import.meta.env.BASE_URL, scoped.valid ? scoped.route : routes.graphAlias);
-      if (`${window.location.pathname}${window.location.search}` !== canonical) {
-        window.history.replaceState(null, "", canonical);
-      }
-      graph.hidden = false;
-      error.hidden = true;
-    }
+  const redirect = document.querySelector<HTMLElement>("[data-graph-redirect]");
+  if (redirect?.dataset.graphRedirect) {
+    window.location.replace(redirect.dataset.graphRedirect);
   }
 </script>

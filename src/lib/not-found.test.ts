@@ -55,58 +55,64 @@ function input(overrides: Partial<NotFoundInput> = {}): NotFoundInput {
   };
 }
 
-describe("resolveNotFoundContext", () => {
-  it("gives a valid canonical brains query priority over a known path Brain", () => {
-    expect(
-      resolveNotFoundContext(
-        input({
-          pathname: "/brain-site/brains/engineering/notes/missing",
-          search: "?brains=research,design",
-        }),
-      ),
-    ).toEqual({
-      source: "brains-query",
-      brainIds: ["research", "design"],
-      recoveryRoute: "/graph?brains=research,design",
-      recoveryHref: "/brain-site/graph?brains=research,design",
-    });
-  });
+const ignoredQueries = [
+  "?brains=engineering,design",
+  "?brains=engineering",
+  "?brains=missing",
+  "?brains=research&brains=design",
+  "?other=value&brains=engineering",
+];
 
-  it("accepts one canonical query Brain and preserves a trailing deployment slash", () => {
+describe("resolveNotFoundContext", () => {
+  it("recovers to the Brain graph beneath a namespaced Brain path", () => {
     expect(
       resolveNotFoundContext(
-        input({
-          deploymentBase: "/brain-site/",
-          search: "?other=value&brains=engineering",
-        }),
+        input({ pathname: "/brain-site/brains/engineering/notes/missing" }),
       ),
     ).toEqual({
-      source: "brains-query",
+      source: "brain-path",
       brainIds: ["engineering"],
       recoveryRoute: "/brains/engineering",
       recoveryHref: "/brain-site/brains/engineering",
     });
   });
 
-  it.each([
-    ["unknown query ID", "?brains=missing"],
-    ["partially unknown query", "?brains=research,missing"],
-    ["noncanonical order", "?brains=design,research"],
-    ["duplicate ID", "?brains=research,research"],
-    ["empty ID", "?brains="],
-    ["repeated parameter", "?brains=research&brains=design"],
-  ])("falls through from a malformed %s to an exact known path", (_label, search) => {
+  it("recovers to the full workspace graph outside any Brain path", () => {
+    expect(resolveNotFoundContext(input())).toEqual({
+      source: "unscoped",
+      brainIds: [],
+      recoveryRoute: "/",
+      recoveryHref: "/brain-site/",
+    });
+    expect(
+      resolveNotFoundContext(input({ deploymentBase: "/brain-site/", pathname: "/brain-site/tags/missing" })),
+    ).toEqual({
+      source: "unscoped",
+      brainIds: [],
+      recoveryRoute: "/",
+      recoveryHref: "/brain-site/",
+    });
+  });
+
+  it.each(ignoredQueries)("ignores %s outside any Brain path", (search) => {
+    expect(resolveNotFoundContext(input({ search }))).toEqual({
+      source: "unscoped",
+      brainIds: [],
+      recoveryRoute: "/",
+      recoveryHref: "/brain-site/",
+    });
+  });
+
+  it.each(ignoredQueries)("recovers from the path alone when %s is present", (search) => {
     expect(
       resolveNotFoundContext(
-        input({
-          pathname: "/brain-site/brains/engineering/notes/missing",
-          search,
-        }),
+        input({ pathname: "/brain-site/brains/engineering/notes/missing", search }),
       ),
-    ).toMatchObject({
+    ).toEqual({
       source: "brain-path",
       brainIds: ["engineering"],
       recoveryRoute: "/brains/engineering",
+      recoveryHref: "/brain-site/brains/engineering",
     });
   });
 
@@ -170,7 +176,7 @@ describe("resolveNotFoundContext", () => {
 });
 
 describe("createNotFoundResult", () => {
-  it("filters recommendations to valid query scope and ignores non-note entries", () => {
+  it("recommends across the whole workspace and ignores non-note and unknown-owner entries", () => {
     const tag: NotFoundSearchCandidate = {
       ...candidates[0],
       title: "#systems",
@@ -184,22 +190,40 @@ describe("createNotFoundResult", () => {
       brainId: "missing",
       brainTitle: "Missing",
     };
-    const result = createNotFoundResult(
-      input({ search: "?brains=research,design", candidates: [tag, unknown, ...candidates] }),
-    );
+    const result = createNotFoundResult(input({ candidates: [tag, unknown, ...candidates] }));
 
-    expect(result.candidates.map(({ brainId }) => brainId)).toEqual(["design", "research"]);
-    expect(result.recommendation?.candidate.brainId).toMatch(/^(design|research)$/);
-    expect(result.recommendation?.href).toMatch(/^\/brain-site\/brains\/(design|research)\//);
-    expect(new URL(result.recommendation!.href, "https://example.test").searchParams.get("brains"))
-      .toBe("research,design");
+    expect(result.context.source).toBe("unscoped");
+    expect(result.candidates.map(({ brainId }) => brainId)).toEqual([
+      "design",
+      "engineering",
+      "research",
+    ]);
+    expect(result.recommendation?.href).toMatch(/^\/brain-site\/brains\/(design|engineering|research)\//);
   });
 
-  it("uses path scope only when no valid canonical query scope exists", () => {
+  it("ignores a brains query and never reflects it in recovery links", () => {
+    const result = createNotFoundResult(input({ search: "?brains=engineering,design" }));
+
+    expect(result.context).toEqual({
+      source: "unscoped",
+      brainIds: [],
+      recoveryRoute: "/",
+      recoveryHref: "/brain-site/",
+    });
+    expect(result.candidates.map(({ brainId }) => brainId)).toEqual([
+      "design",
+      "engineering",
+      "research",
+    ]);
+    expect(result.recommendation?.href).not.toMatch(/[?#]/);
+    expect(result.context.recoveryHref).not.toMatch(/[?#]/);
+  });
+
+  it("scopes recommendations to the Brain named by the path, ignoring query values", () => {
     const result = createNotFoundResult(
       input({
         pathname: "/brain-site/brains/engineering/notes/missing",
-        search: "?brains=missing",
+        search: "?brains=research,design",
       }),
     );
 
@@ -239,11 +263,11 @@ describe("createNotFoundResult", () => {
     );
   });
 
-  it("returns no recommendation when the valid scope has no note candidates", () => {
+  it("returns no recommendation when the path Brain has no note candidates", () => {
     expect(
       createNotFoundResult(
         input({
-          search: "?brains=design",
+          pathname: "/brain-site/brains/design/notes/missing",
           candidates: candidates.filter(({ brainId }) => brainId !== "design"),
         }),
       ),

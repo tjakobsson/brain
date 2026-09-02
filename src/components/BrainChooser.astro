@@ -93,31 +93,9 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
 </section>
 
 <script>
-  import { brainSelectionContext, joinBase } from "../lib/routes";
-
+  // TODO(default-to-full-workspace-graph): removed in task group 4 (4.4 retires the
+  // chooser). The combined-graph destination no longer exists, so the selection
+  // form stays inert and its action footer stays hidden until then.
   const form = document.querySelector<HTMLFormElement>("[data-brain-selection]");
-  if (form) {
-    const registry = (form.dataset.registry ?? "").split(",").filter(Boolean).map((id) => ({ id }));
-    const controls = [...form.querySelectorAll<HTMLInputElement>('input[name="brain"]')];
-    const button = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
-    const count = form.querySelector<HTMLElement>("[data-selection-count]")!;
-    const action = form.querySelector<HTMLElement>(".brain-selection__action")!;
-    const update = () => {
-      const selected = controls.filter((control) => control.checked).length;
-      action.hidden = selected === 0;
-      button.disabled = selected < 2;
-      count.textContent = selected === 1
-        ? "Choose another Brain to create a combined graph."
-        : `${selected} brains selected.`;
-    };
-    for (const control of controls) control.addEventListener("change", update);
-    form.addEventListener("submit", (event) => {
-      event.preventDefault();
-      const selected = controls.filter((control) => control.checked).map((control) => control.value);
-      const context = brainSelectionContext(registry, selected);
-      if (context.valid && context.kind === "combined") {
-        window.location.assign(joinBase(import.meta.env.BASE_URL, context.graph));
-      }
-    });
-  }
+  form?.addEventListener("submit", (event) => event.preventDefault());
 </script>

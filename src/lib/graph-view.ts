@@ -40,11 +40,10 @@ import {
   responsiveLabelSettings,
 } from "./graph-style";
 import {
-  brainSelectionContext,
   joinBase,
   routes,
+  routesFor,
   singularQueryValue,
-  withGraphContext,
   withGraphFocus,
   type LogicalRoute,
 } from "./routes";
@@ -693,12 +692,9 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       ui.relatedBrainsToggle.querySelector<HTMLElement>("[data-control-label]")!.textContent = label;
     }
   }
-  const initialQuery = singularQueryValue(new URLSearchParams(window.location.search), "brains");
-  const initialSelection = brainSelectionContext(
-    data.brains,
-    initialQuery.valid && initialQuery.present ? initialQuery.value : "",
-  );
-  let selectedBrainIds = combined && initialSelection.valid ? [...initialSelection.brainIds] : [];
+  // TODO(default-to-full-workspace-graph): removed in task group 3. The combined
+  // graph mode has no selection source now that the ?brains= grammar is gone.
+  const selectedBrainIds: string[] = [];
   const motionScope = () => {
     if (activeBrainId) return `brain:${activeBrainId}:${showRelatedBrains}`;
     if (combined) return `combined:${[...selectedBrainIds].sort().join(",")}`;
@@ -847,11 +843,9 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   };
 
   const focusedRoute = (): LogicalRoute => {
-    const graphContext = brainSelectionContext(
-      data.brains,
-      combined ? selectedBrainIds : activeBrainId ? [activeBrainId] : [],
-    );
-    const current = graphContext.valid ? graphContext.graph : routes.home;
+    const current = activeBrainId
+      ? routesFor({ mode: "workspace", brainId: activeBrainId }).graph
+      : routes.home;
     const compositeId = state.focused
       ? graph.getNodeAttribute(state.focused, "compositeId") as string
       : null;
@@ -865,21 +859,11 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     }
   };
 
-  const selectedScope = (): readonly string[] => {
-    if (combined) return selectedBrainIds;
-    if (activeBrainId) return [activeBrainId];
-    return [];
-  };
-
   const noteHref = (route: LogicalRoute): string => {
-    const scope = selectedScope();
     const focus = state.focused
       ? graph.getNodeAttribute(state.focused, "compositeId") as string
       : null;
-    const scoped = scope.length > 0 || focus
-      ? withGraphContext(data.brains, compositeIds, route, scope, focus)
-      : null;
-    return joinBase(import.meta.env.BASE_URL, scoped?.valid ? scoped.route : route);
+    return joinBase(import.meta.env.BASE_URL, withGraphFocus(route, compositeIds, focus));
   };
 
   const focusIds = () => state.focused
@@ -1142,18 +1126,6 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     else responsiveScheduler.update(next);
   };
   narrowGraphQuery.addEventListener("change", onNarrowGraphChange);
-
-  if (combined) {
-    document.addEventListener("brain-selection-change", (event) => {
-      const selection = (event as CustomEvent<{ brainIds: readonly string[] }>).detail;
-      selectedBrainIds = [...selection.brainIds];
-      motion.setSessionScope(motionScope());
-      refresh();
-      updateFocusUI();
-      syncFocusUrl();
-      renderSearchResults();
-    });
-  }
 
   /* Search: dim non-matches, list matches, camera-focus on selection. */
   function renderSearchResults(): void {
@@ -1536,32 +1508,16 @@ export async function mountLocalGraphs(): Promise<void> {
     };
     wireHoverAndClick(renderer, graph, state, interruptAutomaticMotion, {
       onNavigate: (_node, route) => {
-        const parameters = new URLSearchParams(window.location.search);
-        const requested = singularQueryValue(parameters, "brains");
-        const requestedFocus = singularQueryValue(parameters, "focus");
-        const retained = requested.valid && requested.present
-          ? brainSelectionContext(data.brains, requested.value)
-          : null;
-        if (requested.present && (!requested.valid || !retained?.valid)) {
-          const recovery = `${routes.graphAlias}${window.location.search}` as LogicalRoute;
-          window.location.assign(joinBase(import.meta.env.BASE_URL, recovery));
-          return;
-        }
-        const fallbackBrainId = host.dataset.activeBrainId;
-        const scope = retained?.valid && retained.brainIds.length > 0
-          ? retained.brainIds
-          : fallbackBrainId && data.mode === "workspace" ? [fallbackBrainId] : [];
+        const requestedFocus = singularQueryValue(new URLSearchParams(window.location.search), "focus");
         const focus = requestedFocus.valid && requestedFocus.present ? requestedFocus.value : null;
-        const graphContext: GraphContext = scope.length > 1
-          ? { mode: "combined", brainIds: scope }
-          : scope.length === 1
-            ? { mode: "brain", brainId: scope[0], includeForeign: true }
-            : { mode: "all" };
+        const fallbackBrainId = host.dataset.activeBrainId;
+        const graphContext: GraphContext = fallbackBrainId && data.mode === "workspace"
+          ? { mode: "brain", brainId: fallbackBrainId, includeForeign: true }
+          : { mode: "all" };
         const knownCompositeIds = deriveGraphData(data, graphContext).nodes.map(({ compositeId }) => compositeId);
-        const scoped = scope.length > 0 || focus
-          ? withGraphContext(data.brains, knownCompositeIds, route, scope, focus)
-          : null;
-        window.location.assign(joinBase(import.meta.env.BASE_URL, scoped?.valid ? scoped.route : route));
+        window.location.assign(
+          joinBase(import.meta.env.BASE_URL, withGraphFocus(route, knownCompositeIds, focus)),
+        );
       },
     });
     wireNodeDragging(renderer, graph, state, (node) => {
