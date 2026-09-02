@@ -18,7 +18,7 @@ The global graph SHALL begin from its deterministic build-time layout and animat
 - **THEN** the system stops settling within 2.5 seconds
 
 ### Requirement: Viewport-aware composition
-The graph SHALL adapt its visible composition to the current graph viewport while preserving recognizable cluster relationships. When a viewport change triggers animated settling, nodes and camera framing SHALL move as one continuous transition and MUST NOT start a distinct follow-up camera transition after node settling completes.
+The global graph and each note-page connection map SHALL adapt their visible composition to the current graph viewport while preserving recognizable cluster relationships. A connection map MUST compose its displayed neighborhood for its own viewport rather than relying only on inherited full-graph coordinates and camera fitting. Resize observations and responsive-policy changes belonging to the same viewport change MUST be coalesced into one final update. When that update triggers animated settling, nodes and camera framing SHALL move as one continuous transition and MUST NOT start a distinct follow-up node or camera transition after settling completes.
 
 #### Scenario: Phone orientation changes
 - **WHEN** a reader rotates a phone between portrait and landscape
@@ -35,6 +35,18 @@ The graph SHALL adapt its visible composition to the current graph viewport whil
 #### Scenario: Mobile filter panel overlays the graph
 - **WHEN** a reader opens or closes an overlay filter panel without changing the graph viewport dimensions
 - **THEN** the panel transition does not initiate graph settling or camera movement
+
+#### Scenario: Clustered local neighborhood opens on a phone
+- **WHEN** a connection map's notes have inherited full-graph positions that overlap or align too closely for its narrow viewport
+- **THEN** the map settles the neighborhood into a readable viewport-aware composition and fits that composition within the map
+
+#### Scenario: Browser zoom crosses a responsive breakpoint
+- **WHEN** browser zoom changes the effective viewport and its graph label policy in one operation
+- **THEN** the graph applies the final dimensions and label policy through one coordinated update rather than competing resize and breakpoint settles
+
+#### Scenario: Hover after responsive settling
+- **WHEN** the coordinated responsive update has completed and the reader inspects a node
+- **THEN** inspection does not initiate, repeat, or resume graph settling
 
 ### Requirement: Interaction-triggered settling
 The graph SHALL briefly adapt after filtering or node dragging, and new motion SHALL replace rather than overlap motion already in progress.
