@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.1 - 2026-09-02
+
+- Preserve validated Brain scope and originating graph focus across every note-navigation path, including the quick switcher, while recovering clearly from malformed shared context.
+
 ## 1.5.0 - 2026-09-02
 
 - Retain the reader's Brain browsing scope across notes, graphs, wiki-links, mentions, and the quick switcher instead of collapsing to each note's owning Brain.

@@ -22,11 +22,15 @@ The site SHALL use one top-right navigation pill as its primary navigation on ev
 - **THEN** the same launcher remains available without switching control structures or overlapping readable content
 
 ### Requirement: Direct Graph and Search actions
-One activation of the four-dot launcher SHALL directly reveal Search and any available Graph action on every viewport without a nested menu. Graph MUST navigate under the configured site base path to the browsing scope's canonical global graph route without adding note focus. Every note page MUST additionally expose a visible focused-neighborhood action outside the expandable menu, including notes without a rendered connection map. The focused-neighborhood action MUST focus the current note; a retained valid selected-Brain scope takes precedence, while a direct note visit defaults to the note's owning Brain. Search MUST open the quick switcher in the retained browsing scope. A workspace chooser with no selected brain or combined view does not establish a graph destination.
+One activation of the four-dot launcher SHALL directly reveal Search on every viewport and SHALL reveal any available Graph action outside note pages without a nested menu. Graph MUST navigate under the configured site base path to the browsing scope's canonical global graph route. Every note page MUST expose its context-aware Graph action outside the expandable menu beside Home in one visible two-action pill, including notes without a rendered connection map. When valid originating focused-graph context is present, the note-page Graph action MUST restore that selection and focus. Otherwise it MUST open an unpinned graph in the retained valid selected-Brain scope, or default to the note's owning Brain for a direct note visit. The separate focused-neighborhood action for the current note MUST remain visible in the note content and MUST focus the current note. Search MUST open the quick switcher in the retained browsing scope. A workspace chooser with no selected brain or combined view does not establish a graph destination.
 
 #### Scenario: Return to an unpinned graph
 - **WHEN** a reader opens Graph from a directly visited Engineering note
 - **THEN** the browser opens Engineering's canonical graph without persistently focusing the note
+
+#### Scenario: Return to an originating pinned graph
+- **WHEN** a reader activates the visible Graph action on a note reached from a pinned Engineering and Design neighborhood
+- **THEN** the browser restores the encoded Engineering and Design graph and its originating persistent focus
 
 #### Scenario: Focus an isolated note visibly
 - **WHEN** a note has no rendered connection map
@@ -41,8 +45,8 @@ One activation of the four-dot launcher SHALL directly reveal Search and any ava
 - **THEN** the browser opens the unpinned Engineering and Design graph rather than collapsing to Engineering alone
 
 #### Scenario: Open the graph on mobile
-- **WHEN** a mobile reader expands navigation on a note and activates Graph
-- **THEN** the browser opens the same context-aware unpinned graph without another navigation layer
+- **WHEN** a mobile reader activates the visible Graph action on a note
+- **THEN** the browser opens the same context-aware graph without opening the expandable navigation
 
 #### Scenario: Open search directly
 - **WHEN** a reader expands navigation and activates Search
@@ -53,15 +57,19 @@ One activation of the four-dot launcher SHALL directly reveal Search and any ava
 - **THEN** navigation stays within that configured base path
 
 ### Requirement: Expandable secondary navigation
-The four-dot launcher SHALL expand the navigation pill itself on every viewport and directly reveal Graph when available, Search, and all context-appropriate Tags, Recent, and Orphans destinations. It MUST NOT duplicate the always-visible Home destination or expose About. The expanded pill MUST NOT use a nested secondary flyout or reintroduce a persistent Brain selector. Workspace-level pages without an active brain MUST omit destinations that require an active brain. The launcher MUST expose its open state, support pointer and keyboard operation, use a bounded expand and collapse transition that respects reduced motion, and provide pointer users with a visible label or tooltip for each icon-only action.
+The four-dot launcher SHALL expand the navigation pill itself on every viewport and directly reveal Search and all context-appropriate Tags, Recent, and Orphans destinations. It SHALL also reveal Graph when available outside note pages, but MUST omit Graph on note pages because the visible Home-and-Graph pill provides that action. The expanded pill MUST NOT duplicate the always-visible Home destination or expose About. It MUST NOT use a nested secondary flyout or reintroduce a persistent Brain selector. Workspace-level pages without an active brain MUST omit destinations that require an active brain. The launcher MUST expose its open state, support pointer and keyboard operation, use a bounded expand and collapse transition that respects reduced motion, and provide pointer users with a visible label or tooltip for each icon-only action.
 
 #### Scenario: Return Home without expanding navigation
 - **WHEN** a reader activates the always-visible Home icon from a note, report, or graph in workspace mode
 - **THEN** the browser opens the Brain chooser and the expandable menu contains no duplicate Brains destination
 
+#### Scenario: Keep note Graph navigation visible
+- **WHEN** a reader opens the expandable navigation on a note page
+- **THEN** Graph is absent from the expanded actions and remains available beside Home in the separate two-action pill
+
 #### Scenario: Expand the remaining destinations
-- **WHEN** a desktop reader activates the four-dot launcher in a single-vault or active-brain context
-- **THEN** the pill expands in place and directly reveals every destination applicable to that context
+- **WHEN** a desktop reader activates the four-dot launcher in a single-vault or active-brain context outside a note page
+- **THEN** the pill expands in place and directly reveals every destination applicable to that context, including Graph when available
 
 #### Scenario: Expand mobile navigation
 - **WHEN** a touch reader activates the four-dot launcher
@@ -88,5 +96,20 @@ The four-dot launcher SHALL expand the navigation pill itself on every viewport 
 - **THEN** the chosen action runs, focus remains visible, and focus order follows the visual expanded order
 
 #### Scenario: Identify icon-only actions
-- **WHEN** assistive technology or a desktop pointer user examines the launcher and expanded icon actions
+- **WHEN** assistive technology or a desktop pointer user examines the launcher, the visible note navigation pill, or expanded icon actions
 - **THEN** each control exposes a distinct accessible name, pointer users can discover its label, and decorative icons are not announced separately
+
+### Requirement: Visible note Home and Graph pill
+In workspace mode, every note page SHALL place Home and the context-aware Graph action together in one visible two-segment icon pill outside the expandable navigation. The pill MUST remain available on every supported viewport, preserve touch targets of at least 44 by 44 CSS pixels, remain clear of the note title and expandable navigation, and identify both actions accessibly without relying on icon shape alone.
+
+#### Scenario: View note navigation on desktop
+- **WHEN** a reader opens a workspace note on a desktop viewport
+- **THEN** Home and Graph appear as adjacent segments of one visible pill and Graph does not appear in the expandable navigation
+
+#### Scenario: View note navigation on a phone
+- **WHEN** a reader opens a workspace note on a supported phone viewport
+- **THEN** the two-action pill remains operable without overlapping the note title or the right-side launcher
+
+#### Scenario: Operate note navigation accessibly
+- **WHEN** a keyboard, touch, or assistive-technology user examines the note navigation pill
+- **THEN** Home and Graph each provide a distinct accessible name, visible focus, and a touch target of at least 44 by 44 CSS pixels
