@@ -41,6 +41,7 @@ import {
   responsiveLabelSettings,
 } from "./graph-style";
 import {
+  connectedDomains,
   createFocusUrlSync,
   initialGraphFocus,
   neighborhoodHref,
@@ -666,6 +667,8 @@ export interface GlobalGraphUI {
   contextOpen: HTMLButtonElement;
   /** The Brain lens control; absent in vault mode. */
   lens?: GraphLensUI | null;
+  /** Connected-domain chips; present only on workspace-mode neighborhood pages. */
+  domains?: GraphDomainsUI | null;
 }
 
 export interface GraphLensUI {
@@ -673,6 +676,21 @@ export interface GraphLensUI {
   summary: HTMLElement;
   checkboxes: readonly HTMLInputElement[];
   reset: HTMLButtonElement;
+}
+
+export interface GraphDomainChipUI {
+  brainId: string;
+  title: string;
+  item: HTMLElement;
+  toggle: HTMLButtonElement;
+  count: HTMLElement;
+  state: HTMLElement;
+}
+
+export interface GraphDomainsUI {
+  list: HTMLElement;
+  /** One chip per configured Brain, already in declared hierarchy order. */
+  chips: readonly GraphDomainChipUI[];
 }
 
 export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
@@ -842,13 +860,53 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     return { mode: "all" };
   }
 
+  // Nodes the lens currently renders dimmed: a hovered or focused neighborhood
+  // is excluded because it outranks the lens.
   function updateLensStats(): void {
     ui.host.dataset.lens = [...dimmedBrains].join(",");
     ui.host.dataset.dimmedNodes = String(graph.nodes().filter((id) =>
       !hidden.has(id) &&
       dimmedBrains.has(graph.getNodeAttribute(id, "brainId") as string) &&
-      !(state.focused !== null && isInspectionNeighborhoodNode(state, id))
+      !isInspectionNeighborhoodNode(state, id)
     ).length);
+  }
+
+  /**
+   * Connected domains of the focused neighborhood on a workspace neighborhood
+   * page: one chip per Brain owning the focused note or a visible neighbor.
+   * The chip order is the declared hierarchy, fixed in the markup; the
+   * grouping is client-side so it always matches the graph the reader sees.
+   */
+  function updateDomains(): void {
+    const domains = ui.domains;
+    if (!domains) return;
+    const focused = state.focused;
+    if (!focused) {
+      domains.list.hidden = true;
+      return;
+    }
+    const member = (id: string) => ({ id, brainId: graph.getNodeAttribute(id, "brainId") as string });
+    const present = new Map(
+      connectedDomains(
+        member(focused),
+        graph.neighbors(focused).filter((id) => !hidden.has(id)).map(member),
+        domains.chips.map((chip) => chip.brainId),
+      ).map((domain) => [domain.brainId, domain.count]),
+    );
+    for (const chip of domains.chips) {
+      const count = present.get(chip.brainId);
+      chip.item.hidden = count === undefined;
+      if (count === undefined) continue;
+      const dimmed = dimmedBrains.has(chip.brainId);
+      chip.count.textContent = String(count);
+      chip.count.setAttribute("aria-label", `${count} ${count === 1 ? "note" : "notes"}`);
+      chip.state.hidden = !dimmed;
+      chip.toggle.setAttribute("aria-pressed", String(dimmed));
+      chip.toggle.title = dimmed
+        ? `Show ${chip.title} at full emphasis everywhere`
+        : `Dim ${chip.title} outside this neighborhood`;
+    }
+    domains.list.hidden = false;
   }
 
   function edgeKey(source: string, target: string): string {
@@ -909,6 +967,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     ui.focusStatus.hidden = false;
     ui.focusTitle.textContent = title;
     ui.focusOpen.href = noteHref(route);
+    updateDomains();
   };
 
   const fitFocus = () => {
@@ -988,6 +1047,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     ui.host.dataset.crossEdges = String(visibleCrossEdges.length);
     ui.host.dataset.relatedBrainsVisible = String(Boolean(activeBrainId && showRelatedBrains));
     updateLensStats();
+    updateDomains();
   }
 
   let revealNarrowLabels = forceLabelsOnNarrowZoom(
@@ -1054,6 +1114,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       [...displayed].filter((id) => graph.getNodeAttribute(id, "foreign") === true && !hidden.has(id)).length,
     );
     ui.host.dataset.renderedMarkers = String(graph.order - hidden.size);
+    if (dimmedBrains.size > 0) updateLensStats();
     const inspected = activeInspectionNode(state);
     if (inspected) updateInspectionTargetStats(ui.host, renderer, graph, inspected);
     else delete ui.host.dataset.inspectionTargetGeometry;
@@ -1167,6 +1228,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     else lensStore.write([...dimmedBrains]);
     syncLensControl();
     updateLensStats();
+    updateDomains();
     applyReducers();
   };
   const onLensChange = () => {
@@ -1175,6 +1237,19 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   const onLensReset = () => setLens([]);
   for (const control of ui.lens?.checkboxes ?? []) control.addEventListener("change", onLensChange);
   ui.lens?.reset.addEventListener("click", onLensReset);
+  // A domain chip toggles its Brain in the same lens. The neighborhood keeps
+  // every node because focus outranks the lens, and the URL never changes.
+  const toggleDomain = (brainId: string) => {
+    const next = new Set(dimmedBrains);
+    if (next.has(brainId)) next.delete(brainId);
+    else next.add(brainId);
+    setLens(next);
+  };
+  const domainListeners = (ui.domains?.chips ?? []).map((chip) => {
+    const listener = () => toggleDomain(chip.brainId);
+    chip.toggle.addEventListener("click", listener);
+    return () => chip.toggle.removeEventListener("click", listener);
+  });
   syncLensControl();
 
   const onNarrowGraphChange = () => {
@@ -1371,6 +1446,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     ui.relatedBrainsToggle?.removeEventListener("click", onRelatedBrainsToggle);
     for (const control of ui.lens?.checkboxes ?? []) control.removeEventListener("change", onLensChange);
     ui.lens?.reset.removeEventListener("click", onLensReset);
+    for (const remove of domainListeners) remove();
     narrowGraphQuery.removeEventListener("change", onNarrowGraphChange);
     document.removeEventListener("visibilitychange", onVisibilityChange);
     motion.destroy();

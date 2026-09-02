@@ -9,15 +9,15 @@
 - [x] 2.1 Add `notes/[slug]/graph` pages for workspace and vault modes that render `GlobalGraph` with the note's composite ID as the initial focus attribute, and verify `npm run build` on the demo vault and demo workspace emits one `graph/index.html` beneath every note directory.
 - [x] 2.2 Teach `mountGlobalGraph` to take initial focus from the host attribute on neighborhood pages, keep that page's URL free of query state, navigate to another note's neighborhood page when focus moves there, and verify graph-interaction unit tests cover attribute focus, focus moves, and the absence of `replaceState` query writes on neighborhood pages.
 - [x] 2.3 Point the copied neighborhood link, the note page's Graph action, and the note's focused-neighborhood action at the neighborhood page path with in-session `?focus=` return context resolved to the originating note's page when valid, and verify unit or browser tests assert each emitted link is pathname-only under root and subpath bases.
-- [ ] 2.4 Render the connected-domains list on workspace-mode neighborhood pages from the focused node's neighbors with mark, accent, title, count, dimmed-elsewhere state, and lens toggle, omit it in vault mode, and verify a workspace Playwright test checks chip contents for a note with cross-Brain neighbors and a vault Playwright test checks the list is absent.
+- [x] 2.4 Render the connected-domains list on workspace-mode neighborhood pages from the focused node's neighbors with mark, accent, title, count, dimmed-elsewhere state, and lens toggle, omit it in vault mode, and verify a workspace Playwright test checks chip contents for a note with cross-Brain neighbors and a vault Playwright test checks the list is absent.
 
 ## 3. Full Workspace Root and Brain Lens
 
 - [x] 3.1 Make the workspace root render the full workspace graph with the About disclosure, redirect `/graph` to the root, remove `graph.astro`'s combined branch and selection recovery card, and verify the workspace Playwright suite opens `/` cold and sees nodes from every configured Brain with no selection step.
 - [x] 3.2 Replace the Brain context switcher with a checkbox lens control listing every Brain in declared hierarchy with mark, accent, title, Enter action, and reset action, and verify Playwright tests cover unchecking, reset, the all-dimmed fallback, and that no `?brains=` appears in the URL after any interaction.
 - [x] 3.3 Persist the lens in `localStorage` keyed by site base with an in-memory fallback, apply it through the node and edge reducers as dimming with focus precedence, and verify graph-interaction unit tests cover dim-not-remove, focus-over-lens, filter-removes-before-lens, and storage-unavailable behavior, plus a Playwright test that reloads in the same context and finds the lens restored.
-- [ ] 3.4 Update the legend and Brain control copy to describe dimming as emphasis rather than hiding and keep dimmed nodes hoverable and clickable, and verify a Playwright test hovers and opens a dimmed node.
-- [ ] 3.5 Make graph search cover dimmed Brains on the full graph and verify a Playwright test finds and focuses a dimmed Brain's note at full emphasis.
+- [x] 3.4 Update the legend and Brain control copy to describe dimming as emphasis rather than hiding and keep dimmed nodes hoverable and clickable, and verify a Playwright test hovers and opens a dimmed node.
+- [x] 3.5 Make graph search cover dimmed Brains on the full graph and verify a Playwright test finds and focuses a dimmed Brain's note at full emphasis.
 
 ## 4. Remove Selection Grammar and Aggregate Reports
 

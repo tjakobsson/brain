@@ -101,6 +101,7 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
         context={activeBrainId ? "brain" : isWorkspace ? "workspace" : "global"}
         brains={legendBrains}
         activeBrainId={activeBrainId}
+        lens={isWorkspace}
         globalControl
       />
       {isWorkspace && (
@@ -116,7 +117,7 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
               <h2>Brains</h2>
               <button type="button" class="brain-lens__reset" data-lens-reset>Show all</button>
             </div>
-            <p class="brain-lens__hint">Unchecked Brains recede in place. Nothing is hidden or moved.</p>
+            <p class="brain-lens__hint">Unchecked Brains are dimmed, not hidden: their notes stay in place and still open on click. A focused neighborhood always shows fully.</p>
             {hierarchy.map((section) => (
               <div class="brain-lens__group" style={`--group-depth: ${section.depth}`}>
                 <h3>{section.title}</h3>
@@ -204,6 +205,12 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
           <span class:list={["cross-edge-key", { "cross-edge-key--muted": !fullWorkspace }]} aria-hidden="true"></span>
           {fullWorkspace ? "thick line: cross-brain link" : "muted line: cross-brain link"}
         </p>
+        {isWorkspace && (
+          <p>
+            <span class="dimmed-node-key" aria-hidden="true"></span>
+            dimmed: Brain unchecked in the lens. Dimmed notes stay hoverable and open on click; a focused neighborhood always shows fully.
+          </p>
+        )}
         <p>Node size shows connections. Hover to inspect a neighborhood; drag to rearrange; click to open.</p>
       </div>
 
@@ -217,6 +224,29 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
           <a data-graph-focus-open>Open note</a>
           <button type="button" data-graph-focus-clear hidden={neighborhoodPage}>Clear</button>
         </div>
+        {fullWorkspace && neighborhoodPage && (
+          <div class="graph-domains" data-graph-domains hidden>
+            <span class="graph-domains__label" id="graph-domains-label">Connected domains</span>
+            <ul aria-labelledby="graph-domains-label">
+              {hierarchy.flatMap((section) => section.brains).map((brain) => (
+                <li style={`--brain-accent: ${brain.accent}`} data-domain-brain={brain.id} data-domain-title={brain.title} hidden>
+                  <button
+                    type="button"
+                    class="graph-domain"
+                    aria-pressed="false"
+                    title={`Dim ${brain.title} outside this neighborhood`}
+                    data-domain-toggle
+                  >
+                    <BrainMark />
+                    <span class="graph-domain__title">{brain.title}</span>
+                    <span class="graph-domain__count" data-domain-count></span>
+                    <span class="graph-domain__state" data-domain-state hidden>· dimmed</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </section>
       <div class="graph-context-menu" data-graph-context-menu role="menu" hidden>
         <button type="button" role="menuitem" data-graph-menu-focus>Pin neighborhood</button>
@@ -253,6 +283,7 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
   const statusFilters = document.querySelectorAll<HTMLInputElement>('[data-filter="status"]');
   const tagFilter = q<HTMLSelectElement>("#graph-tag-filter");
   const lens = document.querySelector<HTMLDetailsElement>(".graph-controls > .brain-lens");
+  const domains = document.querySelector<HTMLElement>("[data-graph-domains]");
 
   function setFiltersOpen(open: boolean, persist = true): void {
     if (open && lens?.open) lens.open = false;
@@ -384,6 +415,19 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
           summary: lensSummary,
           checkboxes: [...lens.querySelectorAll<HTMLInputElement>('input[name="brain-lens"]')],
           reset: lens.querySelector<HTMLButtonElement>("[data-lens-reset]")!,
+        }
+      : null,
+    domains: domains
+      ? {
+          list: domains,
+          chips: [...domains.querySelectorAll<HTMLElement>("[data-domain-brain]")].map((item) => ({
+            brainId: item.dataset.domainBrain!,
+            title: item.dataset.domainTitle ?? item.dataset.domainBrain!,
+            item,
+            toggle: item.querySelector<HTMLButtonElement>("[data-domain-toggle]")!,
+            count: item.querySelector<HTMLElement>("[data-domain-count]")!,
+            state: item.querySelector<HTMLElement>("[data-domain-state]")!,
+          })),
         }
       : null,
   }).catch((error) => console.error("[graph] failed to mount", error));

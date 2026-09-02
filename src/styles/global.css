@@ -1481,11 +1481,12 @@ div[data-callout] [data-callout-body] > :last-child {
   bottom: 1rem;
   left: 1rem;
   display: flex;
+  flex-wrap: wrap;
   width: fit-content;
   max-width: calc(100% - 2rem);
   box-sizing: border-box;
   align-items: center;
-  gap: 0.8rem;
+  gap: 0.5rem 0.8rem;
   padding: 0.55rem 0.7rem;
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -1496,6 +1497,118 @@ div[data-callout] [data-callout-body] > :last-child {
 .graph-focus-status[hidden],
 .graph-context-menu[hidden] {
   display: none;
+}
+
+/* Connected domains of a focused neighborhood: a chip row inside the focus
+   status bar, so it never competes with the control pills for the top edge. */
+.graph-domains {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  min-width: 0;
+  padding-top: 0.45rem;
+  border-top: 1px solid var(--border);
+}
+
+.graph-domains[hidden] {
+  display: none;
+}
+
+.graph-domains__label {
+  flex: none;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.graph-domains ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.graph-domains li[hidden] {
+  display: none;
+}
+
+.graph-focus-status .graph-domain {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2.25rem;
+  padding: 0.25rem 0.6rem 0.25rem 0.45rem;
+  border-color: color-mix(in srgb, var(--brain-accent, var(--accent)) 55%, var(--border));
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.graph-focus-status .graph-domain:hover,
+.graph-focus-status .graph-domain:focus-visible {
+  border-color: var(--brain-accent, var(--accent));
+}
+
+.graph-domain .brain-mark {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.graph-domain__count {
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--brain-accent, var(--accent)) 18%, transparent);
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.graph-domain__state {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  font-weight: 500;
+}
+
+.graph-domain__state[hidden] {
+  display: none;
+}
+
+.graph-focus-status .graph-domain[aria-pressed="true"] {
+  color: var(--text-muted);
+  border-style: dashed;
+}
+
+.graph-focus-status .graph-domain[aria-pressed="true"] .brain-mark {
+  opacity: 0.55;
+}
+
+.dimmed-node-key {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  margin-inline-end: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: #29262e;
+  vertical-align: middle;
+}
+
+.graph-legend-popover .dimmed-node-key {
+  margin: 0 auto;
+}
+
+@media (prefers-color-scheme: light) {
+  .dimmed-node-key {
+    background: #e1dde5;
+  }
 }
 
 .graph-focus-status > span {
@@ -2022,6 +2135,11 @@ div[data-callout] [data-callout-body] > :last-child {
   .graph-focus-status {
     align-items: stretch;
     flex-direction: column;
+    flex-wrap: nowrap;
+  }
+
+  .graph-focus-status .graph-domain {
+    min-height: 44px;
   }
 
   .recent-list .note-line {

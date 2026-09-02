@@ -98,3 +98,39 @@ export function noteGraphActionRoute(
     : undefined;
   return origin ? neighborhoodRoute(origin, mode) : ownNeighborhood;
 }
+
+export interface DomainMember {
+  readonly id: string;
+  readonly brainId: string;
+}
+
+export interface ConnectedDomain {
+  readonly brainId: string;
+  /** Neighborhood notes (the focused note plus direct neighbors) this Brain owns. */
+  readonly count: number;
+}
+
+/**
+ * The Brains present in a focused neighborhood: the focused note's own Brain
+ * plus every Brain owning a direct neighbor, in declared hierarchy order with
+ * the count of neighborhood notes each owns. Brains missing from the declared
+ * order follow it in first-seen order so nothing present is ever dropped.
+ */
+export function connectedDomains(
+  focused: DomainMember,
+  neighbors: readonly DomainMember[],
+  brainOrder: readonly string[],
+): ConnectedDomain[] {
+  const counts = new Map<string, number>([[focused.brainId, 1]]);
+  const seen = new Set<string>([focused.id]);
+  for (const neighbor of neighbors) {
+    if (seen.has(neighbor.id)) continue;
+    seen.add(neighbor.id);
+    counts.set(neighbor.brainId, (counts.get(neighbor.brainId) ?? 0) + 1);
+  }
+  const ordered = [
+    ...brainOrder.filter((brainId) => counts.has(brainId)),
+    ...[...counts.keys()].filter((brainId) => !brainOrder.includes(brainId)),
+  ];
+  return ordered.map((brainId) => ({ brainId, count: counts.get(brainId)! }));
+}

@@ -715,6 +715,8 @@ test("copied neighborhood links are pathname-only and open cold", async ({ brows
   await expect(recipientGraph).toHaveAttribute("data-focused-node", "welcome");
   await expect(recipientGraph).toHaveAttribute("data-neighborhood-page", "true");
   await expect(recipient.locator("[data-graph-focus-status]")).toBeVisible();
+  // Connected domains are a workspace concept; a single vault has no lens.
+  await expect(recipient.locator("[data-graph-domains]")).toHaveCount(0);
   await expect(recipient.locator("[data-graph-focus-clear]")).toBeHidden();
   await expect(recipient.locator("[data-graph-focus-open]")).toHaveAttribute(
     "href",

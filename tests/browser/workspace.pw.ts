@@ -101,6 +101,38 @@ async function renderedLabelTarget(page: Page, graph: Locator, excludeNode?: str
   throw new Error("No interactive graph title target found");
 }
 
+/**
+ * A screen point whose pointer hit is the given node. The host resolves
+ * pointer targets from rendered marker and title geometry, so sweeping the
+ * canvas with pointer moves and reading the transient inspection hook finds
+ * the node without exposing renderer internals.
+ */
+async function pointerTargetFor(graph: Locator, node: string) {
+  const target = await graph.evaluate((host, wanted) => {
+    const bounds = host.getBoundingClientRect();
+    const probe = (x: number, y: number) => {
+      host.dispatchEvent(new PointerEvent("pointermove", {
+        bubbles: true,
+        clientX: bounds.left + x,
+        clientY: bounds.top + y,
+        pointerType: "mouse",
+      }));
+      return (
+        host.dataset.transientInspection === wanted &&
+        document.elementFromPoint(bounds.left + x, bounds.top + y) instanceof HTMLCanvasElement
+      );
+    };
+    for (let y = 2; y < bounds.height; y += 3) {
+      for (let x = 2; x < bounds.width; x += 3) {
+        if (probe(x, y)) return { x: bounds.left + x, y: bounds.top + y };
+      }
+    }
+    return null;
+  }, node);
+  if (!target) throw new Error(`No pointer target found for ${node}`);
+  return target;
+}
+
 test.beforeEach(({}, testInfo) => {
   test.skip(testInfo.project.name !== "chromium-root", "Workspace behavior needs one browser project.");
 });
@@ -349,7 +381,8 @@ test("fresh visitors open shared neighborhoods and return to them from notes", a
   await expect(graph).toHaveAttribute("data-focused-node", "engineering/principles");
 
   await page.getByRole("button", { name: "Navigation" }).click();
-  await page.getByRole("button", { name: "Search" }).click();
+  // Exact: the neighborhood page also lists a "Research" domain chip.
+  await page.getByRole("button", { name: "Search", exact: true }).click();
   await page.getByLabel("Search notes and tags").fill("Principles");
   await page.locator("#switcher-results li", { hasText: "@design" }).click();
   await expect(page).toHaveURL(
@@ -711,6 +744,181 @@ test("the Brain lens dims in place, resets, refuses to dim everything, and stays
   await expect(visitor.getByRole("group", { name: "Brain lens" }).locator('input[value="research"]')).toBeChecked();
   await fresh.close();
   await context.close();
+});
+
+test("dimmed Brain notes stay hoverable and open on click", async ({ page }) => {
+  await page.goto(`${workspace}/`);
+  const graph = page.locator("#global-graph");
+  await expect(graph.locator("canvas.sigma-nodes")).toBeVisible();
+  await expect.poll(async () => Number(await graph.getAttribute("data-motion-completions"))).toBeGreaterThan(0);
+  const payload = await graphPayload(page);
+  const archive = "research-archive-and-synthesis-source-trails";
+  const archiveNodes = payload.nodes.filter((node) => node.brainId === archive);
+  expect(archiveNodes.length).toBeGreaterThan(1);
+  const target = archiveNodes.find((node) => node.id === `${archive}/synthesis-trails`)!;
+  const foreignNeighbors = payload.nodes.filter((node) => node.brainId !== archive).length;
+  expect(foreignNeighbors).toBeGreaterThan(0);
+
+  const lens = page.locator(".graph-controls > .brain-lens");
+  await lens.locator("summary").click();
+  const panel = page.getByRole("group", { name: "Brain lens" });
+  await expect(panel).toContainText("dimmed, not hidden");
+  await expect(panel).toContainText("focused neighborhood always shows fully");
+  await panel.locator(`input[value="${archive}"]`).uncheck();
+  await expect(graph).toHaveAttribute("data-lens", archive);
+  await expect(graph).toHaveAttribute("data-dimmed-nodes", String(archiveNodes.length));
+  await page.keyboard.press("Escape");
+  await expect(lens.locator("summary")).toHaveAttribute("aria-expanded", "false");
+
+  await page.getByRole("button", { name: "Legend" }).click();
+  const legend = page.getByRole("region", { name: "Graph legend" });
+  await expect(legend).toContainText("Dimmed node belongs to a Brain unchecked in the lens");
+  await expect(legend).toContainText("not hidden and still opens on click");
+  await page.keyboard.press("Escape");
+  await expect(legend).toBeHidden();
+
+  const point = await pointerTargetFor(graph, target.id);
+  await page.mouse.move(point.x, point.y);
+  await expect(graph).toHaveAttribute("data-transient-inspection", target.id);
+  await expect(graph).toHaveCSS("cursor", "pointer");
+  // The hovered node and its neighborhood render at full emphasis over the
+  // lens: its title is drawn and only unrelated archive notes stay dimmed.
+  await expect(graph).toHaveAttribute("data-rendered-label-ids", new RegExp(`(^|,)${target.id}(,|$)`, "u"));
+  await expect(graph).toHaveAttribute("data-dimmed-nodes", String(archiveNodes.length - 1));
+  await expect(graph).toHaveAttribute("data-visible-nodes", String(payload.nodes.length));
+  await expect(page).toHaveURL(`${workspace}/`);
+
+  await page.mouse.click(point.x, point.y);
+  await expect(page).toHaveURL(`${workspace}${target.route}`);
+  await expect(page.locator("article")).toHaveAttribute("data-brain-id", archive);
+});
+
+test("graph search reaches dimmed Brains and focuses their notes at full emphasis", async ({ page }) => {
+  await page.goto(`${workspace}/`);
+  const graph = page.locator("#global-graph");
+  await expect(graph.locator("canvas.sigma-nodes")).toBeVisible();
+  const payload = await graphPayload(page);
+  const researchNotes = payload.nodes.filter((node) => node.brainId === "research");
+  expect(researchNotes.length).toBeGreaterThan(0);
+  const evidence = researchNotes.find((node) => node.id === "research/evidence")!;
+
+  await page.locator(".graph-controls > .brain-lens > summary").click();
+  await page.getByRole("group", { name: "Brain lens" }).locator('input[value="research"]').uncheck();
+  await expect(graph).toHaveAttribute("data-lens", "research");
+  await expect(graph).toHaveAttribute("data-dimmed-nodes", String(researchNotes.length));
+
+  await page.getByRole("button", { name: "Filters" }).click();
+  await page.locator("#graph-search").fill(evidence.title);
+  const result = page.locator("#graph-search-results button", { hasText: "@research" });
+  await expect(result).toBeVisible();
+  await expect(result).toContainText(evidence.title);
+  await expect(result).toHaveAttribute("aria-label", `${evidence.title}, Research brain @research`);
+  await result.click();
+
+  await expect(graph).toHaveAttribute("data-focused-node", evidence.id);
+  await expect(page.locator("[data-graph-focus-status]")).toContainText(evidence.title);
+  await expect(graph).toHaveAttribute("data-lens", "research");
+  await expect(graph).toHaveAttribute("data-dimmed-nodes", "0");
+  await expect(graph).toHaveAttribute("data-visible-nodes", String(payload.nodes.length));
+  await expect(page).toHaveURL(`${workspace}/?focus=research%2Fevidence`);
+  expect(page.url()).not.toContain("brains=");
+  expect(page.url()).not.toContain("lens");
+});
+
+test("neighborhood pages list connected domains as lens chips that never remove nodes", async ({ page }) => {
+  const neighborhood = `${workspace}/brains/engineering/notes/principles/graph`;
+  await page.goto(neighborhood);
+  const graph = page.locator("#global-graph");
+  await expect(graph).toHaveAttribute("data-focused-node", "engineering/principles");
+  const payload = await graphPayload(page);
+  const total = String(payload.nodes.length);
+  await expect(graph).toHaveAttribute("data-visible-nodes", total);
+
+  const domains = page.locator("[data-graph-domains]");
+  await expect(domains).toBeVisible();
+  await expect(domains).toContainText("Connected domains");
+  const chips = domains.locator("li:not([hidden])");
+  await expect(chips).toHaveCount(3);
+  expect(await chips.evaluateAll((items) => items.map((item) => (item as HTMLElement).dataset.domainBrain)))
+    .toEqual(["engineering", "design", "research"]);
+  for (const [brainId, title, count] of [
+    ["engineering", "Engineering", "2"],
+    ["design", "Design", "1"],
+    ["research", "Research", "1"],
+  ]) {
+    const chip = domains.locator(`[data-domain-brain="${brainId}"]`);
+    await expect(chip).toBeVisible();
+    await expect(chip.locator("[data-brain-mark]")).toHaveCount(1);
+    await expect(chip.locator(".graph-domain__title")).toHaveText(title);
+    await expect(chip.locator("[data-domain-count]")).toHaveText(count);
+    await expect(chip.getByRole("button")).toHaveAttribute("aria-pressed", "false");
+    await expect(chip.locator("[data-domain-state]")).toBeHidden();
+  }
+  await expect(domains.locator(`[data-domain-brain="research-archive-and-synthesis-source-trails"]`)).toBeHidden();
+
+  const researchChip = domains.locator('[data-domain-brain="research"]').getByRole("button");
+  await researchChip.click();
+  await expect(researchChip).toHaveAttribute("aria-pressed", "true");
+  await expect(researchChip).toContainText("dimmed");
+  await expect(researchChip.locator("[data-domain-state]")).toBeVisible();
+  await expect(graph).toHaveAttribute("data-lens", "research");
+  await expect(graph).toHaveAttribute("data-dimmed-nodes", "0");
+  await expect(graph).toHaveAttribute("data-visible-nodes", total);
+  await expect(graph).toHaveAttribute("data-visible-brain-ids", allBrainIds);
+  await expect(graph).toHaveAttribute("data-focused-node", "engineering/principles");
+  await expect(chips).toHaveCount(3);
+  await expect(page).toHaveURL(neighborhood);
+  const lensSummary = page.locator(".graph-controls > .brain-lens > summary");
+  await expect(lensSummary).toHaveAttribute("aria-label", "Brains: 1 dimmed");
+  await lensSummary.click();
+  const panel = page.getByRole("group", { name: "Brain lens" });
+  await expect(panel.locator('input[value="research"]')).not.toBeChecked();
+  await panel.locator('input[value="research-archive-and-synthesis-source-trails"]').uncheck();
+  await expect(graph).toHaveAttribute("data-lens", "research,research-archive-and-synthesis-source-trails");
+  await expect(graph).toHaveAttribute("data-dimmed-nodes", String(
+    payload.nodes.filter((node) => node.brainId === "research-archive-and-synthesis-source-trails").length,
+  ));
+  await expect(chips).toHaveCount(3);
+  await page.keyboard.press("Escape");
+
+  await researchChip.click();
+  await expect(researchChip).toHaveAttribute("aria-pressed", "false");
+  await expect(researchChip.locator("[data-domain-state]")).toBeHidden();
+  await expect(graph).toHaveAttribute("data-lens", "research-archive-and-synthesis-source-trails");
+  await expect(page).toHaveURL(neighborhood);
+  await lensSummary.click();
+  await expect(panel.locator('input[value="research"]')).toBeChecked();
+  await panel.getByRole("button", { name: "Show all" }).click();
+  await expect(graph).toHaveAttribute("data-lens", "");
+  await page.keyboard.press("Escape");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(domains).toBeVisible();
+  // The renderer resizes its canvases through the responsive scheduler; the
+  // chips are plain DOM, but page overflow is only meaningful once it has.
+  await expect(graph).toHaveAttribute("data-responsive-policy", "narrow");
+  await expect.poll(() => page.evaluate(() => {
+    const status = document.querySelector("[data-graph-focus-status]")!.getBoundingClientRect();
+    const chips = [...document.querySelectorAll<HTMLElement>("[data-graph-domains] li:not([hidden]) button")]
+      .map((chip) => chip.getBoundingClientRect());
+    return {
+      contained: status.left >= 0 && status.right <= innerWidth && status.bottom <= innerHeight,
+      touchTargets: chips.every((chip) => chip.height >= 44 && chip.right <= innerWidth),
+      noOverflow: document.documentElement.scrollWidth <= innerWidth,
+    };
+  })).toEqual({ contained: true, touchTargets: true, noOverflow: true });
+
+  await page.goto(`${workspace}/brains/research-archive-and-synthesis-source-trails/notes/archive-boundaries/graph`);
+  await expect(graph).toHaveAttribute("data-focused-node", "research-archive-and-synthesis-source-trails/archive-boundaries");
+  await expect(domains.locator("li:not([hidden])")).toHaveCount(1);
+  await expect(domains.locator('[data-domain-brain="research-archive-and-synthesis-source-trails"] .graph-domain__title'))
+    .toHaveText("Research Archive");
+  await expect(domains.locator("li:not([hidden]) [data-domain-count]")).toHaveText(["1"]);
+
+  await page.goto(`${workspace}/`);
+  await expect(page.locator("[data-graph-domains]")).toHaveCount(0);
+  await page.goto(`${workspace}/brains/engineering`);
+  await expect(page.locator("[data-graph-domains]")).toHaveCount(0);
 });
 
 test("mobile root graph and Brain lens remain usable without horizontal overflow", async ({ page }) => {

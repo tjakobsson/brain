@@ -12,6 +12,8 @@ interface Props {
   brains?: BrainKey[];
   activeBrainId?: string;
   globalControl?: boolean;
+  /** The graph has a Brain lens, so dimmed nodes can appear. */
+  lens?: boolean;
 }
 
 const {
@@ -20,6 +22,7 @@ const {
   brains = [],
   activeBrainId,
   globalControl = false,
+  lens = false,
 } = Astro.props;
 const brainAware = context === "brain" || context === "workspace" || context === "local";
 ---
@@ -66,6 +69,9 @@ const brainAware = context === "brain" || context === "workspace" || context ===
       )}
       {context === "local" && (
         <li><span class="graph-legend-related" aria-hidden="true">•••</span><span>Other nodes are notes up to two links away</span></li>
+      )}
+      {lens && (
+        <li><span class="dimmed-node-key" aria-hidden="true"></span><span>Dimmed node belongs to a Brain unchecked in the lens; it is not hidden and still opens on click. A focused neighborhood always shows fully</span></li>
       )}
     </ul>
     {brainAware && brains.length > 0 && (

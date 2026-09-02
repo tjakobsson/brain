@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  connectedDomains,
   createFocusUrlSync,
   initialGraphFocus,
   neighborhoodHref,
@@ -118,5 +119,60 @@ describe("note Graph action", () => {
     expect(noteGraphActionRoute(own, null, nodes, "workspace")).toBe(own);
     expect(noteGraphActionRoute(own, undefined, nodes, "workspace")).toBe(own);
     expect(noteGraphActionRoute(own, "research/missing", nodes, "workspace")).toBe(own);
+  });
+});
+
+describe("connected domains", () => {
+  const order = ["engineering", "design", "research", "archive"];
+  const focused = { id: "engineering/principles", brainId: "engineering" };
+
+  it("groups the focused note and its neighbors by Brain in declared order", () => {
+    const neighbors = [
+      { id: "research/evidence", brainId: "research" },
+      { id: "design/principles", brainId: "design" },
+      { id: "engineering/delivery-loops", brainId: "engineering" },
+      { id: "design/interaction-model", brainId: "design" },
+    ];
+    expect(connectedDomains(focused, neighbors, order)).toEqual([
+      { brainId: "engineering", count: 2 },
+      { brainId: "design", count: 2 },
+      { brainId: "research", count: 1 },
+    ]);
+  });
+
+  it("always lists the focused note's own Brain, even when every neighbor is foreign", () => {
+    const neighbors = [{ id: "design/principles", brainId: "design" }];
+    expect(connectedDomains(focused, neighbors, ["design", "engineering"])).toEqual([
+      { brainId: "design", count: 1 },
+      { brainId: "engineering", count: 1 },
+    ]);
+  });
+
+  it("lists only the owning Brain for an isolated note", () => {
+    expect(connectedDomains(focused, [], order)).toEqual([{ brainId: "engineering", count: 1 }]);
+  });
+
+  it("counts each note once and never counts the focused note as its own neighbor", () => {
+    const neighbors = [
+      { id: "engineering/principles", brainId: "engineering" },
+      { id: "research/evidence", brainId: "research" },
+      { id: "research/evidence", brainId: "research" },
+    ];
+    expect(connectedDomains(focused, neighbors, order)).toEqual([
+      { brainId: "engineering", count: 1 },
+      { brainId: "research", count: 1 },
+    ]);
+  });
+
+  it("keeps Brains absent from the declared order after it", () => {
+    const neighbors = [
+      { id: "mystery/note", brainId: "mystery" },
+      { id: "design/principles", brainId: "design" },
+    ];
+    expect(connectedDomains(focused, neighbors, ["design", "engineering"])).toEqual([
+      { brainId: "design", count: 1 },
+      { brainId: "engineering", count: 1 },
+      { brainId: "mystery", count: 1 },
+    ]);
   });
 });
