@@ -44,7 +44,7 @@ import {
   joinBase,
   routes,
   singularQueryValue,
-  withBrainScope,
+  withGraphContext,
   withGraphFocus,
   type LogicalRoute,
 } from "./routes";
@@ -870,7 +870,12 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
 
   const noteHref = (route: LogicalRoute): string => {
     const scope = selectedScope();
-    const scoped = scope.length > 0 ? withBrainScope(data.brains, route, scope) : null;
+    const focus = state.focused
+      ? graph.getNodeAttribute(state.focused, "compositeId") as string
+      : null;
+    const scoped = scope.length > 0 || focus
+      ? withGraphContext(data.brains, compositeIds, route, scope, focus)
+      : null;
     return joinBase(import.meta.env.BASE_URL, scoped?.valid ? scoped.route : route);
   };
 
@@ -1526,7 +1531,9 @@ export async function mountLocalGraphs(): Promise<void> {
     };
     wireHoverAndClick(renderer, graph, state, interruptAutomaticMotion, {
       onNavigate: (_node, route) => {
-        const requested = singularQueryValue(new URLSearchParams(window.location.search), "brains");
+        const parameters = new URLSearchParams(window.location.search);
+        const requested = singularQueryValue(parameters, "brains");
+        const requestedFocus = singularQueryValue(parameters, "focus");
         const retained = requested.valid && requested.present
           ? brainSelectionContext(data.brains, requested.value)
           : null;
@@ -1534,7 +1541,10 @@ export async function mountLocalGraphs(): Promise<void> {
         const scope = retained?.valid && retained.brainIds.length > 0
           ? retained.brainIds
           : fallbackBrainId && data.mode === "workspace" ? [fallbackBrainId] : [];
-        const scoped = scope.length > 0 ? withBrainScope(data.brains, route, scope) : null;
+        const focus = requestedFocus.valid && requestedFocus.present ? requestedFocus.value : null;
+        const scoped = scope.length > 0 || focus
+          ? withGraphContext(data.brains, data.nodes.map(({ compositeId }) => compositeId), route, scope, focus)
+          : null;
         window.location.assign(joinBase(import.meta.env.BASE_URL, scoped?.valid ? scoped.route : route));
       },
     });

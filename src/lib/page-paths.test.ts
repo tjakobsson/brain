@@ -50,6 +50,11 @@ describe("static page paths", () => {
         { brainId: "engineering", slug: "principles" },
         { brainId: "design", slug: "principles" },
       ]);
+    for (const { params } of paths) {
+      expect(routesFor({ mode: "workspace", brainId: params.brainId }).note(params.slug)).toBe(
+        `/brains/${encodeURIComponent(params.brainId)}/notes/${encodeURIComponent(params.slug)}`,
+      );
+    }
     const brainPaths = workspaceBrainPagePaths(snapshot);
     expect(brainPaths.map(({ params }) => params.brainId)).toEqual([
       "engineering",

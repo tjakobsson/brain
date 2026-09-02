@@ -39,6 +39,7 @@ const contextualRoutes = activeBrain
 const baseGraphRoute = activeBrain ? contextualRoutes.graph : combined ? routes.graphAlias : routes.home;
 const hasGraphRoute = !isWorkspace || Boolean(activeBrain) || combined;
 const hasContextReports = !isWorkspace || Boolean(activeBrain);
+const hasNoteNavigation = isWorkspace && Boolean(noteContext) && !fluid && !chooser;
 const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.meta.env.BASE_URL, route);
 const brainRegistry = snapshot.registry.brains.map(({ id, title }) => ({ id, title }));
 const generatorLabel = `Brain v${packageMetadata.version}`;
@@ -49,6 +50,7 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
   lang="en"
   data-brain-registry={JSON.stringify(brainRegistry)}
   data-note-focus={noteContext?.compositeId}
+  data-note-owner={noteContext?.ownerBrainId}
 >
   <head>
     <meta charset="utf-8" />
@@ -60,12 +62,36 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
   </head>
   <body>
     <div class="site-header-slot">
-      {isWorkspace && !fluid && !chooser && (
+      {isWorkspace && !fluid && !chooser && !hasNoteNavigation && (
         <a class="page-home-action nav-action" href={url(routes.home)} aria-label="Home" title="Home">
           <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
             <path d="m4 10 8-6 8 6v9a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1Z"></path>
           </svg>
         </a>
+      )}
+      {hasNoteNavigation && (
+        <nav class="page-note-nav" aria-label="Note navigation">
+          <a class="nav-action" href={url(routes.home)} aria-label="Home" title="Home">
+            <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m4 10 8-6 8 6v9a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1Z"></path>
+            </svg>
+          </a>
+          <a
+            class="nav-action note-graph-trigger"
+            href={url(baseGraphRoute)}
+            aria-label="Graph"
+            title="Graph"
+            data-scoped-graph-route
+          >
+            <svg class="nav-icon graph-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M7.5 7.5 12 5l4.5 2.5v5L12 15l-4.5-2.5z"></path>
+              <path d="M7.5 12.5 5 17m11.5-4.5L19 17M12 15v4"></path>
+              <circle cx="5" cy="17" r="1.5"></circle>
+              <circle cx="19" cy="17" r="1.5"></circle>
+              <circle cx="12" cy="20" r="1.5"></circle>
+            </svg>
+          </a>
+        </nav>
       )}
       <header class="site-header">
         <nav class="site-nav-pill" aria-label="Primary navigation">
@@ -86,24 +112,26 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
               </svg>
             </button>
             <div id="nav-actions" class="nav-actions" inert aria-hidden="true">
-            <a
-              class="nav-action graph-trigger"
-               href={url(baseGraphRoute)}
-              aria-label="Graph"
-              title="Graph"
-              data-combined-route={combined ? "" : undefined}
-              data-combined-graph-route={combined ? "" : undefined}
-               data-scoped-graph-route={noteContext ? "" : undefined}
-              hidden={!hasGraphRoute || combined}
-            >
-              <svg class="nav-icon graph-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M7.5 7.5 12 5l4.5 2.5v5L12 15l-4.5-2.5z"></path>
-                <path d="M7.5 12.5 5 17m11.5-4.5L19 17M12 15v4"></path>
-                <circle cx="5" cy="17" r="1.5"></circle>
-                <circle cx="19" cy="17" r="1.5"></circle>
-                <circle cx="12" cy="20" r="1.5"></circle>
-              </svg>
-            </a>
+            {!hasNoteNavigation && (
+              <a
+                class="nav-action graph-trigger"
+                href={url(baseGraphRoute)}
+                aria-label="Graph"
+                title="Graph"
+                data-combined-route={combined ? "" : undefined}
+                data-combined-graph-route={combined ? "" : undefined}
+                data-scoped-graph-route={noteContext ? "" : undefined}
+                hidden={!hasGraphRoute || combined}
+              >
+                <svg class="nav-icon graph-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M7.5 7.5 12 5l4.5 2.5v5L12 15l-4.5-2.5z"></path>
+                  <path d="M7.5 12.5 5 17m11.5-4.5L19 17M12 15v4"></path>
+                  <circle cx="5" cy="17" r="1.5"></circle>
+                  <circle cx="19" cy="17" r="1.5"></circle>
+                  <circle cx="12" cy="20" r="1.5"></circle>
+                </svg>
+              </a>
+            )}
             <button
               class="nav-action search-trigger"
               data-open-switcher
@@ -162,12 +190,15 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
         brainSelectionContext,
         canonicalBrainSelection,
         joinBase,
+        routes,
         singularQueryValue,
+        withGraphContext,
         withBrainScope,
         withGraphFocus,
         type BrainSelectionContext,
         type LogicalRoute,
       } from "../lib/routes";
+      import { deriveGraphData, normalizeGraphData } from "../lib/graph-data";
 
       const header = document.querySelector<HTMLElement>(".site-header")!;
       const launcher = header.querySelector<HTMLButtonElement>(".nav-launcher")!;
@@ -245,6 +276,45 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
             anchor.href = joinBase(import.meta.env.BASE_URL, graphContext.graph);
           }
         }
+      }
+      const noteOwner = document.documentElement.dataset.noteOwner;
+      const requestedFocus = singularQueryValue(new URLSearchParams(window.location.search), "focus");
+      const noteGraphContext = retainedScope?.valid && retainedScope.brainIds.length > 0
+        ? brainSelectionContext(registry, retainedScope.brainIds)
+        : noteOwner ? brainSelectionContext(registry, [noteOwner]) : null;
+      if (
+        noteGraphContext?.valid &&
+        noteGraphContext.kind !== "chooser" &&
+        requestedFocus.valid &&
+        requestedFocus.present
+      ) {
+        const restoreOriginatingFocus = async () => {
+          const response = await fetch(joinBase(import.meta.env.BASE_URL, routes.graphData));
+          if (!response.ok) throw new Error(`Graph data request failed: ${response.status}`);
+          const data = normalizeGraphData(await response.json());
+          const context = noteGraphContext.kind === "combined"
+            ? { mode: "combined" as const, brainIds: noteGraphContext.brainIds }
+            : { mode: "brain" as const, brainId: noteGraphContext.brainIds[0], includeForeign: true };
+          const knownCompositeIds = deriveGraphData(data, context).nodes.map(({ compositeId }) => compositeId);
+          if (!knownCompositeIds.includes(requestedFocus.value)) return;
+          const graphRoute = withGraphFocus(noteGraphContext.graph, knownCompositeIds, requestedFocus.value);
+          for (const anchor of document.querySelectorAll<HTMLAnchorElement>("[data-scoped-graph-route]")) {
+            anchor.href = joinBase(import.meta.env.BASE_URL, graphRoute);
+          }
+          for (const anchor of document.querySelectorAll<HTMLAnchorElement>("a[data-note-route]")) {
+            const route = anchor.dataset.noteRoute as LogicalRoute | undefined;
+            if (!route) continue;
+            const scoped = withGraphContext(
+              registry,
+              knownCompositeIds,
+              route,
+              noteGraphContext.brainIds,
+              requestedFocus.value,
+            );
+            if (scoped.valid) anchor.href = joinBase(import.meta.env.BASE_URL, scoped.route);
+          }
+        };
+        restoreOriginatingFocus().catch((error) => console.error("[note-navigation] failed to restore graph focus", error));
       }
       const combinedGraph = header.querySelector<HTMLAnchorElement>("[data-combined-graph-route]");
       if (combinedGraph) {
