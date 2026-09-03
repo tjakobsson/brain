@@ -1,16 +1,16 @@
 ---
 import TaggedNotes from "../../components/TaggedNotes.astro";
 import { getLinkIndex, type LinkIndex } from "../../lib/link-index";
-import { getWorkspaceSnapshot } from "../../lib/vault-state";
 
+// One page per tag across the whole site. In workspace mode the same tag from
+// several Brains aggregates here with an owner label per note.
 export function getStaticPaths() {
-  if (getWorkspaceSnapshot().mode === "workspace") return [];
   const index: LinkIndex = getLinkIndex();
   const tags = new Set<string>();
   for (const note of index.notes) {
     for (const tag of note.meta.tags) tags.add(tag);
   }
-  return [...tags].map((tag) => ({ params: { tag } }));
+  return [...tags].sort().map((tag) => ({ params: { tag } }));
 }
 
 const { tag } = Astro.params;

@@ -1,0 +1,25 @@
+---
+import { getWorkspaceSnapshot } from "../lib/vault-state";
+import BrainMark from "./BrainMark.astro";
+
+/**
+ * The owning Brain of a list entry on workspace-wide reports: the shared mark
+ * tinted with the Brain's accent plus the stable `@id`, so identity never
+ * depends on color alone. The Brain title is exposed as a tooltip.
+ */
+interface Props { brainId: string }
+
+const { brainId } = Astro.props;
+const brain = getWorkspaceSnapshot().registry.brains.find(({ id }) => id === brainId);
+if (!brain) throw new Error(`Unknown owning brain ${JSON.stringify(brainId)}.`);
+---
+
+<span
+  class="note-owner"
+  style={`--brain-accent: ${brain.accent}`}
+  title={brain.title}
+  data-note-owner={brain.id}
+>
+  <BrainMark />
+  <span class="note-owner__id">@{brain.id}</span>
+</span>

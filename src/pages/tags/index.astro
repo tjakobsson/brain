@@ -1,9 +1,9 @@
 ---
 import TagsIndex from "../../components/TagsIndex.astro";
-import WorkspaceRouteRedirect from "../../components/WorkspaceRouteRedirect.astro";
-import { getWorkspaceSnapshot } from "../../lib/vault-state";
 
-const workspaceMode = getWorkspaceSnapshot().mode === "workspace";
+// In workspace mode this is the workspace-wide aggregate: every Brain's tags,
+// each entry naming the Brains that use it. Brain-scoped tags live beneath
+// `/brains/<id>/tags/`.
 ---
 
-{workspaceMode ? <WorkspaceRouteRedirect label="Tags" /> : <TagsIndex />}
+<TagsIndex />

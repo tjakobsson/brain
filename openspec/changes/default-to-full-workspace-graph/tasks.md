@@ -21,9 +21,9 @@
 
 ## 4. Remove Selection Grammar and Aggregate Reports
 
-- [ ] 4.1 Delete `WorkspaceRouteRedirect.astro` and render root `/tags`, `/recent`, and `/orphans` as workspace-wide aggregates with owner labels using the existing report components, and verify Playwright tests open each cold and see entries from more than one Brain with owners identified.
-- [ ] 4.2 Remove `?brains=` propagation from note links, the quick switcher, tag, recent, and orphan links, default the quick switcher scope to the page's namespaced context with a workspace-scope toggle, and verify search unit and Playwright tests cover Brain-page default scope, note-page default scope, and workspace widening without query context.
-- [ ] 4.3 Update shared navigation so Home opens the full workspace graph, workspace-level pages reveal workspace-wide Tags, Recent, and Orphans, and Graph outside note pages targets the page context's graph, and verify workspace and subpath Playwright tests assert each destination.
+- [x] 4.1 Delete `WorkspaceRouteRedirect.astro` and render root `/tags`, `/recent`, and `/orphans` as workspace-wide aggregates with owner labels using the existing report components, and verify Playwright tests open each cold and see entries from more than one Brain with owners identified.
+- [x] 4.2 Remove `?brains=` propagation from note links, the quick switcher, tag, recent, and orphan links, default the quick switcher scope to the page's namespaced context with a workspace-scope toggle, and verify search unit and Playwright tests cover Brain-page default scope, note-page default scope, and workspace widening without query context.
+- [x] 4.3 Update shared navigation so Home opens the full workspace graph, workspace-level pages reveal workspace-wide Tags, Recent, and Orphans, and Graph outside note pages targets the page context's graph, and verify workspace and subpath Playwright tests assert each destination.
 - [x] 4.4 Retire `BrainChooser.astro` as the root page while keeping hierarchy, description, and accent presentation in the lens control panel, and verify a Playwright test confirms the control lists Brains in declared hierarchy order.
 
 ## 5. Verification and Documentation

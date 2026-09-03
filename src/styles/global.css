@@ -1267,6 +1267,33 @@ div[data-callout] [data-callout-body] > :last-child {
   white-space: nowrap;
 }
 
+/* Owning Brain on workspace-wide reports: mark plus stable ID, never color alone. */
+.note-owner {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.note-owner .brain-mark {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+.note-owner__id {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.note-owners {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
 .recent-list li {
   margin: 0;
   padding: 0.8rem 0;

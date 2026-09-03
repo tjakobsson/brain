@@ -1,12 +1,18 @@
 ---
 /* Cmd+K quick switcher — included in BaseLayout so it exists on every page. */
+import { quickSwitcherScopes } from "../lib/quick-switcher-scope";
+
 interface Props {
+  /** The Brain whose namespaced path this page lives under, if any. */
   activeBrainId?: string;
-  combined?: boolean;
   workspace?: boolean;
   brainRegistry?: readonly { id: string; title: string }[];
 }
-const { activeBrainId, combined = false, workspace = false, brainRegistry = [] } = Astro.props;
+const { activeBrainId, workspace = false, brainRegistry = [] } = Astro.props;
+// Scope follows the page's path: the owning Brain beneath `/brains/<id>/`, the
+// whole workspace elsewhere. Vault mode has one scope and hides the control.
+const scopes = quickSwitcherScopes({ workspace, activeBrainId });
+const activeBrain = brainRegistry.find(({ id }) => id === activeBrainId);
 ---
 
 <div id="quick-switcher" class="switcher-overlay" hidden>
@@ -14,9 +20,13 @@ const { activeBrainId, combined = false, workspace = false, brainRegistry = [] }
     <label class="switcher-scope" hidden={!workspace}>
       <span>Scope</span>
       <select data-switcher-scope aria-label="Quick switcher scope">
-        {activeBrainId && <option value="active">Active brain @{activeBrainId}</option>}
-        <option value="selected" data-selected-scope hidden={!combined}>Selected brains</option>
-        <option value="all">All brains</option>
+        {scopes.map((scope) => (
+          <option value={scope}>
+            {scope === "active"
+              ? `@${activeBrainId}${activeBrain ? ` · ${activeBrain.title}` : ""}`
+              : "All brains"}
+          </option>
+        ))}
       </select>
     </label>
     <input
@@ -28,7 +38,6 @@ const { activeBrainId, combined = false, workspace = false, brainRegistry = [] }
       aria-expanded="true"
       aria-autocomplete="list"
       data-active-brain-id={activeBrainId}
-      data-combined={combined ? "true" : "false"}
       data-workspace={workspace ? "true" : "false"}
       data-brain-registry={JSON.stringify(brainRegistry)}
     />
@@ -40,6 +49,11 @@ const { activeBrainId, combined = false, workspace = false, brainRegistry = [] }
 <script>
   import Fuse from "fuse.js";
   import { joinBase, routes, withGraphFocus, type LogicalRoute } from "../lib/routes";
+  import {
+    defaultQuickSwitcherScope,
+    inQuickSwitcherScope,
+    type QuickSwitcherScope,
+  } from "../lib/quick-switcher-scope";
 
   interface Entry {
     title: string;
@@ -56,10 +70,8 @@ const { activeBrainId, combined = false, workspace = false, brainRegistry = [] }
   const resultsList = overlay.querySelector<HTMLElement>(".switcher-results")!;
   const empty = overlay.querySelector<HTMLElement>(".switcher-empty")!;
   const scope = overlay.querySelector<HTMLSelectElement>("[data-switcher-scope]")!;
-  const activeBrainId = input.dataset.activeBrainId;
-  const combined = input.dataset.combined === "true";
   const workspace = input.dataset.workspace === "true";
-  const selectedScope = scope.querySelector<HTMLOptionElement>("[data-selected-scope]")!;
+  const context = { workspace, activeBrainId: input.dataset.activeBrainId } as const;
 
   let entries: Entry[] | null = null;
   let fuse: Fuse<Entry> | null = null;
@@ -67,9 +79,6 @@ const { activeBrainId, combined = false, workspace = false, brainRegistry = [] }
   let selected = 0;
   let opener: HTMLElement | null = null;
   let previousOverflow = "";
-  // TODO(default-to-full-workspace-graph): removed in task group 4 (4.2 replaces the
-  // retained "selected brains" scope). Always empty without the ?brains= grammar.
-  const selectedBrainIds: readonly string[] = [];
   const pageRegions = [
     document.querySelector<HTMLElement>(".site-header-slot"),
     document.querySelector<HTMLElement>("main"),
@@ -97,13 +106,7 @@ const { activeBrainId, combined = false, workspace = false, brainRegistry = [] }
     document.body.style.overflow = "hidden";
     for (const region of pageRegions) region.inert = true;
     input.value = "";
-    selectedScope.hidden = selectedBrainIds.length === 0;
-    selectedScope.textContent = selectedBrainIds.length > 0
-      ? `Selected brains (${selectedBrainIds.map((id) => `@${id}`).join(", ")})`
-      : "Selected brains";
-    if (selectedBrainIds.length > 0) scope.value = "selected";
-    else if (activeBrainId) scope.value = "active";
-    else scope.value = "all";
+    scope.value = defaultQuickSwitcherScope(context);
     input.focus();
     void search();
   }
@@ -172,11 +175,8 @@ const { activeBrainId, combined = false, workspace = false, brainRegistry = [] }
   async function search(): Promise<void> {
     await ensureIndex();
     const q = input.value.trim();
-    const scoped = entries!.filter((entry) => {
-      if (scope.value === "active") return entry.brainId === activeBrainId;
-      if (scope.value === "selected") return selectedBrainIds.includes(entry.brainId);
-      return true;
-    });
+    const current = scope.value as QuickSwitcherScope;
+    const scoped = entries!.filter((entry) => inQuickSwitcherScope(entry, current, context));
     if (!q) {
       renderResults(scoped);
       return;

@@ -1,9 +1,8 @@
 ---
 import OrphanNotes from "../components/OrphanNotes.astro";
-import WorkspaceRouteRedirect from "../components/WorkspaceRouteRedirect.astro";
-import { getWorkspaceSnapshot } from "../lib/vault-state";
 
-const workspaceMode = getWorkspaceSnapshot().mode === "workspace";
+// In workspace mode this is the workspace-wide aggregate with an owner label
+// per note. Brain-scoped orphan pages live beneath `/brains/<id>/orphans/`.
 ---
 
-{workspaceMode ? <WorkspaceRouteRedirect label="Orphan reports" /> : <OrphanNotes />}
+<OrphanNotes />

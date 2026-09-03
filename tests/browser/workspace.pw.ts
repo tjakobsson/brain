@@ -383,6 +383,9 @@ test("fresh visitors open shared neighborhoods and return to them from notes", a
   await page.getByRole("button", { name: "Navigation" }).click();
   // Exact: the neighborhood page also lists a "Research" domain chip.
   await page.getByRole("button", { name: "Search", exact: true }).click();
+  // The neighborhood page lives under Engineering, so widen to reach Design.
+  await expect(page.getByLabel("Quick switcher scope")).toHaveValue("active");
+  await page.getByLabel("Quick switcher scope").selectOption("all");
   await page.getByLabel("Search notes and tags").fill("Principles");
   await page.locator("#switcher-results li", { hasText: "@design" }).click();
   await expect(page).toHaveURL(
@@ -1727,46 +1730,80 @@ test("dense related notes use collision-selected labels in phone fits", async ({
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
-test("quick switcher defaults to active, selected, and all-brain scopes", async ({ page }) => {
+test("quick switcher scope follows the page path: Brain, note owner, then the whole workspace", async ({ page }) => {
+  const scope = page.getByLabel("Quick switcher scope");
+  const search = page.getByLabel("Search notes and tags");
+  const results = page.locator("#switcher-results li");
+  const scopeValues = () => scope.evaluate((select) =>
+    [...(select as HTMLSelectElement).options].map((option) => option.value)
+  );
+
+  // A Brain page defaults to that Brain and offers the workspace as the only other scope.
+  await page.goto(`${workspace}/brains/design`);
+  await page.keyboard.press("Control+k");
+  await expect(scope).toHaveValue("active");
+  expect(await scopeValues()).toEqual(["active", "all"]);
+  await search.fill("Principles");
+  await expect(results).toHaveCount(1);
+  await expect(results).toContainText("@design");
+  await page.keyboard.press("Escape");
+
+  // A note page defaults to its owner, derived from the path alone.
   await page.goto(`${workspace}/brains/engineering/notes/principles`);
   await page.getByRole("button", { name: "Navigation" }).click();
   await page.getByRole("button", { name: "Search" }).click();
-  const activeScope = page.getByLabel("Quick switcher scope");
-  const activeSearch = page.getByLabel("Search notes and tags");
-  await expect(activeScope).toHaveValue("active");
-  await expect(activeSearch).toBeFocused();
+  await expect(scope).toHaveValue("active");
+  await expect(search).toBeFocused();
+  await search.fill("Principles");
+  await expect(results).toHaveCount(1);
+  await expect(results).toContainText("@engineering");
+  await search.fill("decisions");
+  await expect(results.filter({ hasText: "#decisions" })).toContainText("tag · @engineering");
+
+  // Widening to the workspace reveals the other Brains' results with owners.
   await page.keyboard.press("Tab");
-  await expect(activeScope).toBeFocused();
-  await page.keyboard.press("a");
-  await expect(activeScope).toHaveValue("all");
+  await expect(scope).toBeFocused();
+  await scope.selectOption("all");
   await page.keyboard.press("Tab");
-  await expect(activeSearch).toBeFocused();
-  await activeSearch.fill("Principles");
-  await expect(page.locator("#switcher-results li", { hasText: "@design" })).toBeVisible();
-  await activeScope.selectOption("active");
-  await expect(page.locator("#switcher-results li")).toHaveCount(1);
-  await expect(page.locator("#switcher-results li")).toContainText("@engineering");
-  await activeSearch.fill("decisions");
-  await expect(page.locator("#switcher-results li", { hasText: "#decisions" })).toContainText("tag · @engineering");
+  await expect(search).toBeFocused();
+  await search.fill("Principles");
+  await expect(results).toHaveCount(2);
+  await expect(results.filter({ hasText: "@design" })).toContainText("Principles");
+  await expect(results.filter({ hasText: "@engineering" })).toContainText("Principles");
   await page.keyboard.press("Escape");
 
-  await page.goto(`${workspace}/graph?brains=engineering,design`);
-  await page.getByRole("button", { name: "Navigation" }).click();
-  await page.getByRole("button", { name: "Search" }).click();
-  await expect(page.getByLabel("Quick switcher scope")).toHaveValue("selected");
-  await page.getByLabel("Search notes and tags").fill("Principles");
-  await expect(page.locator("#switcher-results li")).toHaveCount(2);
+  // A neighborhood page is the note's page too.
+  await page.goto(`${workspace}/brains/design/notes/principles/graph`);
+  await page.keyboard.press("Control+k");
+  await expect(scope).toHaveValue("active");
+  await search.fill("Principles");
+  await expect(results).toHaveCount(1);
+  await expect(results).toContainText("@design");
   await page.keyboard.press("Escape");
 
+  // Workspace-level pages default to every Brain and offer nothing narrower.
+  for (const path of ["/", "/recent", "/tags/decisions"]) {
+    await page.goto(`${workspace}${path}`);
+    await page.keyboard.press("Control+k");
+    await expect(scope).toHaveValue("all");
+    expect(await scopeValues()).toEqual(["all"]);
+    await search.fill("Principles");
+    await expect(results).toHaveCount(2);
+    await page.keyboard.press("Escape");
+  }
+
+  // Confirming a result opens the note's pathname-only route, where the
+  // switcher defaults to that note's owner.
   await page.goto(`${workspace}/`);
   await page.keyboard.press("Control+k");
-  await expect(page.getByLabel("Quick switcher scope")).toHaveValue("all");
-  await page.getByLabel("Search notes and tags").fill("Principles");
-  const design = page.locator("#switcher-results li", { hasText: "@design" });
-  await expect(design).toContainText("Principles");
-  await page.getByLabel("Search notes and tags").fill("Interaction model");
+  await search.fill("Interaction model");
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(`${workspace}/brains/design/notes/interaction-model`);
+  await page.keyboard.press("Control+k");
+  await expect(scope).toHaveValue("active");
+  await search.fill("Principles");
+  await expect(results).toHaveCount(1);
+  await expect(results).toContainText("@design");
 });
 
 test("dedicated Search routes are absent", async ({ request }) => {
@@ -1776,34 +1813,184 @@ test("dedicated Search routes are absent", async ({ request }) => {
   expect((await request.get(`${workspace}/search-index.json`)).status()).toBe(200);
 });
 
-test("workspace 404 recovery honors valid query scope before namespaced paths", async ({ page }) => {
-  const response = await page.goto(
-    `${workspace}/brains/research/notes/missing?brains=engineering,design`,
-  );
+test("workspace 404 recovery follows the namespaced path and ignores query scope", async ({ page }) => {
+  // A miss beneath a Brain path recovers to that Brain's graph with one of its notes.
+  const scopedMissing = `${workspace}/brains/engineering/notes/missing`;
+  const response = await page.goto(scopedMissing);
   expect(response?.status()).toBe(404);
-  await expect(page).toHaveURL(
-    `${workspace}/brains/research/notes/missing?brains=engineering,design`,
-  );
-  await expect(page.getByRole("link", { name: "Return to the selected graph" })).toHaveAttribute(
+  await expect(page).toHaveURL(scopedMissing);
+  await expect(page.getByRole("link", { name: "Return to @engineering's graph" })).toHaveAttribute(
     "href",
-    "/workspace-demo/graph?brains=engineering,design",
+    "/workspace-demo/brains/engineering",
   );
-  const owner = page.locator("[data-recommendation-owner]");
-  await expect(owner).toContainText(/@(engineering|design)/u);
+  await expect(page.locator("[data-recommendation-owner]")).toContainText("@engineering");
   const initial = await page.locator("[data-recommendation-title]").textContent();
   await page.reload();
   await expect(page.locator("[data-recommendation-title]")).toHaveText(initial ?? "");
   const recommendedHref = await page.locator("[data-recommendation-link]").getAttribute("href");
-  expect(new URL(recommendedHref!, workspace).searchParams.get("brains")).toBe("engineering,design");
+  expect(recommendedHref).toMatch(/^\/workspace-demo\/brains\/engineering\/notes\/[^?#]+$/u);
   await page.locator("[data-recommendation-link]").click();
-  expect(new URL(page.url()).searchParams.get("brains")).toBe("engineering,design");
+  expect(new URL(page.url()).search).toBe("");
+  await expect(page.locator("article")).toHaveAttribute("data-brain-id", "engineering");
 
+  // Query parameters are never scope: a root-level miss recovers to the full
+  // workspace graph with a note from any Brain, and no selection card appears.
+  const queriedMissing = `${workspace}/notes/missing?brains=engineering,design`;
+  await page.goto(queriedMissing);
+  await expect(page).toHaveURL(queriedMissing);
+  await expect(page.getByRole("link", { name: "Return to the workspace graph" })).toHaveAttribute(
+    "href",
+    "/workspace-demo/",
+  );
+  await expect(page.getByRole("link", { name: "Return to the selected graph" })).toHaveCount(0);
+  await expect(page.getByText("Choose a valid set of Brains")).toHaveCount(0);
+  await expect(page.locator("[data-recommendation-owner]")).toContainText(
+    new RegExp(`@(${hierarchyOrder.join("|")}) · `, "u"),
+  );
+  expect(await page.locator("[data-recommendation-link]").getAttribute("href")).not.toContain("?");
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page.getByLabel("Quick switcher scope")).toHaveValue("all");
+  await page.keyboard.press("Escape");
+
+  // An unknown Brain ID in the path is not scope either.
   await page.goto(`${workspace}/brains/unknown/notes/missing?brains=unknown`);
-  await expect(page.getByRole("link", { name: "Return to the Brain chooser" })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "Return to the workspace graph" })).toHaveAttribute(
     "href",
     "/workspace-demo/",
   );
   await expect(page.locator("[data-recommendation-owner]")).not.toContainText("@unknown");
+});
+
+test("workspace-wide reports aggregate every Brain and name each entry's owner", async ({ browser }) => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const ownersIn = (list: string) => page.locator(`${list} [data-note-owner]`).evaluateAll((owners) =>
+    [...new Set(owners.map((owner) => owner.getAttribute("data-note-owner")))].sort()
+  );
+
+  await page.goto(`${workspace}/recent`);
+  await expect(page).toHaveURL(`${workspace}/recent`);
+  await expect(page.getByRole("heading", { name: "Recently changed" })).toBeVisible();
+  expect(await ownersIn(".recent-list")).toEqual([...hierarchyOrder].sort());
+  await expect(page.getByRole("link", { name: "Interaction model" }))
+    .toHaveAttribute("href", "/workspace-demo/brains/design/notes/interaction-model");
+  await expect(page.getByRole("link", { name: "Delivery loops" }))
+    .toHaveAttribute("href", "/workspace-demo/brains/engineering/notes/delivery-loops");
+  const owner = page.locator(".recent-list li", { hasText: "Delivery loops" }).locator("[data-note-owner]");
+  await expect(owner).toHaveText("@engineering");
+  await expect(owner).toHaveAttribute("title", "Engineering");
+  await expect(owner.locator("[data-brain-mark]")).toHaveCount(1);
+
+  await page.goto(`${workspace}/orphans`);
+  await expect(page).toHaveURL(`${workspace}/orphans`);
+  await expect(page.locator(".note-list li")).toHaveCount(3);
+  expect(await ownersIn(".note-list")).toEqual(["design", "research-archive-and-synthesis-source-trails"]);
+  await expect(page.getByRole("link", { name: "Color tokens" }))
+    .toHaveAttribute("href", "/workspace-demo/brains/design/notes/color-tokens");
+  await expect(page.locator(".note-list li", { hasText: "Archive boundaries" }).locator("[data-note-owner]"))
+    .toHaveText("@research-archive-and-synthesis-source-trails");
+
+  await page.goto(`${workspace}/tags`);
+  await expect(page).toHaveURL(`${workspace}/tags`);
+  const decisions = page.locator(".note-list li", { has: page.getByRole("link", { name: "#decisions" }) });
+  await expect(decisions.getByRole("link", { name: "#decisions" })).toHaveAttribute("href", "/workspace-demo/tags/decisions");
+  await expect(decisions).toContainText("2 notes");
+  await expect(decisions.locator("[data-note-owner]")).toHaveText(["@engineering", "@design"]);
+  const research = page.locator(".note-list li", { has: page.getByRole("link", { name: "#research" }) });
+  await expect(research).toContainText("3 notes");
+  await expect(research.locator("[data-note-owner]"))
+    .toHaveText(["@research", "@research-archive-and-synthesis-source-trails"]);
+
+  await decisions.getByRole("link", { name: "#decisions" }).click();
+  await expect(page).toHaveURL(`${workspace}/tags/decisions`);
+  const rows = page.locator(".note-list li");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.filter({ hasText: "@engineering" }).getByRole("link", { name: "Principles" }))
+    .toHaveAttribute("href", "/workspace-demo/brains/engineering/notes/principles");
+  await expect(rows.filter({ hasText: "@design" }).getByRole("link", { name: "Principles" }))
+    .toHaveAttribute("href", "/workspace-demo/brains/design/notes/principles");
+
+  for (const path of ["/tags", "/tags/decisions", "/recent", "/orphans"]) {
+    await page.goto(`${workspace}${path}`);
+    await expect(page).toHaveURL(`${workspace}${path}`);
+    await expect(page.getByRole("heading", { name: "Choose a brain" })).toHaveCount(0);
+    await expect(page.locator('a[href*="brains="]')).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/workspace-demo/");
+  }
+  await context.close();
+});
+
+test("shared navigation targets the page context: workspace-wide at the root, Brain-scoped beneath a Brain", async ({ page }) => {
+  const header = page.locator(".site-header");
+  const launcher = page.getByRole("button", { name: "Navigation" });
+  const expanded = () => header.locator(".nav-actions > .nav-action").evaluateAll((controls) =>
+    controls
+      .filter((control) => !(control as HTMLElement).hidden)
+      .map((control) => [control.getAttribute("aria-label"), control.getAttribute("href")])
+  );
+  const rootReports = [
+    ["Tags", "/workspace-demo/tags"],
+    ["Recent", "/workspace-demo/recent"],
+    ["Orphans", "/workspace-demo/orphans"],
+  ];
+  const designReports = [
+    ["Tags", "/workspace-demo/brains/design/tags"],
+    ["Recent", "/workspace-demo/brains/design/recent"],
+    ["Orphans", "/workspace-demo/brains/design/orphans"],
+  ];
+
+  // The root graph is the destination Graph would open, so it omits Graph and Home.
+  await page.goto(`${workspace}/`);
+  await expect(page.getByRole("link", { name: "Home" })).toHaveCount(0);
+  await launcher.click();
+  expect(await expanded()).toEqual([["Search", null], ...rootReports]);
+  await header.getByRole("link", { name: "Orphans" }).click();
+  await expect(page).toHaveURL(`${workspace}/orphans`);
+
+  // A workspace-wide report: Home and Graph both open the full workspace graph.
+  await expect(page.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/workspace-demo/");
+  await launcher.click();
+  expect(await expanded()).toEqual([["Graph", "/workspace-demo/"], ["Search", null], ...rootReports]);
+  await header.getByRole("link", { name: "Graph" }).click();
+  await expect(page).toHaveURL(`${workspace}/`);
+  await expect(page.locator("#global-graph")).toHaveAttribute("data-graph-mode", "all");
+
+  // A Brain's graph: Brain-scoped reports and its own graph.
+  await page.goto(`${workspace}/brains/design`);
+  await launcher.click();
+  expect(await expanded()).toEqual([["Graph", "/workspace-demo/brains/design"], ["Search", null], ...designReports]);
+  await header.getByRole("link", { name: "Tags" }).click();
+  await expect(page).toHaveURL(`${workspace}/brains/design/tags`);
+
+  // A Brain-scoped report: Home opens the workspace graph, Graph the Brain's graph.
+  await expect(page.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/workspace-demo/");
+  await launcher.click();
+  expect(await expanded()).toEqual([["Graph", "/workspace-demo/brains/design"], ["Search", null], ...designReports]);
+  await header.getByRole("link", { name: "Graph" }).click();
+  await expect(page).toHaveURL(`${workspace}/brains/design`);
+  await expect(page.locator("#global-graph")).toHaveAttribute("data-visible-brain-ids", "design");
+
+  // A note page keeps the Home and Graph pill; the menu carries the owner's reports and no Graph.
+  await page.goto(`${workspace}/brains/design/notes/interaction-model`);
+  const noteNavigation = page.locator(".page-note-nav");
+  await expect(noteNavigation.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/workspace-demo/");
+  await expect(noteNavigation.getByRole("link", { name: "Graph" }))
+    .toHaveAttribute("href", "/workspace-demo/brains/design/notes/interaction-model/graph");
+  await launcher.click();
+  expect(await expanded()).toEqual([["Search", null], ...designReports]);
+  await page.keyboard.press("Escape");
+  await noteNavigation.getByRole("link", { name: "Home" }).click();
+  await expect(page).toHaveURL(`${workspace}/`);
+
+  // A neighborhood page lives beneath the note's Brain.
+  await page.goto(`${workspace}/brains/design/notes/interaction-model/graph`);
+  await launcher.click();
+  expect(await expanded()).toEqual([["Graph", "/workspace-demo/brains/design"], ["Search", null], ...designReports]);
+
+  // The not-found page is workspace-level.
+  await page.goto(`${workspace}/nowhere`);
+  await launcher.click();
+  expect(await expanded()).toEqual([["Graph", "/workspace-demo/"], ["Search", null], ...rootReports]);
 });
 
 test("contextual reports retain brain scope and foreign relationships", async ({ page }) => {
@@ -1820,7 +2007,8 @@ test("contextual reports retain brain scope and foreign relationships", async ({
     .toHaveAttribute("href", "/workspace-demo/brains/design/notes/principles");
 
   await page.goto(`${workspace}/brains/design/recent`);
-  await expect(page.locator(".recent-list li")).toHaveCount(2);
+  await expect(page.locator(".recent-list li")).toHaveCount(3);
+  await expect(page.locator(".recent-list [data-note-owner]")).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Interaction model" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Delivery loops" })).toHaveCount(0);
 

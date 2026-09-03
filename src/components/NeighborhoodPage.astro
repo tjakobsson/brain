@@ -17,8 +17,16 @@ const snapshot = getWorkspaceSnapshot();
 const note = snapshot.index.byId.get(entry.id);
 if (!note) throw new Error(`Note ${JSON.stringify(entry.id)} is missing from the workspace index.`);
 const title = entry.data.title ?? note.title;
+// The page lives beneath the owning Brain's namespaced path, so shared
+// navigation and the quick switcher take that Brain as their scope even though
+// the graph itself shows every configured Brain.
+const activeBrainId = snapshot.mode === "workspace" ? note.brainId : undefined;
 ---
 
-<BaseLayout title={`${title} neighborhood`} fluid>
+<BaseLayout
+  title={`${title} neighborhood`}
+  activeBrainId={activeBrainId}
+  fluid
+>
   <GlobalGraph initialFocus={note.compositeId} />
 </BaseLayout>

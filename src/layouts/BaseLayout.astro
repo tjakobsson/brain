@@ -29,16 +29,22 @@ const activeBrain = activeBrainId
 if (isWorkspace && activeBrainId && !activeBrain) {
   throw new Error(`Unknown active brain ${JSON.stringify(activeBrainId)}.`);
 }
+// Navigation follows the page's path. Beneath `/brains/<id>/` the Graph, Tags,
+// Recent, and Orphans actions are that Brain's; on workspace-level pages (the
+// root graph, workspace-wide reports, not-found) they are the full workspace
+// graph and the root aggregates, which share the vault route shapes.
 const contextualRoutes = activeBrain
   ? routesFor({ mode: "workspace", brainId: activeBrain.id })
   : routesFor({ mode: "vault" });
-const baseGraphRoute = activeBrain ? contextualRoutes.graph : routes.home;
+const contextGraphRoute = activeBrain ? contextualRoutes.graph : routes.home;
 // A note page's Graph action opens the note's own neighborhood page unless
 // valid in-session return context redirects it client-side to the originating
 // note's neighborhood page. Both are pathname-only destinations.
-const noteGraphRoute = noteContext?.neighborhoodRoute ?? baseGraphRoute;
-const hasGraphRoute = !isWorkspace || Boolean(activeBrain);
-const hasContextReports = !isWorkspace || Boolean(activeBrain);
+const noteGraphRoute = noteContext?.neighborhoodRoute ?? contextGraphRoute;
+// The workspace root graph is the destination Graph would open, so it omits
+// the action. Every other page, including a Brain's own graph, keeps it.
+const isWorkspaceRootGraph = isWorkspace && fluid && !activeBrain && !noteContext;
+const hasGraphRoute = !isWorkspaceRootGraph;
 const hasNoteNavigation = isWorkspace && Boolean(noteContext) && !fluid;
 const url = (route: LogicalRoute) => joinBase(import.meta.env.BASE_URL, route);
 const brainRegistry = snapshot.registry.brains.map(({ id, title }) => ({ id, title }));
@@ -146,31 +152,25 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
                 <path d="m16 16 4 4"></path>
               </svg>
             </button>
-            {hasContextReports && (
-              <a class="nav-action nav-direct-action" href={url(contextualRoutes.tags)} aria-label="Tags" title="Tags">
-                <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M4 5.5V11l8.5 8.5 7-7L11 4H5.5A1.5 1.5 0 0 0 4 5.5Z"></path>
-                  <circle cx="8" cy="8" r="1"></circle>
-                </svg>
-              </a>
-            )}
-            {hasContextReports && (
-              <a class="nav-action nav-direct-action" href={url(contextualRoutes.recent)} aria-label="Recent" title="Recent">
-                <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <circle cx="12" cy="12" r="8"></circle>
-                  <path d="M12 7v5l3.5 2"></path>
-                </svg>
-              </a>
-            )}
-            {hasContextReports && (
-              <a class="nav-action nav-direct-action" href={url(contextualRoutes.orphans)} aria-label="Orphans" title="Orphans">
-                <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <circle cx="8" cy="8" r="2.5"></circle>
-                  <circle cx="16" cy="16" r="2.5"></circle>
-                  <path d="m10 10 4 4" stroke-dasharray="2.5 2.5"></path>
-                </svg>
-              </a>
-            )}
+            <a class="nav-action nav-direct-action" href={url(contextualRoutes.tags)} aria-label="Tags" title="Tags">
+              <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 5.5V11l8.5 8.5 7-7L11 4H5.5A1.5 1.5 0 0 0 4 5.5Z"></path>
+                <circle cx="8" cy="8" r="1"></circle>
+              </svg>
+            </a>
+            <a class="nav-action nav-direct-action" href={url(contextualRoutes.recent)} aria-label="Recent" title="Recent">
+              <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="8"></circle>
+                <path d="M12 7v5l3.5 2"></path>
+              </svg>
+            </a>
+            <a class="nav-action nav-direct-action" href={url(contextualRoutes.orphans)} aria-label="Orphans" title="Orphans">
+              <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="8" cy="8" r="2.5"></circle>
+                <circle cx="16" cy="16" r="2.5"></circle>
+                <path d="m10 10 4 4" stroke-dasharray="2.5 2.5"></path>
+              </svg>
+            </a>
             </div>
           </div>
         </nav>

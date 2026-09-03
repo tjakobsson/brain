@@ -732,6 +732,41 @@ test("copied neighborhood links are pathname-only and open cold", async ({ brows
   await context.close();
 });
 
+test("shared navigation targets the page context within the deployment base", async ({ page }, testInfo) => {
+  const { origin, base } = deployment(testInfo);
+  const header = page.locator(".site-header");
+  const launcher = page.getByRole("button", { name: "Navigation" });
+  const expanded = () => header.locator(".nav-actions > .nav-action").evaluateAll((controls) =>
+    controls
+      .filter((control) => !(control as HTMLElement).hidden)
+      .map((control) => [control.getAttribute("aria-label"), control.getAttribute("href")])
+  );
+  const reports = [
+    ["Tags", `${base}/tags`],
+    ["Recent", `${base}/recent`],
+    ["Orphans", `${base}/orphans`],
+  ];
+
+  // A single vault has no Brain selector and no separate Home destination.
+  await page.goto(`${base}/`);
+  await expect(page.getByRole("link", { name: "Home" })).toHaveCount(0);
+  await launcher.click();
+  expect(await expanded()).toEqual([["Graph", `${base}/`], ["Search", null], ...reports]);
+  await page.keyboard.press("Escape");
+
+  await page.goto(`${base}/notes/welcome`);
+  await launcher.click();
+  expect(await expanded()).toEqual([["Graph", `${base}/notes/welcome/graph`], ["Search", null], ...reports]);
+  await header.getByRole("link", { name: "Orphans" }).click();
+  await expect(page).toHaveURL(new RegExp(`${base}/orphans/?$`));
+
+  await launcher.click();
+  expect(await expanded()).toEqual([["Graph", `${base}/`], ["Search", null], ...reports]);
+  await header.getByRole("link", { name: "Graph" }).click();
+  await expect(page).toHaveURL(`${origin}${base}/`);
+  await expect(page.locator("#global-graph canvas.sigma-nodes")).toBeVisible();
+});
+
 test("nested missing routes serve deterministic base-safe recovery", async ({ page }, testInfo) => {
   const { base } = deployment(testInfo);
   const missing = `${base}/notes/missing/deeply?source=fixture`;
