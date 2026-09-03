@@ -26,7 +26,9 @@ export interface FitInsets {
 export interface RenderedGraphFitOptions {
   animate?: boolean;
   duration?: number;
+  includeLabels?: boolean;
   padding?: number | Partial<FitInsets>;
+  trailingNodeExtent?: number;
   onAnimationStart?: () => void;
   onAnimationComplete?: () => void;
 }
@@ -105,6 +107,12 @@ export function graphFitInsets(renderer: Sigma, base = DEFAULT_PADDING): FitInse
   if (navigation && intersects(navigation)) {
     insets.right = Math.max(insets.right, host.right - navigation.left + 12);
   }
+  const focus = renderer.getContainer().closest<HTMLElement>(".graph-container")
+    ?.querySelector<HTMLElement>("[data-graph-focus-status]:not([hidden])")
+    ?.getBoundingClientRect();
+  if (focus && intersects(focus)) {
+    insets.bottom = Math.max(insets.bottom, host.bottom - focus.top + 12);
+  }
   return insets;
 }
 
@@ -129,8 +137,13 @@ interface RenderedMeasurement {
   fixedExtent: { width: number; height: number };
 }
 
-function measureRenderedGraph(renderer: Sigma, ids: Iterable<string>): RenderedMeasurement {
-  const displayedLabels = renderer.getNodeDisplayedLabels();
+function measureRenderedGraph(
+  renderer: Sigma,
+  ids: Iterable<string>,
+  includeLabels = true,
+  trailingNodeExtent = 0,
+): RenderedMeasurement {
+  const displayedLabels = includeLabels ? renderer.getNodeDisplayedLabels() : new Set<string>();
   const settings = renderer.getSettings();
   const labelContext = renderer.getCanvases().labels?.getContext("2d");
   if (labelContext) {
@@ -138,7 +151,7 @@ function measureRenderedGraph(renderer: Sigma, ids: Iterable<string>): RenderedM
   }
 
   let bounds: ViewportBounds | null = null;
-  const fixedExtent = { width: 0, height: 0 };
+  const fixedExtent = { width: trailingNodeExtent, height: 0 };
   for (const id of ids) {
     const data = renderer.getNodeDisplayData(id);
     if (!data || data.hidden) continue;
@@ -147,7 +160,7 @@ function measureRenderedGraph(renderer: Sigma, ids: Iterable<string>): RenderedM
     const item = {
       left: center.x - radius,
       top: center.y - radius,
-      right: center.x + radius,
+      right: center.x + radius + trailingNodeExtent,
       bottom: center.y + radius,
     };
 
@@ -169,8 +182,12 @@ function measureRenderedGraph(renderer: Sigma, ids: Iterable<string>): RenderedM
   return { bounds, fixedExtent };
 }
 
-export function measureRenderedBounds(renderer: Sigma, ids: Iterable<string>): ViewportBounds | null {
-  return measureRenderedGraph(renderer, ids).bounds;
+export function measureRenderedBounds(
+  renderer: Sigma,
+  ids: Iterable<string>,
+  includeLabels = true,
+): ViewportBounds | null {
+  return measureRenderedGraph(renderer, ids, includeLabels).bounds;
 }
 
 export function fitCorrection(
@@ -221,6 +238,8 @@ export function planRenderedGraphFit(
   renderer: Sigma,
   requestedIds: Iterable<string>,
   padding: number | Partial<FitInsets> = graphFitInsets(renderer),
+  includeLabels = true,
+  trailingNodeExtent = 0,
 ): RenderedGraphFitPlan {
   const graph = renderer.getGraph();
   const ids = [...new Set(requestedIds)].filter((id) => graph.hasNode(id)).sort();
@@ -241,7 +260,7 @@ export function planRenderedGraphFit(
   const dimensions = renderer.getDimensions();
   for (let pass = 0; pass < MAX_CORRECTIONS; pass += 1) {
     renderer.refresh();
-    const measurement = measureRenderedGraph(renderer, ids);
+    const measurement = measureRenderedGraph(renderer, ids, includeLabels, trailingNodeExtent);
     if (!measurement.bounds) break;
     const correction = fitCorrection(
       measurement.bounds,
@@ -313,7 +332,13 @@ export function fitRenderedGraph(
 ): void {
   const sourceBBox = renderer.getCustomBBox() ?? renderer.getBBox();
   const sourceCamera = renderer.getCamera().getState();
-  const plan = planRenderedGraphFit(renderer, requestedIds, options.padding ?? graphFitInsets(renderer));
+  const plan = planRenderedGraphFit(
+    renderer,
+    requestedIds,
+    options.padding ?? graphFitInsets(renderer),
+    options.includeLabels,
+    options.trailingNodeExtent,
+  );
   applyRenderedGraphFit(
     renderer,
     plan,

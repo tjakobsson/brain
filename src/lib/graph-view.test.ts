@@ -7,7 +7,9 @@ import {
   graphEdgeAttributes,
   graphHoverSurface,
   graphNodeAttributes,
+  narrowFocusedLabelDecision,
   responsiveLabelSettings,
+  shortenGraphLabel,
 } from "./graph-style";
 
 const data: GraphData = {
@@ -70,6 +72,31 @@ describe("brain-aware graph rendering data", () => {
     expect(forceLabelsOnNarrowZoom(true, 0.75)).toBe(true);
     expect(forceLabelsOnNarrowZoom(true, 0.76)).toBe(false);
     expect(forceLabelsOnNarrowZoom(false, 0.5)).toBe(false);
+  });
+
+  it("shortens a long focused label and keeps narrow neighbors selective", () => {
+    const measure = (value: string) => [...value].length * 6;
+    const label = "◆ @engineering · A deliberately long focused title";
+    const shortened = shortenGraphLabel(label, 180, measure);
+
+    expect(measure(shortened)).toBeLessThanOrEqual(180);
+    expect(shortened).toMatch(/^◆ @engineering · A/u);
+    expect(shortened).toMatch(/…$/u);
+    expect(
+      narrowFocusedLabelDecision(label, "focused", false, false, (value) =>
+        shortenGraphLabel(value, 180, measure)
+      ),
+    ).toEqual({ label: shortened, forceLabel: true });
+    expect(narrowFocusedLabelDecision(label, "neighbor", false, false, (value) => value))
+      .toEqual({ label: "", forceLabel: false });
+    expect(narrowFocusedLabelDecision("◆ Nearby", "neighbor", false, true, (value) => value))
+      .toEqual({ label: "◆ Nearby", forceLabel: false });
+    expect(narrowFocusedLabelDecision(label, "focused", true, false, (value) => value)).toBeNull();
+  });
+
+  it("omits a shortened label when even an ellipsis cannot fit", () => {
+    const measure = (value: string) => [...value].length * 6;
+    expect(shortenGraphLabel("A long title", 5, measure)).toBe("");
   });
 
   it("uses the dark hover surface unless light mode is preferred", () => {

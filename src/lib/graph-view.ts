@@ -18,7 +18,7 @@ import {
   stopCameraAnimation,
   type GraphHoverState,
 } from "./graph-interaction";
-import { fitRenderedGraph } from "./graph-fit";
+import { fitRenderedGraph, graphFitInsets } from "./graph-fit";
 import { createLensReducers, createLensStore, normalizeLens } from "./graph-lens";
 import { wireLocalGraphLabelReveal } from "./graph-local-labels";
 import { GraphMotionController } from "./graph-motion";
@@ -38,7 +38,9 @@ import {
   graphEdgeAttributes,
   graphHoverSurface,
   graphNodeAttributes,
+  narrowFocusedLabelDecision,
   responsiveLabelSettings,
+  shortenGraphLabel,
 } from "./graph-style";
 import {
   connectedDomains,
@@ -69,6 +71,9 @@ interface GraphTheme {
   fadedNode: string;
   label: string;
 }
+
+const GRAPH_LABEL_OFFSET = 3;
+const NARROW_FOCUSED_LABEL_WIDTH = 48;
 
 type NodeLabelData = Parameters<typeof drawDiscNodeLabel>[1] & {
   brainAccent?: string;
@@ -238,7 +243,7 @@ function updateInspectionTargetStats(
   const data = renderer.getNodeDisplayData(node);
   if (!data || data.hidden) return;
   const settings = renderer.getSettings();
-  const label = graph.getNodeAttribute(node, "label") as string | undefined;
+  const label = data.label;
   const labelContext = renderer.getCanvases().labels?.getContext("2d");
   if (labelContext) {
     labelContext.font = `${settings.labelWeight} ${settings.labelSize}px ${settings.labelFont}`;
@@ -250,7 +255,7 @@ function updateInspectionTargetStats(
     y: center.y,
     radius: renderer.scaleSize(data.size),
     label,
-    labelRendered: true,
+    labelRendered: renderer.getNodeDisplayedLabels().has(node),
     labelWidth: labelContext && label ? labelContext.measureText(label).width : undefined,
     foreignMarkWidth: (data as NodeLabelData).foreign
       ? foreignLabelMarkWidth(settings.labelSize)
@@ -330,7 +335,6 @@ interface InteractionState extends GraphHoverState {
 function graphTargetNode(renderer: Sigma, graph: Graph, state: GraphHoverState, point: { x: number; y: number }): string | null {
   const settings = renderer.getSettings();
   const displayedLabels = renderer.getNodeDisplayedLabels();
-  const activeNode = activeInspectionNode(state);
   const labelContext = renderer.getCanvases().labels?.getContext("2d");
   if (labelContext) {
     labelContext.font = `${settings.labelWeight} ${settings.labelSize}px ${settings.labelFont}`;
@@ -342,15 +346,14 @@ function graphTargetNode(renderer: Sigma, graph: Graph, state: GraphHoverState, 
     if (!data || data.hidden) return;
     const center = renderer.framedGraphToViewport(data);
     const visualRadius = renderer.scaleSize(data.size);
-    const inspectedLabel = isInspectionNeighborhoodNode(state, node);
-    const label = graph.getNodeAttribute(node, "label") as string | undefined;
+    const label = data.label;
     nodes.push({
       node,
       x: center.x,
       y: center.y,
       radius: visualRadius,
       label,
-      labelRendered: inspectedLabel || (!activeNode && displayedLabels.has(node)),
+      labelRendered: displayedLabels.has(node),
       labelWidth: labelContext && label
         ? labelContext.measureText(label).width
         : undefined,
@@ -659,6 +662,9 @@ export interface GlobalGraphUI {
   relatedBrainsToggle?: HTMLButtonElement | null;
   focusStatus: HTMLElement;
   focusTitle: HTMLElement;
+  focusTitleFull: HTMLElement;
+  focusDisclosure: HTMLButtonElement;
+  focusDetails: HTMLElement;
   focusCopy: HTMLButtonElement;
   focusOpen: HTMLAnchorElement;
   focusClear: HTMLButtonElement;
@@ -741,24 +747,45 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   const theme = graphTheme();
   const renderer = new Sigma(graph, ui.host, baseSettings(theme, graph.order));
   const narrowGraphQuery = window.matchMedia("(max-width: 700px)");
+  const compactFocusQuery = window.matchMedia("(max-width: 700px), (pointer: coarse)");
+  let focusDetailsExpanded = false;
+  const syncFocusDetails = () => {
+    const compact = compactFocusQuery.matches;
+    ui.focusDisclosure.hidden = !compact;
+    ui.focusDisclosure.setAttribute("aria-expanded", String(compact && focusDetailsExpanded));
+    ui.focusDisclosure.setAttribute(
+      "aria-label",
+      focusDetailsExpanded ? "Hide focus details" : "Show focus details",
+    );
+    ui.focusDetails.hidden = compact && !focusDetailsExpanded;
+    ui.focusStatus.dataset.focusDetails = compact && focusDetailsExpanded ? "expanded" : "collapsed";
+  };
   const desktopLabelThreshold = graph.order > 500 ? 14 : 4;
   const desktopLabelGridCellSize = graph.order > 500 ? 180 : 100;
   const labelContext = document.createElement("canvas").getContext("2d")!;
   labelContext.font = "500 13px ui-sans-serif, system-ui, sans-serif";
   const labelWidths = new Map<string, number>();
-  const labelFitsNarrowViewport = (attrs: Record<string, unknown>) => {
-    const label = typeof attrs.label === "string" ? attrs.label : "";
+  const narrowLabelBudgets = new Map<string, number>();
+  const labelWidth = (label: string, foreign: boolean) => {
     let width = labelWidths.get(label);
     if (width === undefined) {
       width = labelContext.measureText(label).width;
       labelWidths.set(label, width);
     }
-    if (attrs.foreign) width += foreignLabelMarkWidth(13);
+    return width + (foreign ? foreignLabelMarkWidth(13) : 0);
+  };
+  const maximumNarrowLabelWidth = (foreign: boolean, node?: string) => {
     const viewportWidth = renderer.getDimensions().width;
-    const maximumWidth = attrs.foreign
+    const policyWidth = foreign
       ? Math.max(160, viewportWidth - 96)
       : Math.max(160, Math.min(220, viewportWidth - 160));
-    return width <= maximumWidth;
+    if (!node) return policyWidth;
+    return Math.max(0, Math.min(policyWidth, narrowLabelBudgets.get(node) ?? policyWidth));
+  };
+  const labelFitsNarrowViewport = (attrs: Record<string, unknown>) => {
+    const label = typeof attrs.label === "string" ? attrs.label : "";
+    const foreign = Boolean(attrs.foreign);
+    return labelWidth(label, foreign) <= maximumNarrowLabelWidth(foreign);
   };
   const applyResponsiveLabelThreshold = (narrow = narrowGraphQuery.matches) => {
     renderer.setSettings(
@@ -771,9 +798,16 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     incrementGraphCounter(ui.host, "motionCompletions");
     relatedBrainsSessionInvalid = false;
     if (relatedBrainsStatePending) saveRelatedBrainsState();
-    focusAfterMotion?.();
+    if (narrowGraphQuery.matches && state.focused) applyReducers();
+    const afterMotion = focusAfterMotion;
     focusAfterMotion = null;
-  }, motionScope());
+    afterMotion?.();
+  }, motionScope(), true, false, () => narrowGraphQuery.matches
+    ? {
+        includeLabels: false,
+        trailingNodeExtent: GRAPH_LABEL_OFFSET + NARROW_FOCUSED_LABEL_WIDTH,
+      }
+    : { includeLabels: true });
   const requestSettle = (...args: Parameters<GraphMotionController["settle"]>) => {
     incrementGraphCounter(ui.host, "settleRequests");
     motion.settle(...args);
@@ -957,6 +991,8 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     const node = state.focused;
     ui.host.toggleAttribute("data-focused-inspection", node !== null);
     if (!node) {
+      focusDetailsExpanded = false;
+      syncFocusDetails();
       ui.focusStatus.hidden = true;
       delete ui.host.dataset.focusedNode;
       delete document.documentElement.dataset.originatingGraphFocus;
@@ -968,7 +1004,9 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     document.documentElement.dataset.originatingGraphFocus = graph.getNodeAttribute(node, "compositeId") as string;
     ui.focusStatus.hidden = false;
     ui.focusTitle.textContent = title;
+    ui.focusTitleFull.textContent = title;
     ui.focusOpen.href = noteHref(route);
+    syncFocusDetails();
     updateDomains();
   };
 
@@ -994,6 +1032,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       node = pageNode;
     }
     const next = node && focusAllowed(node) ? node : null;
+    if (next !== state.focused) focusDetailsExpanded = false;
     initialFocusOverride = false;
     setFocusedInspection(graph, state, next);
     delete ui.host.dataset.transientInspection;
@@ -1057,6 +1096,19 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     renderer.getCamera().getState().ratio,
   );
   function applyReducers(): void {
+    narrowLabelBudgets.clear();
+    if (narrowGraphQuery.matches && state.focused && state.hovered === null) {
+      const rightBoundary = renderer.getDimensions().width - graphFitInsets(renderer).right;
+      for (const node of focusIds()) {
+        const data = renderer.getNodeDisplayData(node);
+        if (!data || data.hidden) continue;
+        const center = renderer.framedGraphToViewport(data);
+        narrowLabelBudgets.set(
+          node,
+          rightBoundary - center.x - renderer.scaleSize(data.size) - GRAPH_LABEL_OFFSET,
+        );
+      }
+    }
     renderer.setSetting("nodeReducer", (node, attrs) => {
       const activeNode = activeInspectionNode(state);
       const res = { ...attrs } as Record<string, unknown>;
@@ -1092,6 +1144,29 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
         styled.color = state.theme.fadedNode;
         styled.label = "";
       }
+      const displayLabel = typeof styled.label === "string" ? styled.label : "";
+      const role = state.focused && state.hovered === null
+        ? node === state.focused
+          ? "focused"
+          : state.neighbors.has(node)
+            ? "neighbor"
+            : null
+        : null;
+      const foreign = Boolean(styled.foreign);
+      const decision = narrowGraphQuery.matches && displayLabel
+        ? narrowFocusedLabelDecision(
+            displayLabel,
+            role,
+            revealNarrowLabels,
+            labelWidth(displayLabel, foreign) <= maximumNarrowLabelWidth(foreign, node),
+            (value) => shortenGraphLabel(
+              value,
+              maximumNarrowLabelWidth(foreign, node),
+              (candidate) => labelWidth(candidate, foreign),
+            ),
+          )
+        : null;
+      if (decision) Object.assign(styled, decision);
       return styled as typeof attrs;
     });
     renderer.setSetting("edgeReducer", (edge, attrs) => {
@@ -1118,20 +1193,52 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     ui.host.dataset.renderedMarkers = String(graph.order - hidden.size);
     if (dimmedBrains.size > 0) updateLensStats();
     const inspected = activeInspectionNode(state);
-    if (inspected) updateInspectionTargetStats(ui.host, renderer, graph, inspected);
-    else delete ui.host.dataset.inspectionTargetGeometry;
+    if (inspected) {
+      updateInspectionTargetStats(ui.host, renderer, graph, inspected);
+      ui.host.dataset.inspectionCanvasLabel = renderer.getNodeDisplayData(inspected)?.label ?? "";
+    } else {
+      delete ui.host.dataset.inspectionTargetGeometry;
+      delete ui.host.dataset.inspectionCanvasLabel;
+    }
+    if (state.focused) {
+      ui.host.dataset.focusedMarkerGeometry = JSON.stringify(focusIds().flatMap((id) => {
+        const data = renderer.getNodeDisplayData(id);
+        if (!data || data.hidden) return [];
+        const center = renderer.framedGraphToViewport(data);
+        return [{
+          id,
+          x: center.x,
+          y: center.y,
+          radius: renderer.scaleSize(data.size),
+          label: data.label ?? "",
+        }];
+      }));
+    } else {
+      delete ui.host.dataset.focusedMarkerGeometry;
+    }
     if (ui.host.hasAttribute("data-geometry-check-pending")) {
       updateGeometryStats(ui.host, renderer, graph);
       delete ui.host.dataset.geometryCheckPending;
     }
   };
   renderer.on("afterRender", updateRenderedLabelStats);
+  let labelBudgetFrame: number | null = null;
+  const scheduleLabelBudgetRefresh = () => {
+    if (!narrowGraphQuery.matches || !state.focused || revealNarrowLabels || labelBudgetFrame !== null) return;
+    labelBudgetFrame = window.requestAnimationFrame(() => {
+      labelBudgetFrame = null;
+      applyReducers();
+    });
+  };
   const onCameraLabelReveal = () => {
     const reveal = forceLabelsOnNarrowZoom(
       narrowGraphQuery.matches,
       renderer.getCamera().getState().ratio,
     );
-    if (reveal === revealNarrowLabels) return;
+    if (reveal === revealNarrowLabels) {
+      scheduleLabelBudgetRefresh();
+      return;
+    }
     revealNarrowLabels = reveal;
     applyReducers();
   };
@@ -1260,6 +1367,16 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     else responsiveScheduler.update(next);
   };
   narrowGraphQuery.addEventListener("change", onNarrowGraphChange);
+  const onCompactFocusChange = () => {
+    const restoreDisclosureFocus = compactFocusQuery.matches && ui.focusDetails.contains(document.activeElement);
+    const restoreOpenFocus = !compactFocusQuery.matches && document.activeElement === ui.focusDisclosure;
+    focusDetailsExpanded = false;
+    syncFocusDetails();
+    if (restoreDisclosureFocus) ui.focusDisclosure.focus({ preventScroll: true });
+    else if (restoreOpenFocus) ui.focusOpen.focus({ preventScroll: true });
+    if (state.focused) window.requestAnimationFrame(fitFocus);
+  };
+  compactFocusQuery.addEventListener("change", onCompactFocusChange);
 
   /* Search: dim non-matches, list matches, camera-focus on selection. */
   function renderSearchResults(): void {
@@ -1328,6 +1445,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     menuNode = null;
   };
   const openContextMenu = (node: string, event: MouseEvent) => {
+    document.dispatchEvent(new CustomEvent("graph-context-menu-open"));
     menuNode = node;
     ui.contextFocus.textContent = state.focused ? "Move focus here" : "Pin neighborhood";
     ui.contextMenu.hidden = false;
@@ -1379,15 +1497,30 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     if (state.focused) void copyNeighborhoodLink(state.focused, ui.focusCopy);
   });
   ui.focusClear.addEventListener("click", () => setFocus(null));
+  const onFocusDisclosure = () => {
+    focusDetailsExpanded = !focusDetailsExpanded;
+    syncFocusDetails();
+    window.requestAnimationFrame(fitFocus);
+  };
+  const onGraphEscape = (event: KeyboardEvent) => {
+    if (event.key !== "Escape") return;
+    if (!ui.contextMenu.hidden) {
+      event.stopImmediatePropagation();
+      closeContextMenu(true);
+      return;
+    }
+    if (!compactFocusQuery.matches || !focusDetailsExpanded) return;
+    event.stopImmediatePropagation();
+    focusDetailsExpanded = false;
+    syncFocusDetails();
+    ui.focusDisclosure.focus({ preventScroll: true });
+    window.requestAnimationFrame(fitFocus);
+  };
+  ui.focusDisclosure.addEventListener("click", onFocusDisclosure);
+  document.addEventListener("keydown", onGraphEscape);
   document.addEventListener("pointerdown", (event) => {
     if (!ui.contextMenu.hidden && event.target instanceof Node && !ui.contextMenu.contains(event.target)) {
       closeContextMenu();
-    }
-  });
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && !ui.contextMenu.hidden) {
-      event.stopImmediatePropagation();
-      closeContextMenu(true);
     }
   });
 
@@ -1441,15 +1574,19 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     cancelFilterSettle();
     resizeObserver.disconnect();
     responsiveScheduler.cancel();
+    if (labelBudgetFrame !== null) window.cancelAnimationFrame(labelBudgetFrame);
     renderer.getCamera().off("updated", saveSession);
     renderer.getCamera().off("updated", onCameraLabelReveal);
     window.removeEventListener("pagehide", flushSession);
     ui.fitViewButton.removeEventListener("click", onFitView);
+    ui.focusDisclosure.removeEventListener("click", onFocusDisclosure);
+    document.removeEventListener("keydown", onGraphEscape);
     ui.relatedBrainsToggle?.removeEventListener("click", onRelatedBrainsToggle);
     for (const control of ui.lens?.checkboxes ?? []) control.removeEventListener("change", onLensChange);
     ui.lens?.reset.removeEventListener("click", onLensReset);
     for (const remove of domainListeners) remove();
     narrowGraphQuery.removeEventListener("change", onNarrowGraphChange);
+    compactFocusQuery.removeEventListener("change", onCompactFocusChange);
     document.removeEventListener("visibilitychange", onVisibilityChange);
     motion.destroy();
   });
@@ -1468,7 +1605,9 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       window.requestAnimationFrame(fitFocus);
     }
   } else if (!restored.positions) requestSettle("initial", visibleIds());
-  else if (!restored.view) fitRenderedGraph(renderer, visibleIds());
+  else if (!restored.view) {
+    fitRenderedGraph(renderer, visibleIds(), { includeLabels: !narrowGraphQuery.matches });
+  }
   initialFocusOverride = false;
 }
 
@@ -1499,6 +1638,20 @@ export async function mountLocalGraphs(): Promise<void> {
       labelRenderedSizeThreshold: 3,
     });
     const narrowGraphQuery = window.matchMedia("(max-width: 700px)");
+    const localLabelContext = document.createElement("canvas").getContext("2d")!;
+    localLabelContext.font = "500 13px ui-sans-serif, system-ui, sans-serif";
+    const localLabelBudgets = new Map<string, number>();
+    const localMaximumLabelWidth = (node?: string) => {
+      const policyWidth = Math.max(160, Math.min(220, renderer.getDimensions().width - 160));
+      if (!node) return policyWidth;
+      return Math.max(0, Math.min(policyWidth, localLabelBudgets.get(node) ?? policyWidth));
+    };
+    const localLabelWidth = (label: string, foreign: boolean) =>
+      localLabelContext.measureText(label).width + (foreign ? foreignLabelMarkWidth(13) : 0);
+    const localLabelFitsOverview = (node: string, attrs: Record<string, unknown>) => {
+      const label = typeof attrs.label === "string" ? attrs.label : "";
+      return localLabelWidth(label, Boolean(attrs.foreign)) <= localMaximumLabelWidth(node);
+    };
     const applyResponsiveLabelThreshold = (narrow = narrowGraphQuery.matches) => {
       renderer.setSettings(responsiveLabelSettings(narrow, 3, 100));
     };
@@ -1517,15 +1670,45 @@ export async function mountLocalGraphs(): Promise<void> {
     const hoverReducers = createHoverReducers(graph, state);
     let revealNarrowLabels = false;
     const applyLocalReducers = () => {
+      localLabelBudgets.clear();
+      if (narrowGraphQuery.matches) {
+        const rightBoundary = renderer.getDimensions().width - graphFitInsets(renderer).right;
+        for (const node of graph.nodes()) {
+          const data = renderer.getNodeDisplayData(node);
+          if (!data || data.hidden) continue;
+          const center = renderer.framedGraphToViewport(data);
+          localLabelBudgets.set(
+            node,
+            rightBoundary - center.x - renderer.scaleSize(data.size) - GRAPH_LABEL_OFFSET,
+          );
+        }
+      }
       renderer.setSettings({
         nodeReducer: (node, attrs) => {
           const brainAware = attrs.foreign
             ? { ...attrs, forceLabel: forceForeignLabel(true, narrowGraphQuery.matches) }
             : attrs;
           const inspectedNeighborhood = isInspectionNeighborhoodNode(state, node);
-          const labelAware = (revealNarrowLabels || inspectedNeighborhood) && brainAware.label
-            ? { ...brainAware, forceLabel: true }
-            : brainAware;
+          const overviewEligible = !narrowGraphQuery.matches ||
+            revealNarrowLabels ||
+            inspectedNeighborhood ||
+            localLabelFitsOverview(node, brainAware as Record<string, unknown>);
+          const selected = narrowGraphQuery.matches && !revealNarrowLabels && node === slug && brainAware.label
+            ? {
+                ...brainAware,
+                label: shortenGraphLabel(
+                  brainAware.label as string,
+                  localMaximumLabelWidth(node),
+                  (value) => localLabelWidth(value, Boolean(brainAware.foreign)),
+                ),
+                forceLabel: true,
+              }
+            : overviewEligible
+              ? brainAware
+              : { ...brainAware, label: "", forceLabel: false };
+          const labelAware = (revealNarrowLabels || inspectedNeighborhood) && selected.label
+            ? { ...selected, forceLabel: true }
+            : selected;
           const focused = node === state.focused && state.hovered === null
             ? { ...labelAware, focused: true, highlighted: true }
             : labelAware;
@@ -1558,6 +1741,15 @@ export async function mountLocalGraphs(): Promise<void> {
     };
     renderer.on("afterRender", updateRenderedLabelStats);
     const camera = renderer.getCamera();
+    let localLabelBudgetFrame: number | null = null;
+    const onLocalCameraUpdated = () => {
+      if (!narrowGraphQuery.matches || revealNarrowLabels || localLabelBudgetFrame !== null) return;
+      localLabelBudgetFrame = window.requestAnimationFrame(() => {
+        localLabelBudgetFrame = null;
+        applyLocalReducers();
+      });
+    };
+    camera.on("updated", onLocalCameraUpdated);
     const labelReveal = wireLocalGraphLabelReveal(
       () => camera.getState().ratio,
       () => narrowGraphQuery.matches,
@@ -1580,11 +1772,18 @@ export async function mountLocalGraphs(): Promise<void> {
       () => {
         pendingMotion = null;
         host.dataset.fittedRatio = String(labelReveal.recordFit());
+        if (narrowGraphQuery.matches) applyLocalReducers();
         host.dataset.fitCompletions = String(Number(host.dataset.fitCompletions ?? 0) + 1);
       },
       `local:${slug}`,
       false,
       true,
+      () => narrowGraphQuery.matches
+        ? {
+            includeLabels: false,
+            trailingNodeExtent: GRAPH_LABEL_OFFSET + NARROW_FOCUSED_LABEL_WIDTH,
+          }
+        : { includeLabels: true },
     );
     const fitView = () => {
       pendingMotion = "fit";
@@ -1734,6 +1933,8 @@ export async function mountLocalGraphs(): Promise<void> {
       touch.off("touchdown", interruptViewportMotion);
       resizeObserver.disconnect();
       responsiveScheduler.cancel();
+      if (localLabelBudgetFrame !== null) window.cancelAnimationFrame(localLabelBudgetFrame);
+      camera.off("updated", onLocalCameraUpdated);
       motion.destroy();
       labelReveal.destroy();
       renderer.off("afterRender", updateRenderedLabelStats);

@@ -75,6 +75,52 @@ export function forceLocalLabelsOnNarrowZoom(
     cameraRatio <= fittedRatio * 0.75;
 }
 
+export function shortenGraphLabel(
+  label: string,
+  maximumWidth: number,
+  measure: (value: string) => number,
+): string {
+  if (measure(label) <= maximumWidth) return label;
+  const ellipsis = "…";
+  if (measure(ellipsis) > maximumWidth) return "";
+  const shorten = (value: string, prefix = "", limit = maximumWidth) => {
+    if (measure(`${prefix}${ellipsis}`) > limit) return ellipsis;
+    const characters = [...value];
+    let low = 0;
+    let high = characters.length;
+    while (low < high) {
+      const middle = Math.ceil((low + high) / 2);
+      const candidate = `${prefix}${characters.slice(0, middle).join("").trimEnd()}${ellipsis}`;
+      if (measure(candidate) <= limit) low = middle;
+      else high = middle - 1;
+    }
+    return `${prefix}${characters.slice(0, low).join("").trimEnd()}${ellipsis}`;
+  };
+
+  const divider = " · ";
+  const dividerIndex = label.indexOf(divider);
+  if (dividerIndex < 0) return shorten(label);
+
+  const owner = label.slice(0, dividerIndex);
+  const title = label.slice(dividerIndex + divider.length);
+  const titleHint = `${[...title].slice(0, 6).join("")}${ellipsis}`;
+  const ownerBudget = maximumWidth - measure(`${divider}${titleHint}`);
+  const visibleOwner = measure(owner) <= ownerBudget ? owner : shorten(owner, "", ownerBudget);
+  return shorten(title, `${visibleOwner}${divider}`);
+}
+
+export function narrowFocusedLabelDecision(
+  label: string,
+  role: "focused" | "neighbor" | null,
+  detailed: boolean,
+  fits: boolean,
+  shorten: (value: string) => string,
+): { label: string; forceLabel: boolean } | null {
+  if (!role || detailed) return null;
+  if (role === "focused") return { label: shorten(label), forceLabel: true };
+  return { label: fits ? label : "", forceLabel: false };
+}
+
 function accentColor(accent: string, status: string): string {
   const match = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(accent);
   if (!match) return accent;

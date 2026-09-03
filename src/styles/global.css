@@ -1522,8 +1522,27 @@ div[data-callout] [data-callout-body] > :last-child {
 }
 
 .graph-focus-status[hidden],
+.graph-focus-details[hidden],
 .graph-context-menu[hidden] {
   display: none;
+}
+
+.graph-focus-summary,
+.graph-focus-details,
+.graph-focus-actions {
+  display: contents;
+}
+
+.graph-focus-summary > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-focus-full-title {
+  display: none;
+  margin: 0;
 }
 
 /* Connected domains of a focused neighborhood: a chip row inside the focus
@@ -1636,19 +1655,6 @@ div[data-callout] [data-callout-body] > :last-child {
   .dimmed-node-key {
     background: #e1dde5;
   }
-}
-
-.graph-focus-status > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.graph-focus-status > div {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
 }
 
 .graph-focus-status button,
@@ -2160,13 +2166,69 @@ div[data-callout] [data-callout-body] > :last-child {
   }
 
   .graph-focus-status {
-    align-items: stretch;
-    flex-direction: column;
-    flex-wrap: nowrap;
+    display: block;
+    width: calc(100% - 2rem);
+    max-width: calc(100% - 2rem);
+    max-height: min(70dvh, calc(100dvh - 2rem));
+    padding: 0.35rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
+  main:has(.graph-about) .graph-focus-status {
+    max-width: calc(100% - 2rem);
+  }
+
+  .graph-focus-summary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto 44px;
+    gap: 0.35rem;
+    min-height: 44px;
+  }
+
+  .graph-focus-summary > span {
+    padding-inline-start: 0.35rem;
+  }
+
+  .graph-focus-summary > a,
+  .graph-focus-disclosure {
+    display: inline-flex;
+    min-width: 44px;
+    min-height: 44px;
+    box-sizing: border-box;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .graph-focus-disclosure {
+    padding-inline: 0;
+    letter-spacing: 0.08em;
+  }
+
+  .graph-focus-details {
+    display: grid;
+    gap: 0.65rem;
+    margin-top: 0.35rem;
+    padding: 0.65rem 0.35rem 0.35rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .graph-focus-full-title {
+    display: block;
+    overflow-wrap: anywhere;
+  }
+
+  .graph-focus-actions {
+    flex-wrap: wrap;
+  }
+
+  .graph-focus-actions button,
   .graph-focus-status .graph-domain {
     min-height: 44px;
+  }
+
+  .graph-domains {
+    padding-top: 0.65rem;
   }
 
   .recent-list .note-line {

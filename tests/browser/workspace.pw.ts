@@ -829,6 +829,18 @@ test("graph search reaches dimmed Brains and focuses their notes at full emphasi
 });
 
 test("neighborhood pages list connected domains as lens chips that never remove nodes", async ({ page }) => {
+  const focusedTitle = Array.from(
+    { length: 6 },
+    () => "A deliberately long focused neighborhood title that cannot fit within a phone viewport",
+  ).join(" ");
+  const neighborTitle = "An exceptionally long direct-neighbor title that must not clip at the fitted overview";
+  await page.route("**/graph-data.json", async (route) => {
+    const response = await route.fetch();
+    const data = await response.json();
+    data.nodes.find((node: { id: string }) => node.id === "engineering/principles").title = focusedTitle;
+    data.nodes.find((node: { id: string }) => node.id === "engineering/delivery-loops").title = neighborTitle;
+    await route.fulfill({ response, json: data });
+  });
   const neighborhood = `${workspace}/brains/engineering/notes/principles/graph`;
   await page.goto(neighborhood);
   const graph = page.locator("#global-graph");
@@ -895,21 +907,140 @@ test("neighborhood pages list connected domains as lens chips that never remove 
   await expect(graph).toHaveAttribute("data-lens", "");
   await page.keyboard.press("Escape");
 
+  await page.getByRole("button", { name: "Copy link" }).focus();
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(domains).toBeVisible();
-  // The renderer resizes its canvases through the responsive scheduler; the
-  // chips are plain DOM, but page overflow is only meaningful once it has.
   await expect(graph).toHaveAttribute("data-responsive-policy", "narrow");
-  await expect.poll(() => page.evaluate(() => {
-    const status = document.querySelector("[data-graph-focus-status]")!.getBoundingClientRect();
-    const chips = [...document.querySelectorAll<HTMLElement>("[data-graph-domains] li:not([hidden]) button")]
-      .map((chip) => chip.getBoundingClientRect());
+  const focusStatus = page.locator("[data-graph-focus-status]");
+  const focusDetails = page.locator("[data-graph-focus-details]");
+  const disclosure = page.getByRole("button", { name: "Show focus details" });
+  const open = page.getByRole("link", { name: "Open focused note" });
+  const markersClearFocusBar = () => page.evaluate(() => {
+    const graph = document.querySelector<HTMLElement>("#global-graph")!;
+    const host = graph.getBoundingClientRect();
+    const bar = document.querySelector<HTMLElement>("[data-graph-focus-status]")!.getBoundingClientRect();
+    const markers = JSON.parse(graph.dataset.focusedMarkerGeometry ?? "[]") as { y: number; radius: number }[];
+    return markers.length === 4 && markers.every((marker) => marker.y + marker.radius <= bar.top - host.top - 10);
+  });
+  await expect(disclosure).toHaveAttribute("aria-expanded", "false");
+  await expect(disclosure).toBeFocused();
+  await expect(focusDetails).toBeHidden();
+  await expect(domains).toBeHidden();
+  await expect(page.getByRole("button", { name: "Copy link" })).toBeHidden();
+  await expect(open).toBeVisible();
+  await expect.poll(() => focusStatus.evaluate((status) => {
+    const bounds = status.getBoundingClientRect();
     return {
-      contained: status.left >= 0 && status.right <= innerWidth && status.bottom <= innerHeight,
-      touchTargets: chips.every((chip) => chip.height >= 44 && chip.right <= innerWidth),
+      atMost72: bounds.height <= 72,
+      contained: bounds.left >= 0 && bounds.right <= innerWidth && bounds.bottom <= innerHeight,
+      oneRow: status.querySelector("[data-graph-focus-summary]")!.getBoundingClientRect().height <= 44,
+      touchTargets: [...status.querySelectorAll<HTMLElement>("[data-graph-focus-open], [data-graph-focus-disclosure]")]
+        .every((control) => {
+          const controlBounds = control.getBoundingClientRect();
+          return controlBounds.width >= 44 && controlBounds.height >= 44;
+        }),
       noOverflow: document.documentElement.scrollWidth <= innerWidth,
     };
-  })).toEqual({ contained: true, touchTargets: true, noOverflow: true });
+  })).toEqual({ atMost72: true, contained: true, oneRow: true, touchTargets: true, noOverflow: true });
+  await expect.poll(markersClearFocusBar).toBe(true);
+
+  const collapsedGeometry = await graph.getAttribute("data-focused-marker-geometry");
+  await graph.evaluate((host) => {
+    host.dataset.geometryCheckPending = "";
+  });
+  await page.getByRole("button", { name: "Fit view" }).click();
+  await expect(graph).not.toHaveAttribute("data-geometry-check-pending");
+  const graphSpaceGeometry = await graph.getAttribute("data-graph-geometry");
+  const fitRequests = Number(await graph.getAttribute("data-fit-requests"));
+  await graph.evaluate((host) => {
+    host.dataset.geometryCheckPending = "";
+  });
+  await disclosure.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("button", { name: "Hide focus details" })).toBeFocused();
+  await expect(page.getByRole("button", { name: "Hide focus details" })).toHaveAttribute("aria-expanded", "true");
+  await expect(focusDetails).toBeVisible();
+  await expect(page.locator("[data-graph-focus-title-full]")).toHaveText(focusedTitle);
+  await expect(domains).toBeVisible();
+  await expect(page.getByRole("button", { name: "Copy link" })).toBeVisible();
+  await expect(page.locator("[data-graph-focus-clear]")).toBeHidden();
+  await expect(graph).toHaveAttribute("data-focused-node", "engineering/principles");
+  await expect.poll(async () => Number(await graph.getAttribute("data-fit-requests"))).toBeGreaterThan(fitRequests);
+  await expect(graph).not.toHaveAttribute("data-geometry-check-pending");
+  expect(await graph.getAttribute("data-graph-geometry")).toBe(graphSpaceGeometry);
+  await expect.poll(() => page.evaluate(() => {
+    const graph = document.querySelector<HTMLElement>("#global-graph")!;
+    const status = document.querySelector<HTMLElement>("[data-graph-focus-status]")!;
+    const host = graph.getBoundingClientRect();
+    const bar = status.getBoundingClientRect();
+    const markers = JSON.parse(graph.dataset.focusedMarkerGeometry ?? "[]") as { y: number; radius: number }[];
+    const controls = [...status.querySelectorAll<HTMLElement>("a, button")]
+      .filter((control) => control.offsetParent !== null)
+      .map((control) => control.getBoundingClientRect());
+    return {
+      markersClear: markers.length === 4 && markers.every((marker) => marker.y + marker.radius <= bar.top - host.top - 10),
+      bounded: bar.top >= 0 && bar.bottom <= innerHeight,
+      scrollable: status.scrollHeight > status.clientHeight,
+      touchTargets: controls.every((control) => control.width >= 44 && control.height >= 44),
+      noOverflow: document.documentElement.scrollWidth <= innerWidth,
+    };
+  })).toEqual({ markersClear: true, bounded: true, scrollable: true, touchTargets: true, noOverflow: true });
+  const collapseCompletions = Number(await graph.getAttribute("data-motion-completions"));
+  await page.keyboard.press("Escape");
+  await expect(disclosure).toBeFocused();
+  await expect(disclosure).toHaveAttribute("aria-expanded", "false");
+  await expect(focusDetails).toBeHidden();
+  await expect(graph).toHaveAttribute("data-focused-node", "engineering/principles");
+  await expect.poll(async () => Number(await graph.getAttribute("data-motion-completions")))
+    .toBeGreaterThan(collapseCompletions);
+  expect(collapsedGeometry).toBeTruthy();
+  await expect(graph).toHaveAttribute("data-inspection-canvas-label", /…$/u);
+  expect(await graph.getAttribute("data-inspection-canvas-label")).not.toContain(focusedTitle);
+  const overviewNeighborLabel = await graph.getAttribute("data-focused-marker-geometry").then((value) =>
+    (JSON.parse(value ?? "[]") as { id: string; label: string }[])
+      .find(({ id }) => id === "engineering/delivery-loops")?.label
+  );
+  expect(overviewNeighborLabel).toBe("");
+
+  const canvas = graph.locator("canvas.sigma-mouse");
+  await canvas.hover({ position: { x: 100, y: 300 } });
+  for (let index = 0; index < 8; index += 1) {
+    await page.mouse.wheel(0, -300);
+    await page.waitForTimeout(50);
+    const value = await graph.getAttribute("data-focused-marker-geometry");
+    const label = (JSON.parse(value ?? "[]") as { id: string; label: string }[])
+      .find(({ id }) => id === "engineering/delivery-loops")?.label;
+    if (label?.includes(neighborTitle)) break;
+  }
+  await expect.poll(async () => {
+    const value = await graph.getAttribute("data-focused-marker-geometry");
+    return (JSON.parse(value ?? "[]") as { id: string; label: string }[])
+      .find(({ id }) => id === "engineering/delivery-loops")?.label;
+  }).toContain(neighborTitle);
+  const resetCompletions = Number(await graph.getAttribute("data-motion-completions"));
+  await page.getByRole("button", { name: "Fit view" }).click();
+  await expect.poll(async () => Number(await graph.getAttribute("data-motion-completions")))
+    .toBeGreaterThan(resetCompletions);
+  await expect(graph).toHaveAttribute("data-inspection-canvas-label", /…$/u);
+
+  await page.setViewportSize({ width: 320, height: 568 });
+  await expect.poll(() => focusStatus.evaluate((status) => {
+    const bounds = status.getBoundingClientRect();
+    return {
+      atMost72: bounds.height <= 72,
+      contained: bounds.left >= 0 && bounds.right <= innerWidth,
+      noOverflow: document.documentElement.scrollWidth <= innerWidth,
+    };
+  })).toEqual({ atMost72: true, contained: true, noOverflow: true });
+  await expect.poll(markersClearFocusBar).toBe(true);
+  await disclosure.focus();
+  await page.setViewportSize({ width: 800, height: 700 });
+  await expect(disclosure).toBeHidden();
+  await expect(open).toBeFocused();
+  await expect(focusDetails).toBeVisible();
+  const desktopFitRequests = await graph.getAttribute("data-fit-requests");
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(50);
+  await expect(graph).toHaveAttribute("data-fit-requests", desktopFitRequests ?? "");
 
   await page.goto(`${workspace}/brains/research-archive-and-synthesis-source-trails/notes/archive-boundaries/graph`);
   await expect(graph).toHaveAttribute("data-focused-node", "research-archive-and-synthesis-source-trails/archive-boundaries");
@@ -969,7 +1100,7 @@ test("mobile root graph and Brain lens remain usable without horizontal overflow
   await expect(summary).toHaveAttribute("aria-label", "Brains: 1 dimmed");
   await expect(page).toHaveURL(`${workspace}/`);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.mouse.click(380, 600);
+  await page.locator("main").dispatchEvent("pointerdown");
   await expect(summary).toHaveAttribute("aria-expanded", "false");
   await expect(graph).toHaveAttribute("data-lens", "research");
 });
@@ -1383,6 +1514,11 @@ test("graph search pins in-session focus and copies the neighborhood path", asyn
   await expect(page).toHaveURL(`${workspace}/brains/engineering?focus=engineering%2Fprinciples`);
   await expect(graph).toHaveAttribute("data-focused-node", "engineering/principles");
   await expect(page.locator("[data-graph-focus-status]")).toContainText("Principles");
+  expect(await page.locator("[data-graph-focus-status]").evaluate((status) => {
+    const title = status.querySelector("[data-graph-focus-title]")!.getBoundingClientRect();
+    const copy = status.querySelector("[data-graph-focus-copy]")!.getBoundingClientRect();
+    return Math.abs((title.top + title.bottom) / 2 - (copy.top + copy.bottom) / 2);
+  })).toBeLessThan(8);
   await page.locator("[data-graph-focus-copy]").click();
   await expect(page.locator("[data-graph-focus-copy]")).toHaveText("Copied");
   const copied = await page.evaluate(() =>
@@ -1424,6 +1560,31 @@ test("graph search pins in-session focus and copies the neighborhood path", asyn
   expect(labelBounds.bottom).toBeLessThan(labelBounds.height);
   await recipient.close();
   await page.reload();
+  await expect(graph).toHaveAttribute("data-focused-node", "engineering/principles");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Show focus details" }).click();
+  const mobileCopy = page.locator("[data-graph-focus-copy]");
+  await mobileCopy.click();
+  await expect(mobileCopy).toHaveText("Copied");
+  await expect(graph).toHaveAttribute("data-focused-node", "engineering/principles");
+  const filtersToggle = page.getByRole("button", { name: /Filters|Close filters/ });
+  if (await filtersToggle.getAttribute("aria-expanded") === "false") await filtersToggle.click();
+  await page.keyboard.press("Escape");
+  await expect(filtersToggle).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("button", { name: "Hide focus details" })).toHaveAttribute("aria-expanded", "true");
+  await filtersToggle.click();
+  await page.locator("#graph-search").fill("Delivery loops");
+  await page.locator("#graph-search-results button", { hasText: "Delivery loops" }).click();
+  await expect(graph).toHaveAttribute("data-focused-node", "engineering/delivery-loops");
+  await expect(page.getByRole("button", { name: "Show focus details" })).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator("[data-graph-focus-details]")).toBeHidden();
+  await page.getByRole("button", { name: "Show focus details" }).click();
+  await page.getByRole("button", { name: "Clear" }).click();
+  await expect(graph).not.toHaveAttribute("data-focused-node");
+  await expect(page.locator("[data-graph-focus-status]")).toBeHidden();
+
+  await page.locator("#graph-search").fill("Principles");
+  await page.locator("#graph-search-results button", { hasText: "@engineering" }).click();
   await expect(graph).toHaveAttribute("data-focused-node", "engineering/principles");
 
   const payload = await page.evaluate(async () => (await fetch("/workspace-demo/graph-data.json")).json());
@@ -1651,6 +1812,10 @@ test("coarse-pointer tablet keeps graph controls clear of mobile navigation", as
   const context = await browser.newContext({ hasTouch: true, viewport: { width: 701, height: 900 } });
   const page = await context.newPage();
   await page.goto(`${workspace}/brains/engineering`);
+  await page.setViewportSize({ width: 699, height: 900 });
+  await expect(page.locator("#global-graph")).toHaveAttribute("data-responsive-policy", "narrow");
+  await page.setViewportSize({ width: 702, height: 900 });
+  await expect(page.locator("#global-graph")).toHaveAttribute("data-responsive-policy", "wide");
 
   const geometry = await page.evaluate(() => {
     const controls = document.querySelector(".graph-controls")!.getBoundingClientRect();

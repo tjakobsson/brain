@@ -622,10 +622,11 @@ test("mobile navigation stays within the deployment base", async ({ page }, test
   const fittedLocalBounds = await graphInkBounds(localGraph);
   expect(fittedLocalBounds.nodePixels).toBeGreaterThan(0);
   expect(fittedLocalBounds.labelPixels).toBeGreaterThan(0);
-  expect(fittedLocalBounds.left).toBeGreaterThanOrEqual(18);
-  expect(fittedLocalBounds.top).toBeGreaterThanOrEqual(18);
+  expect(fittedLocalBounds.nodeLeft).toBeGreaterThanOrEqual(18);
+  expect(fittedLocalBounds.nodeTop).toBeGreaterThanOrEqual(18);
+  expect(fittedLocalBounds.nodeRight).toBeLessThanOrEqual(fittedLocalBounds.width - 18);
+  expect(fittedLocalBounds.nodeBottom).toBeLessThanOrEqual(fittedLocalBounds.height - 18);
   expect(fittedLocalBounds.right).toBeLessThanOrEqual(fittedLocalBounds.width - 18);
-  expect(fittedLocalBounds.bottom).toBeLessThanOrEqual(fittedLocalBounds.height - 18);
   const noteHeader = page.locator(".site-header");
   await expect(page.locator(".site-header-slot")).toHaveCSS("position", "fixed");
   await expect(page.locator(".site-header-slot")).toHaveCSS("height", "0px");
@@ -861,8 +862,9 @@ test("mobile local graphs reveal titles relative to their fitted view", async ({
 
   await canvas.hover({ position: { x: 4, y: 4 } });
   await expect(graph).not.toHaveAttribute("data-transient-inspection");
-  await page.mouse.wheel(0, -100);
-  await expect.poll(async () => Number(await graph.getAttribute("data-rendered-labels"))).toBe(neighbors.length + 1);
+  await page.mouse.wheel(0, -300);
+  await expect.poll(async () => Number(await graph.getAttribute("data-rendered-labels")))
+    .toBeGreaterThan(overviewLabels);
 
   await page.getByRole("button", { name: "Fit view" }).click();
   await page.waitForTimeout(400);
