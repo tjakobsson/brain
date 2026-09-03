@@ -7,23 +7,27 @@ Provides the centerpiece visual exploration of the vault: an interactive global 
 ## Requirements
 
 ### Requirement: Global graph page
-Each brain SHALL have an interactive graph containing its notes plus directly connected foreign notes as boundary nodes. The site SHALL also provide a combined graph containing all notes and resolved links from the reader-selected brains. Both graph modes MUST support pan, zoom, hover, and click-to-navigate and remain smooth at a combined total of at least 2,000 notes.
+The workspace root SHALL provide one interactive graph containing every note and every resolved link from all configured Brains. Each Brain SHALL also have an interactive graph containing its notes plus directly connected foreign notes as boundary nodes. Both graph modes MUST support pan, zoom, hover, and click-to-navigate and remain smooth at a workspace total of at least 2,000 notes.
+
+#### Scenario: Explore the full workspace
+- **WHEN** a reader opens the workspace root
+- **THEN** the graph contains all notes from every configured Brain and all resolved links between them
+
+#### Scenario: Explore selected brains
+- **WHEN** a reader dims every Brain except Engineering and Design through the lens
+- **THEN** Engineering and Design remain at full emphasis with all their links while the other Brains recede in place and stay rendered
 
 #### Scenario: Explore one brain's boundary
 - **WHEN** an Engineering note links to Design while Engineering is active
 - **THEN** Engineering's graph shows the Design note as a foreign boundary node without adding unrelated Design notes
-
-#### Scenario: Explore selected brains
-- **WHEN** a reader opens a combined Engineering and Design graph
-- **THEN** the graph contains all notes from both brains and all resolved links between included notes
 
 #### Scenario: Navigate from graph
 - **WHEN** a reader clicks a local or foreign node
 - **THEN** the browser navigates to that note's namespaced page
 
 #### Scenario: Smooth at scale
-- **WHEN** selected brains contain a combined total of 2,000 notes
-- **THEN** panning and zooming the graph stays fluid on a typical laptop
+- **WHEN** configured Brains contain a workspace total of 2,000 notes
+- **THEN** panning and zooming the full workspace graph stays fluid on a typical laptop
 
 ### Requirement: Stable precomputed layout
 Node positions in the global graph SHALL be computed at build time using a force-directed layout that reveals cluster structure, and MUST be identical on every page load until the vault changes and is rebuilt.
@@ -33,16 +37,16 @@ Node positions in the global graph SHALL be computed at build time using a force
 - **THEN** every node appears in the same position both times
 
 ### Requirement: Meaningful visual encoding
-Graph nodes and edges SHALL visibly encode brain membership and cross-brain relationships without relying on color alone. A per-brain graph MUST distinguish foreign boundary nodes from local nodes while retaining discernible type, status, and connectivity encoding. A combined graph MUST assign each brain a consistent accent and provide a legend mapping accents and non-color markers to brain identity.
+Graph nodes and edges SHALL visibly encode brain membership and cross-brain relationships without relying on color alone. A per-brain graph MUST distinguish foreign boundary nodes from local nodes while retaining discernible type, status, and connectivity encoding. The full workspace graph MUST assign each brain a consistent accent and provide a legend mapping accents and non-color markers to brain identity.
 
-In a per-brain graph, foreign boundary nodes and cross-brain edges MUST use a neutral, lower-emphasis treatment than local content while retaining a visible non-color foreign marker. Every foreign label that is rendered MUST include an explicit `@brain` identity. Combined graphs SHALL continue to render every selected brain at full emphasis.
+In a per-brain graph, foreign boundary nodes and cross-brain edges MUST use a neutral, lower-emphasis treatment than local content while retaining a visible non-color foreign marker. Every foreign label that is rendered MUST include an explicit `@brain` identity. The full workspace graph SHALL render every Brain at full emphasis unless the reader's lens dims it, and a dimmed Brain MUST remain distinguishable from a hidden filter result because its nodes stay rendered in place.
 
 #### Scenario: Recognize a foreign node
 - **WHEN** a reader views a per-brain graph containing a linked note from another brain
 - **THEN** the foreign note has a non-color foreign marker, any rendered label identifies the target brain, and its muted treatment remains visually subordinate to local notes
 
 #### Scenario: Recognize brains in a combined graph
-- **WHEN** a reader views notes from several selected brains
+- **WHEN** a reader views notes from several Brains on the full workspace graph
 - **THEN** the graph and legend identify each node's owning brain without requiring hover or color perception
 
 #### Scenario: Hubs stand out
@@ -50,7 +54,7 @@ In a per-brain graph, foreign boundary nodes and cross-brain edges MUST use a ne
 - **THEN** its node is visibly larger than low-connectivity notes
 
 #### Scenario: Established notes are distinguishable
-- **WHEN** a reader views a per-brain or combined graph
+- **WHEN** a reader views a per-brain or full workspace graph
 - **THEN** established notes remain visually distinguishable from draft notes without hovering
 
 ### Requirement: Compact mobile graph controls
@@ -118,7 +122,7 @@ The global graph and every rendered note-page connection map SHALL provide a Leg
 - **THEN** the trigger exposes its open state, the popover content is perceivable, and focus remains predictable
 
 ### Requirement: Graph filtering
-Graph controls SHALL filter visible nodes by note type, status, and tag when those dimensions apply to the current view. On a full workspace graph, one Brain control SHALL appear as the rightmost segment of the left graph-control pill and govern the canonical selected Brain set. Shared navigation and the graph Filters panel MUST NOT duplicate Brain selection. Removing a Brain from a combined view MUST remove its nodes and edges and update the shareable selected-Brain URL; foreign boundary nodes in a per-Brain graph MUST remain governed by their connection to the active Brain.
+Graph controls SHALL filter visible nodes by note type, status, and tag when those dimensions apply to the current view. On the full workspace graph and on a per-Brain graph, one Brain control SHALL appear as the rightmost segment of the left graph-control pill and govern the personal Brain lens. Shared navigation and the graph Filters panel MUST NOT duplicate Brain controls. Dimming a Brain through the lens MUST NOT remove nodes or edges and MUST NOT change the URL; type, status, and tag filters continue to remove non-matching nodes and their incident edges. Foreign boundary nodes in a per-Brain graph MUST remain governed by their connection to the active Brain.
 
 A per-brain graph SHALL hide foreign boundary nodes by default and provide an explicit toggle that shows or hides all directly related foreign notes and their cross-brain edges without affecting local nodes.
 
@@ -131,12 +135,12 @@ A per-brain graph SHALL hide foreign boundary nodes by default and provide an ex
 - **THEN** every foreign node and cross-brain edge is hidden while the active brain's local graph remains visible
 
 #### Scenario: Remove a brain from a combined graph
-- **WHEN** a reader deselects Research through the Brain context control
-- **THEN** Research nodes and incident edges disappear and the URL records the remaining selection
+- **WHEN** a reader unchecks Research through the Brain control on the full workspace graph
+- **THEN** Research nodes and incident edges recede in place, remain rendered, and the URL does not change
 
 #### Scenario: Locate Brain selection
-- **WHEN** a reader opens a full workspace graph
-- **THEN** the Brain selector is the rightmost segment of the left graph-control pill and no Brain selector appears in shared navigation
+- **WHEN** a reader opens the full workspace graph or a per-Brain graph
+- **THEN** the Brain control is the rightmost segment of the left graph-control pill and no Brain control appears in shared navigation
 
 #### Scenario: Filter by type
 - **WHEN** a reader deselects `fleeting` in the type filter
@@ -144,18 +148,22 @@ A per-brain graph SHALL hide foreign boundary nodes by default and provide an ex
 
 #### Scenario: Combine filters
 - **WHEN** a reader filters to type `permanent` and status `established`
-- **THEN** only permanent established notes remain visible in the current brain selection
+- **THEN** only permanent established notes remain visible in the current graph
 
 ### Requirement: Graph search
-Graph search SHALL match note titles within the graph's current brain selection, show the owning brain for every match, and keep equal titles from different brains as distinct results. Selecting a match MUST establish the corresponding namespaced node as the graph's persistent focus, update the shareable focused-graph URL, and fit its visible neighborhood without changing graph-space node positions.
+Graph search SHALL match note titles within the graph's current scope, every configured Brain on the full workspace graph including dimmed Brains, and the active Brain plus its visible related notes on a per-Brain graph. It MUST show the owning brain for every match and keep equal titles from different brains as distinct results. Selecting a match MUST establish the corresponding namespaced node as the graph's persistent focus, reflect that focus in the current graph page's URL as in-session state, and fit its visible neighborhood without changing graph-space node positions.
 
 #### Scenario: Search duplicate titles
-- **WHEN** two selected brains contain `Principles` and a reader searches for that title
+- **WHEN** two Brains contain `Principles` and a reader searches for that title on the full workspace graph
 - **THEN** both results appear with different brain labels and either result focuses the correct node
+
+#### Scenario: Search a dimmed brain
+- **WHEN** a reader whose lens dims Research searches for a Research note title
+- **THEN** the Research note appears as a result and selecting it focuses that note at full emphasis
 
 #### Scenario: Search focuses node
 - **WHEN** a reader selects a graph search result
-- **THEN** the matching node and its direct neighborhood become persistently focused, the camera fits that neighborhood, and the URL identifies the focused composite node
+- **THEN** the matching node and its direct neighborhood become persistently focused, the camera fits that neighborhood, and the current graph page's URL identifies the focused node
 
 ### Requirement: Hover neighborhood highlight
 Inspecting a node in either graph SHALL retain full emphasis for that node, its directly connected neighbors, their titles, and edges incident to the inspected node. Unrelated node markers and edges MUST remain visible with a substantially lower-emphasis treatment, while unrelated titles MUST be hidden for the duration of inspection. Every title in the inspected neighborhood MUST remain rendered while eligible for the viewport, including when normal density selection would omit it.
@@ -203,7 +211,7 @@ The global graph and each note page's local graph SHALL provide a visible Fit vi
 - **THEN** Fit view excludes the hidden nodes and their labels when calculating the fitted camera state
 
 ### Requirement: Shareable focused graph neighborhoods
-The global graph SHALL let a reader persist the neighborhood currently inspected by pointer, touch, or graph search. A focused neighborhood MUST retain full emphasis for the focused note, its directly connected visible neighbors, their titles, and edges incident to the focused note while preserving unrelated markers as lower-emphasis orientation context. The focused note MUST have a persistent non-color-only indicator distinct from transient hover. The canonical graph URL MUST identify the focused composite note together with the current Brain selection, and opening that URL MUST restore the selection, focused neighborhood, and a camera fit containing the focused note and its visible direct neighbors. Focus links MUST NOT encode transient filters, dragged positions, or raw camera coordinates.
+The global graph SHALL let a reader persist the neighborhood currently inspected by pointer, touch, or graph search. A focused neighborhood MUST retain full emphasis for the focused note, its directly connected visible neighbors, their titles, and edges incident to the focused note while preserving unrelated markers as lower-emphasis orientation context, and MUST outrank the reader's Brain lens inside that neighborhood. The focused note MUST have a persistent non-color-only indicator distinct from transient hover. The shareable identity of a focused neighborhood MUST be the focused note's neighborhood page path; the copied neighborhood link MUST be that path with no query string or fragment. While a reader pins focus on a graph page, that page's URL MAY reflect the focus as in-session query state, and opening such a URL with the query removed MUST still open the same graph page unfocused. Focus links MUST NOT encode transient filters, lens state, dragged positions, or raw camera coordinates.
 
 On a fine-pointer desktop graph, invoking the context menu over an eligible node marker or rendered title SHALL offer actions to pin or move focus, copy the focused-neighborhood link, and open the note. The native context menu MUST remain available over empty graph space. Touch long press and keyboard-accessible graph search MUST reach the same focused state. A reader MUST be able to copy and clear focus without relying on another right-click.
 
@@ -211,15 +219,19 @@ Secondary-button and context-menu gestures MUST NOT begin or continue node dragg
 
 #### Scenario: Pin a hovered neighborhood
 - **WHEN** a desktop reader opens the context menu over a hovered note marker or rendered title and chooses Pin neighborhood
-- **THEN** that note remains visibly focused after the pointer leaves and the graph URL records its composite identity
+- **THEN** that note remains visibly focused after the pointer leaves and the graph page's URL reflects the focus as in-session state
 
 #### Scenario: Copy a neighborhood link
-- **WHEN** a reader copies the link for a focused Engineering note in an Engineering and Design combined graph
-- **THEN** the copied URL records both selected Brains and the focused Engineering note without recording camera or layout coordinates
+- **WHEN** a reader copies the link for a focused Engineering note on the full workspace graph
+- **THEN** the copied URL is that note's neighborhood page path under the site origin and base path, with no query string, fragment, lens, camera, or layout data
 
 #### Scenario: Open a shared doorway
-- **WHEN** another reader opens a valid focused-neighborhood URL
-- **THEN** the graph restores the selected Brains, makes the focused note visible, emphasizes its direct neighborhood, and fits that neighborhood within the usable viewport
+- **WHEN** another reader opens a copied neighborhood link with no prior state for the site
+- **THEN** the neighborhood page opens with every configured Brain present, the focused note visible, its direct neighborhood emphasized, and the neighborhood fitted within the usable viewport
+
+#### Scenario: Lose in-session focus state
+- **WHEN** a graph page URL carrying in-session focus is reopened without its query string
+- **THEN** the same graph page opens unfocused and no recovery card is shown
 
 #### Scenario: Reveal a focused cross-Brain boundary
 - **WHEN** a focused note in a per-Brain graph has a directly connected foreign note while general Related Brains visibility is off
@@ -246,36 +258,73 @@ Secondary-button and context-menu gestures MUST NOT begin or continue node dragg
 - **THEN** the camera fits the focused note and its visible direct neighbors rather than every lower-emphasis orientation marker
 
 #### Scenario: Clear an invalidated focus
-- **WHEN** the reader changes Brain selection or an explicit filter so the focused note is no longer included
-- **THEN** Brain clears the focus indicator and removes the focused-note state from the canonical URL
+- **WHEN** the reader applies a type, status, or tag filter that excludes the focused note
+- **THEN** Brain clears the focus indicator and removes the in-session focus state from the graph page's URL
+
+#### Scenario: Keep focus through the lens
+- **WHEN** the reader dims the focused note's Brain through the lens
+- **THEN** the focused neighborhood stays at full emphasis and focus is not cleared
 
 #### Scenario: Ignore recipient filter history
-- **WHEN** a reader opens a focused-neighborhood URL but stored local filter state would hide the focused note
-- **THEN** the shared focus takes precedence on initial restoration so the subject and its neighborhood remain visible
+- **WHEN** a reader opens a neighborhood page but stored local filter or lens state would hide or dim the focused note
+- **THEN** the focused neighborhood takes precedence on initial restoration so the subject and its neighborhood remain visible at full emphasis
 
 #### Scenario: Operate focus without a fine pointer
 - **WHEN** a touch reader long-presses a note or a keyboard reader selects a graph-search result
 - **THEN** Brain establishes the same persistent focused state and exposes accessible actions to copy or clear it
 
 ### Requirement: Focused graph round-trip navigation
-When a reader opens a note from a persistently focused global graph, the note destination SHALL retain the valid originating Brain selection and focused composite note as return context. The originating focus MAY be the opened note or another note in the same visible focused neighborhood. The note's context-aware Graph action MUST restore that originating graph selection and focus, including for a first-time recipient of the note URL, without changing the opened note's canonical identity. A direct note visit without valid originating focus context MUST NOT infer a pinned neighborhood.
+When a reader opens a note from a persistently focused graph, the note destination MAY carry the originating focused note as in-session return context. The originating focus MAY be the opened note or another note in the same visible focused neighborhood. The note's Graph action MUST open the originating note's neighborhood page when that context is present and valid, and otherwise MUST open the opened note's own neighborhood page. Losing the return context MUST degrade to the opened note's own neighborhood page rather than to a selection step or recovery card. A direct note visit without return context MUST NOT infer a different pinned note.
 
 #### Scenario: Return after opening the focused note
-- **WHEN** a reader opens the focused note from a pinned Engineering and Design graph and then activates Graph on the note page
-- **THEN** Brain returns to the Engineering and Design graph with the same note and neighborhood persistently focused
+- **WHEN** a reader opens the focused note from a pinned neighborhood and then activates Graph on the note page
+- **THEN** Brain opens that note's neighborhood page with the same note and neighborhood focused
 
 #### Scenario: Return after opening a focused neighbor
 - **WHEN** a reader opens a neighboring note from a graph pinned on another note and then activates Graph on the note page
-- **THEN** Brain restores the original pinned note and neighborhood rather than moving focus to the opened neighbor
+- **THEN** Brain opens the originally pinned note's neighborhood page rather than the opened neighbor's
 
 #### Scenario: Open a focused-context note link without prior state
-- **WHEN** a first-time visitor opens a valid note URL carrying originating graph selection and focus context and activates Graph
-- **THEN** Brain restores the encoded focused graph without requiring a previous Brain selection or navigation-history entry
+- **WHEN** a first-time visitor opens a note URL carrying valid return context and activates Graph
+- **THEN** Brain opens the originating note's neighborhood page through a pathname-only link without requiring any prior selection or history
 
 #### Scenario: Open a direct note without return focus
-- **WHEN** a reader opens a namespaced note URL that has no valid originating graph focus context
-- **THEN** the note's Graph action opens the owning-Brain graph without persistent focus
+- **WHEN** a reader opens a namespaced note URL with no return context
+- **THEN** the note's Graph action opens that note's own neighborhood page
+
+#### Scenario: Lose return context through a proxy
+- **WHEN** a note URL carrying return context is reopened with its query string removed
+- **THEN** the note opens normally and its Graph action opens the note's own neighborhood page
 
 #### Scenario: Ignore invalid return focus
-- **WHEN** a note URL carries a focus that is unknown or invalid for its encoded graph selection
-- **THEN** Brain omits the invalid focus and provides the valid unpinned graph destination for the retained selection or owning Brain
+- **WHEN** a note URL carries return context naming an unknown note
+- **THEN** Brain ignores it and the Graph action opens the opened note's own neighborhood page
+
+### Requirement: Note-owned focused neighborhood page
+Every published note SHALL have a generated focused-neighborhood page at its canonical note path followed by a `graph/` segment. The page MUST render the note's context graph, the full workspace graph in workspace mode or the vault graph in vault mode, with that note persistently focused, its direct neighbors and incident edges at full emphasis regardless of the reader's Brain lens, unrelated markers as lower-emphasis orientation context, and a camera fit containing the focused note and its direct neighbors. The page MUST be the destination of the copied neighborhood link, the note page's Graph action when no originating focus applies, and the note's own focused-neighborhood action. It MUST open identically for a first-time visitor and for a reader whose lens dims one of the neighborhood's Brains.
+
+In workspace mode the page MUST list the connected domains of the neighborhood: every Brain that owns the focused note or one of its direct neighbors, identified by the Brain mark, accent, and title, with the count of neighborhood notes it owns and an indication when that Brain is dimmed elsewhere by the lens. Activating a listed domain MUST toggle the reader's lens for that Brain without removing any neighborhood node. In vault mode the page MUST omit the domain list.
+
+#### Scenario: Open a note's neighborhood page
+- **WHEN** a reader opens `/brains/engineering/notes/principles/graph/` directly
+- **THEN** the full workspace graph renders with Principles persistently focused, its direct neighbors emphasized, and the camera fitted to that neighborhood
+
+#### Scenario: See connected domains
+- **WHEN** a focused Engineering note has two Design neighbors and one Research neighbor
+- **THEN** the page lists Engineering, Design, and Research with their marks, accents, and counts
+
+#### Scenario: Open while a domain is dimmed
+- **WHEN** a reader whose lens dims Research opens a neighborhood page containing Research neighbors
+- **THEN** the Research neighbors render at full emphasis, the Research domain entry indicates it is dimmed elsewhere, and unrelated Research notes stay dimmed
+
+#### Scenario: Toggle a domain from the list
+- **WHEN** a reader activates the Research entry in the domain list
+- **THEN** the lens for Research toggles, the neighborhood keeps every node, and the graph URL is unchanged
+
+#### Scenario: Open a vault-mode neighborhood page
+- **WHEN** a single-vault site reader opens `/notes/principles/graph/`
+- **THEN** the vault graph renders with Principles focused and no domain list is shown
+
+#### Scenario: Open an isolated note's neighborhood
+- **WHEN** a note has no links in or out
+- **THEN** its neighborhood page renders the context graph with only that note focused and lists only its owning domain

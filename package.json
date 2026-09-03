@@ -2,7 +2,7 @@
   "name": "brain",
   "description": "Generate a static second-brain site from Brain Markdown",
   "type": "module",
-  "version": "1.5.1",
+  "version": "1.6.0",
   "private": true,
   "license": "MIT",
   "repository": {

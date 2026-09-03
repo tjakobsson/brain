@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.0 - 2026-09-03
+
+- Give every note its own neighborhood page at `<note path>/graph/`, so Copy link, the note-page Graph action, and the focused-neighborhood action emit pathname-only URLs that survive SSO proxies which drop query strings and fragments.
+- Render the full workspace graph at the root instead of a Brain chooser, moving the chooser's hierarchy, accents, and Enter actions into the graph's Brain control.
+- Add a personal Brain lens that dims unchecked Brains in place while keeping them hoverable, clickable, and searchable; it is stored in the reader's browser, never in a URL, and focused neighborhoods always render at full emphasis and list connected domains as chips.
+- Aggregate the root tags, recent, and orphans reports across every Brain with owner labels.
+- Breaking: remove `?brains=` combined views and the chooser page. `/graph` and old `/graph?brains=` links open the full workspace graph, and quick-switcher scope and not-found recovery derive from the pathname only.
+
 ## 1.5.1 - 2026-09-02
 
 - Preserve validated Brain scope and originating graph focus across every note-navigation path, including the quick switcher, while recovering clearly from malformed shared context.

@@ -28,81 +28,24 @@ A brain's canonical identity SHALL be its stable ID. Moving a brain between hier
 - **WHEN** a publisher moves `research` from one presentation group to another without changing its ID
 - **THEN** existing links to `@research` and URLs beneath that brain remain unchanged
 
-### Requirement: Brain chooser and contextual navigation
-The multi-brain root page SHALL present every configured brain in the declared hierarchy and make entering one Brain the primary action on each Brain card. Combining Brains MUST remain available as a secondary selection action, but the chooser MUST NOT initially present a disabled multi-Brain requirement as the page's dominant call to action. The chooser and contextual navigation MUST identify Brain entries with a shared brain-shaped mark, and each configured Brain MAY tint that mark with its accent. Brain cards MUST use a uniform neutral boundary rather than an asymmetric accent border. Brain titles or stable IDs MUST remain visible so identity never depends on the mark or color alone. At desktop widths, cards in the same chooser grid MUST remain visually aligned when a Brain title or stable `@brain` identifier wraps onto multiple lines. Shared navigation MUST NOT reserve a persistent Brain selector. A note page MUST identify the note's owning Brain in its metadata alongside type, status, and tags, using discoverable text so ownership does not depend on the Brain mark or color. While a Brain browsing scope is active, graph and search entry points MUST retain and identify that scope where those destinations apply; Brain-specific tags, recent notes, and orphans MAY continue to use the note owner's Brain when no combined destination exists.
-
-#### Scenario: Enter a brain
-- **WHEN** a reader arrives at the root chooser without making a selection
-- **THEN** each Brain presents an obvious Enter Brain action while the page does not lead with an instruction requiring two selections
-
-#### Scenario: Begin a combined selection
-- **WHEN** a reader selects one Brain for combination
-- **THEN** the chooser reveals secondary guidance to select another Brain without obscuring the selected card's direct Enter Brain action
-
-#### Scenario: Distinguish Brain entries without color
-- **WHEN** a reader views the chooser or context switcher without perceiving the configured accent colors
-- **THEN** every entry remains identifiable by its Brain mark together with its title or stable ID
-
-#### Scenario: Present a Brain card
-- **WHEN** the chooser displays a configured Brain
-- **THEN** its card uses the Brain mark for accent identity and does not use a colored top or side rule as decoration
-#### Scenario: Align cards with wrapping identifiers
-- **WHEN** desktop chooser cards include `@brain` identifiers that occupy different numbers of lines
-- **THEN** cards in the same grid row retain aligned boundaries and consistently positioned actions without truncating the identifiers
-
-#### Scenario: Identify note ownership
-- **WHEN** a reader opens a note owned by Engineering while browsing Engineering and Design
-- **THEN** the note metadata identifies Engineering as the owner without misrepresenting the retained Engineering and Design browsing scope
-
-#### Scenario: Keep note titles clear
-- **WHEN** a long note title wraps on a supported phone viewport
-- **THEN** shared navigation does not reserve a Brain control or overlap the title
-
-#### Scenario: Keep navigation focused
-- **WHEN** a reader uses shared navigation on a workspace page
-- **THEN** the navigation pill contains navigation actions without a separate Brain selector
-
-### Requirement: Reader-selected combined view
-The root chooser and full-graph Brain control SHALL allow a reader to select two or more configured brains and open a combined view containing exactly those brains. The selected set MUST be represented canonically in the URL so the view can be bookmarked and shared, and an unknown brain ID MUST produce a clear not-found result rather than silently changing the selection. Changing the combined set from the graph control MUST update the graph, URL, control state, quick switcher, and applicable context-scoped navigation together. When a reader follows a note from a combined graph or selected-scope search, the note route MUST retain the valid selected set as browsing context without changing the note's canonical identity or owning-Brain path. Subsequent note and search navigation MUST preserve that context until the reader explicitly changes scope or enters a destination that establishes a different context. The graph MUST NOT reserve a separate permanent banner for listing the selected Brain titles.
-
-#### Scenario: Open a combined domain view
-- **WHEN** a reader selects Engineering and Research
-- **THEN** the combined view includes notes and connections from exactly those two brains and the full-graph Brain control exposes the selected set
-
-#### Scenario: Share a combined view
-- **WHEN** another reader opens the URL for a saved Engineering and Research selection
-- **THEN** Brain restores the same selected set without relying on browser storage
-
-#### Scenario: Read a note without losing selection
-- **WHEN** a reader opens an Engineering note from an Engineering and Design combined graph
-- **THEN** the note remains owned by Engineering while its URL and applicable navigation retain the Engineering and Design browsing scope
-
-#### Scenario: Follow another note in retained scope
-- **WHEN** a reader follows an internal note result or note link while a valid combined browsing scope is present
-- **THEN** the destination retains the same selected set unless the reader explicitly chooses another scope
-
-#### Scenario: Open a note directly
-- **WHEN** a reader opens a namespaced note URL without selected-Brain context
-- **THEN** applicable navigation defaults to the note's owning Brain
-
-#### Scenario: Change a combined selection
-- **WHEN** a reader changes the selected Brains through the full-graph Brain control
-- **THEN** the graph, URL, control state, and applicable contextual destinations represent the resulting selection without a separate combined-context banner
-
 ### Requirement: Self-contained workspace destination links
-Every generated or copied link to a workspace destination that requires a Brain selection SHALL encode that selection or identify it through the destination's canonical namespaced path. Opening the link MUST resolve the intended published destination without relying on local storage, session storage, navigation history, or a previously selected Brain. Unknown or malformed encoded context MUST produce the existing clear not-found or invalid-selection recovery rather than silently opening the chooser as if no destination had been requested.
+Every generated or copied link to a workspace destination SHALL identify that destination through its pathname alone, using the destination's canonical namespaced path. Opening the link MUST resolve the intended published destination without relying on query parameters, URL fragments, local storage, session storage, navigation history, or a previously selected Brain, so that an authenticating proxy that returns only the pathname after sign-in still delivers the same destination. Query parameters MAY carry in-session graph state on a graph page, but losing them MUST never change which destination opens or narrow what it shows. An unknown Brain ID or note in a link path MUST produce the existing clear not-found recovery rather than silently opening a different page.
 
 #### Scenario: Open a shared link as a first-time visitor
-- **WHEN** a reader with no prior state for the site opens a valid link to a note, selected graph, or other Brain-scoped destination
-- **THEN** Brain opens the linked destination in its encoded Brain scope instead of requiring the reader to choose a Brain first
+- **WHEN** a reader with no prior state for the site opens a copied neighborhood link
+- **THEN** Brain opens that note's focused neighborhood with every configured Brain present instead of requiring a Brain selection first
+
+#### Scenario: Survive a pathname-only proxy
+- **WHEN** an authenticating proxy strips the query string and fragment from a shared workspace link before returning the reader to the site
+- **THEN** the destination opens identically to a direct visit of the same pathname
 
 #### Scenario: Preserve canonical destination identity
-- **WHEN** a generated link identifies a note through its owning Brain path and also carries browsing context
-- **THEN** the owning-Brain path remains the note's canonical identity while the additional context affects only applicable navigation
+- **WHEN** a generated link identifies a note or its neighborhood through the note's owning Brain path
+- **THEN** the owning-Brain path remains the note's canonical identity and no additional URL context is required to open it
 
 #### Scenario: Reject invalid shared context
-- **WHEN** a shared destination link contains an unknown Brain ID or malformed selection
-- **THEN** Brain presents the applicable invalid-context recovery and does not substitute browser history or stored state
+- **WHEN** a shared link's path names a Brain or note that is not published
+- **THEN** Brain presents not-found recovery and does not substitute browser history or stored state
 
 ### Requirement: Static configured collaboration boundary
 Brain SHALL combine only sources declared by the publisher at build time. Generation MUST NOT merge, move, or modify source files, and the generated site MUST NOT allow readers to attach arbitrary remote brains at runtime.
@@ -112,16 +55,78 @@ Brain SHALL combine only sources declared by the publisher at build time. Genera
 - **THEN** Brain publishes their combined indexes while leaving every source directory unchanged
 
 ### Requirement: Context-aware missing-page recovery
-A workspace not-found page SHALL offer a safe route to the Brain chooser and search. When the missing URL contains a valid canonical selected-Brain scope, the page MUST offer recovery to that selected graph and recommend a published note owned by one of those Brains. Otherwise, when the route grammar identifies one configured Brain, the page MUST offer recovery to that Brain's graph and recommend a note from that Brain. Unknown or malformed Brain IDs MUST NOT be treated as valid scope.
+A workspace not-found page SHALL offer a safe route to the full workspace graph and search. When the route grammar identifies one configured Brain, the page MUST offer recovery to that Brain's graph and recommend a published note from that Brain; otherwise it MUST recommend a published note from the whole workspace. Query parameters MUST NOT be treated as scope, and unknown or malformed Brain IDs MUST NOT be treated as valid scope.
 
 #### Scenario: Recover inside one Brain
 - **WHEN** a reader requests a missing route beneath `/brains/engineering/`
 - **THEN** the not-found page links to Engineering's graph and recommends a published Engineering note
 
+#### Scenario: Recover at workspace level
+- **WHEN** a reader requests a missing route outside any configured Brain path
+- **THEN** the not-found page links to the full workspace graph and recommends a published note from any configured Brain
+
 #### Scenario: Recover inside a retained selection
-- **WHEN** a missing note URL retains a valid Engineering and Design browsing scope
-- **THEN** the not-found page links to that combined graph and recommends a note owned by Engineering or Design
+- **WHEN** a missing note URL beneath `/brains/engineering/` also carries query parameters naming Engineering and Design
+- **THEN** the not-found page recovers to Engineering's graph from the path alone and does not present the query values as a selection
+
+#### Scenario: Ignore query scope
+- **WHEN** a missing URL outside any Brain path carries query parameters naming configured Brains
+- **THEN** the page offers workspace-wide recovery and does not present the query values as a selection
 
 #### Scenario: Reject misleading path inference
 - **WHEN** a missing URL contains an unknown Brain ID or only resembles a Brain name outside the supported route grammar
 - **THEN** the page falls back to workspace-wide recovery without presenting the unknown value as a configured Brain
+
+### Requirement: Full workspace root graph and Brain identity
+In workspace mode the root page SHALL present one interactive graph containing every configured Brain at full emphasis without requiring a Brain selection. The graph's Brain control MUST list every configured Brain in the declared hierarchy, identify each entry with the shared brain-shaped mark, MAY tint that mark with the Brain's accent, and MUST keep the Brain title or stable `@brain` identifier visible so identity never depends on the mark or color alone. Each listed Brain MUST offer a direct action that opens that Brain's own graph. Shared navigation MUST NOT reserve a persistent Brain selector. A note page MUST identify the note's owning Brain in its metadata alongside type, status, and tags using discoverable text. Workspace-level tags, recent, and orphans pages MUST aggregate every configured Brain and identify each entry's owning Brain, while Brain-scoped versions of those pages remain beneath the Brain's namespaced path.
+
+#### Scenario: Arrive at the workspace root
+- **WHEN** a reader with no prior state for the site opens the workspace root
+- **THEN** the full graph of every configured Brain renders without a selection step and the Brain control lists every Brain in its declared hierarchy
+
+#### Scenario: Enter a Brain from the control
+- **WHEN** a reader activates a Brain's direct action in the Brain control
+- **THEN** the browser opens that Brain's own graph beneath its namespaced path
+
+#### Scenario: Distinguish Brain entries without color
+- **WHEN** a reader views the Brain control or a note's ownership metadata without perceiving the configured accent colors
+- **THEN** every entry remains identifiable by its Brain mark together with its title or stable ID
+
+#### Scenario: Identify note ownership
+- **WHEN** a reader opens a note owned by Engineering
+- **THEN** the note metadata identifies Engineering as the owner using discoverable text
+
+#### Scenario: Browse workspace-wide reports
+- **WHEN** a reader opens the workspace-level tags, recent, or orphans page
+- **THEN** entries from every configured Brain appear with their owning Brain identified, without a redirect to a selection step
+
+#### Scenario: Keep navigation focused
+- **WHEN** a reader uses shared navigation on a workspace page
+- **THEN** the navigation pill contains navigation actions without a separate Brain selector
+
+### Requirement: Personal Brain lens
+The full workspace graph and each per-Brain graph SHALL let a reader dim any configured Brain through a checkbox-style Brain control. Dimming a Brain MUST lower the emphasis of that Brain's nodes, titles, and incident edges without removing them from the graph, without changing node positions, and without changing any URL. The lens MUST be remembered in the reader's own browser across pages and later visits to the same site, MUST be resettable to all Brains from the control, MUST NOT be encoded in generated or copied links, and MUST NOT affect any other reader. When every Brain would be dimmed, the graph MUST render every Brain at full emphasis. A persistently focused neighborhood MUST render at full emphasis regardless of the lens.
+
+#### Scenario: Dim a Brain
+- **WHEN** a reader unchecks Research in the Brain control on the full workspace graph
+- **THEN** Research nodes, titles, and incident edges recede while remaining rendered in place and the page URL does not change
+
+#### Scenario: Return in a later session
+- **WHEN** a reader who dimmed Research opens any graph page of the same site in a later browser session
+- **THEN** Research is still dimmed and the Brain control shows it unchecked
+
+#### Scenario: Reset the lens
+- **WHEN** a reader activates the control's reset action
+- **THEN** every Brain returns to full emphasis and the remembered lens is cleared
+
+#### Scenario: Dim every Brain
+- **WHEN** a reader unchecks the last remaining checked Brain
+- **THEN** the graph renders every Brain at full emphasis rather than an all-dimmed graph
+
+#### Scenario: Share while dimmed
+- **WHEN** a reader with Research dimmed copies a neighborhood link and another reader opens it
+- **THEN** the recipient sees the neighborhood with every Brain at full emphasis and no lens information in the URL
+
+#### Scenario: Focus outranks the lens
+- **WHEN** a reader with Research dimmed opens a focused neighborhood that contains Research notes
+- **THEN** the focused note and its direct neighbors, including the Research notes, render at full emphasis while unrelated Research notes stay dimmed
