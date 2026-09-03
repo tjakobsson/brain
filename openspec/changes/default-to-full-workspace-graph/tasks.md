@@ -28,7 +28,7 @@
 
 ## 5. Verification and Documentation
 
-- [ ] 5.1 Update README and docs URL examples to the neighborhood path form and remove combined-view and chooser instructions, and verify `grep -rn "brains=" README.md docs` returns nothing.
+- [x] 5.1 Update README and docs URL examples to the neighborhood path form and remove combined-view and chooser instructions, and verify `grep -rn "brains=" README.md docs` returns nothing.
 - [ ] 5.2 Add a route regression test that enumerates every generated shareable destination for the demo workspace and asserts none depends on query or fragment, and verify it passes.
 - [ ] 5.3 Run `npm test` and resolve all unit and active-spec validation failures.
 - [ ] 5.4 Run `npm run test:browser` and resolve all desktop, mobile, cold-link, lens, neighborhood, aggregate-report, and subpath regressions.

@@ -9,6 +9,7 @@ Brain turns Brain Markdown directories and workspaces into static, searchable se
 - [Run a Brain locally with Docker](#start-with-docker)
 - [Publish a Brain with GitHub Pages](#publish-with-github-pages)
 - [Prepare Brain Markdown](#brain-markdown-format)
+- [Share a note's neighborhood](#sharing-links)
 - [Combine several brains in a workspace](docs/workspaces.md)
 - [Build Brain from source](#source-build)
 
@@ -64,6 +65,14 @@ Brain Markdown remains readable as plain text in general Markdown tools. Native 
 
 To publish several independent directories together, use a [Brain workspace](docs/workspaces.md). Workspace links can target another registered brain with `[[@brain-id/Note Title]]`.
 
+## Sharing links
+
+Every note has a focused-neighborhood page at `<note path>/graph/`: `/notes/<slug>/graph/` for one Brain directory and `/brains/<brain-id>/notes/<slug>/graph/` in a workspace. It opens the site graph pinned on that note with its direct connections at full emphasis. The graph's **Copy neighborhood link** action and the note page's Graph action both produce this URL, and it is the link to share.
+
+The URL is a pathname only, with no query string or fragment, because an authenticating proxy in front of a static site, such as privately published GitHub Pages behind SSO, returns a signed-in visitor to the pathname alone and drops the rest. Any note or graph page reached through such a proxy therefore opens exactly what was shared. Graph pages that are not owned by a note keep `?focus=` as in-session state while you browse; losing it degrades to the same graph unfocused, never to an error or a selection step.
+
+In a workspace, the root page is the full workspace graph, and readers can dim individual brains with a personal lens that is remembered in their own browser and never encoded in a link. See [Routes and reader scope](docs/workspaces.md#routes-and-reader-scope).
+
 ## Source Build
 
 Node.js 22.12 or newer is required:
@@ -107,7 +116,7 @@ node scripts/generator.mjs build \
   --output .generated/workspace-site
 ```
 
-See [Brain workspaces](docs/workspaces.md) for the complete v1 schema, source and container commands, routes, scope rules, and publication constraints.
+See [Brain workspaces](docs/workspaces.md) for the complete v1 schema, source and container commands, routes, the Brain lens, and publication constraints.
 
 ## Build the Docker image locally
 
