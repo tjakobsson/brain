@@ -536,7 +536,6 @@ test("desktop marker and title context menus establish shareable focus without r
       document.body.dataset.lastContextPrevented = String(event.defaultPrevented);
     });
   });
-
   const initialLabel = await renderedLabelAnchor(labels);
   const target = await targetWithinLabel(page, graph, initialLabel);
   const graphBounds = (await graph.boundingBox())!;
@@ -619,7 +618,11 @@ test("desktop marker and title context menus establish shareable focus without r
   );
   await page.mouse.wheel(0, 900);
   await page.waitForTimeout(300);
+  const filters = page.getByRole("button", { name: "Filters" });
+  await filters.click();
+  await expect(filters).toHaveAttribute("aria-expanded", "true");
   const unrelatedTarget = await unrelatedContextTarget(page, graph, menu);
+  await expect(filters).toHaveAttribute("aria-expanded", "false");
   await page.mouse.move(unrelatedTarget.x, unrelatedTarget.y);
   await expect(graph).toHaveCSS("cursor", "auto");
   const focusedUrl = page.url();

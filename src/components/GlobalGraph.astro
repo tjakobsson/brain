@@ -366,9 +366,14 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
     if (lens?.open) lens.open = false;
     if (filterToggle.getAttribute("aria-expanded") === "true") setFiltersOpen(false);
   });
+  document.addEventListener("graph-context-menu-open", () => {
+    if (lens?.open) lens.open = false;
+    if (filterToggle.getAttribute("aria-expanded") === "true") setFiltersOpen(false);
+  });
   document.addEventListener("keydown", (event) => {
     if (document.querySelector("#quick-switcher:not([hidden])")) return;
     if (event.key === "Escape" && filterToggle.getAttribute("aria-expanded") === "true") {
+      if (document.querySelector("[data-graph-context-menu]:not([hidden])")) return;
       event.stopImmediatePropagation();
       setFiltersOpen(false);
       filterToggle.focus();

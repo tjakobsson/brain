@@ -1445,6 +1445,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     menuNode = null;
   };
   const openContextMenu = (node: string, event: MouseEvent) => {
+    document.dispatchEvent(new CustomEvent("graph-context-menu-open"));
     menuNode = node;
     ui.contextFocus.textContent = state.focused ? "Move focus here" : "Pin neighborhood";
     ui.contextMenu.hidden = false;
