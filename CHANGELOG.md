@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.0 - 2026-09-03
+
+- Keep focused graph neighborhoods readable on phones by fitting node markers around visible controls before selecting or shortening labels, and replace the tall focus card with a compact expandable bar that retains the full title and actions.
+
 ## 1.6.0 - 2026-09-03
 
 - Give every note its own neighborhood page at `<note path>/graph/`, so Copy link, the note-page Graph action, and the focused-neighborhood action emit pathname-only URLs that survive SSO proxies which drop query strings and fragments.
