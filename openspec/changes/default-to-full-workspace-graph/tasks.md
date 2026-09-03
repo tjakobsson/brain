@@ -29,9 +29,9 @@
 ## 5. Verification and Documentation
 
 - [x] 5.1 Update README and docs URL examples to the neighborhood path form and remove combined-view and chooser instructions, and verify `grep -rn "brains=" README.md docs` returns nothing.
-- [ ] 5.2 Add a route regression test that enumerates every generated shareable destination for the demo workspace and asserts none depends on query or fragment, and verify it passes.
-- [ ] 5.3 Run `npm test` and resolve all unit and active-spec validation failures.
-- [ ] 5.4 Run `npm run test:browser` and resolve all desktop, mobile, cold-link, lens, neighborhood, aggregate-report, and subpath regressions.
-- [ ] 5.5 Run the stress suite against the demo workspace and a synthetic 2,000-note workspace with the full graph as the default load and verify pan and zoom stay within the existing performance assertions.
-- [ ] 5.6 Run `npm run build` for the demo vault and demo workspace and verify no new unresolved-route warnings and a page count increase equal to the note count.
-- [ ] 5.7 Capture after screenshots matching the before set into `openspec/changes/default-to-full-workspace-graph/screenshots/after/`, including the root full graph, the lens control, a neighborhood page with domain chips, and a neighborhood page opened with a dimmed Brain, and verify the files exist.
+- [x] 5.2 Add a route regression test that enumerates every generated shareable destination for the demo workspace and asserts none depends on query or fragment, and verify it passes.
+- [x] 5.3 Run `npm test` and resolve all unit and active-spec validation failures.
+- [x] 5.4 Run `npm run test:browser` and resolve all desktop, mobile, cold-link, lens, neighborhood, aggregate-report, and subpath regressions.
+- [x] 5.5 Run the stress suite against the demo workspace and a synthetic 2,000-note workspace with the full graph as the default load and verify pan and zoom stay within the existing performance assertions.
+- [x] 5.6 Run `npm run build` for the demo vault and demo workspace and verify no new unresolved-route warnings and a page count increase equal to the note count.
+- [x] 5.7 Capture after screenshots matching the before set into `openspec/changes/default-to-full-workspace-graph/screenshots/after/`, including the root full graph, the lens control, a neighborhood page with domain chips, and a neighborhood page opened with a dimmed Brain, and verify the files exist.
