@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   connectedDomains,
   createFocusUrlSync,
+  graphSessionScope,
   initialGraphFocus,
   neighborhoodHref,
   neighborhoodRoute,
@@ -59,6 +60,31 @@ describe("initial graph focus", () => {
   it("ignores absent or repeated focus queries", () => {
     expect(initialGraphFocus(undefined, "")).toBeNull();
     expect(initialGraphFocus(undefined, "?focus=a&focus=b")).toBeNull();
+  });
+});
+
+describe("graph session scope", () => {
+  it("keeps the root and Brain graph scopes as they were", () => {
+    expect(graphSessionScope({})).toBe("all");
+    expect(graphSessionScope({ neighborhoodFocus: null })).toBe("all");
+    expect(graphSessionScope({ activeBrainId: "engineering" })).toBe("brain:engineering:false");
+    expect(graphSessionScope({ activeBrainId: "engineering", showRelatedBrains: true }))
+      .toBe("brain:engineering:true");
+  });
+
+  it("gives each neighborhood page a scope apart from the root and Brain graphs", () => {
+    const neighborhood = graphSessionScope({ neighborhoodFocus: "engineering/principles" });
+    expect(neighborhood).toBe("neighborhood:engineering/principles");
+    expect(new Set([
+      neighborhood,
+      graphSessionScope({ neighborhoodFocus: "design/principles" }),
+      graphSessionScope({}),
+      graphSessionScope({ activeBrainId: "engineering" }),
+    ]).size).toBe(4);
+    // A neighborhood page never mounts under a Brain scope, even if the host
+    // also names a Brain.
+    expect(graphSessionScope({ activeBrainId: "engineering", neighborhoodFocus: "engineering/principles" }))
+      .toBe(neighborhood);
   });
 });
 

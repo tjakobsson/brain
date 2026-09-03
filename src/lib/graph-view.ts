@@ -43,6 +43,7 @@ import {
 import {
   connectedDomains,
   createFocusUrlSync,
+  graphSessionScope,
   initialGraphFocus,
   neighborhoodHref,
 } from "./graph-neighborhood";
@@ -728,8 +729,9 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       ui.relatedBrainsToggle.querySelector<HTMLElement>("[data-control-label]")!.textContent = label;
     }
   }
+  const neighborhoodFocus = neighborhoodPage ? ui.host.dataset.initialFocus ?? "" : null;
   const motionScope = () =>
-    activeBrainId ? `brain:${activeBrainId}:${showRelatedBrains}` : "all";
+    graphSessionScope({ activeBrainId, showRelatedBrains, neighborhoodFocus });
   const visualContext: GraphContext = activeBrainId
     ? { mode: "brain", brainId: activeBrainId }
     : { mode: "all", encodeBrains: data.mode === "workspace" };

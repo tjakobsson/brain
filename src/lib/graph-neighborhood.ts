@@ -55,6 +55,30 @@ export function initialGraphFocus(hostFocus: string | undefined, search: string)
   return requested.present && requested.valid ? requested.value : null;
 }
 
+export interface GraphSessionScopeOptions {
+  /** The Brain whose graph page this is; absent on the full graph. */
+  activeBrainId?: string;
+  showRelatedBrains?: boolean;
+  /** The note that owns a neighborhood page; `null` on other graph pages. */
+  neighborhoodFocus?: string | null;
+}
+
+/**
+ * The scope a global graph saves and restores its session layout and camera
+ * under. A note-owned neighborhood page gets a scope of its own: it fits the
+ * focused note on load, and that close-up must never come back as the root or
+ * Brain graph's restored camera, which would also skip fitting the whole graph.
+ */
+export function graphSessionScope(options: GraphSessionScopeOptions): string {
+  if (typeof options.neighborhoodFocus === "string") {
+    return `neighborhood:${options.neighborhoodFocus}`;
+  }
+  if (options.activeBrainId) {
+    return `brain:${options.activeBrainId}:${Boolean(options.showRelatedBrains)}`;
+  }
+  return "all";
+}
+
 export interface FocusUrlSyncOptions {
   readonly neighborhoodPage: boolean;
   readonly base: string;

@@ -1491,6 +1491,49 @@ test("neighborhood pages keep query-free URLs and move focus by navigation", asy
   )).toEqual([]);
 });
 
+test("a neighborhood page's focus fit never becomes the root graph's saved camera", async ({ browser }) => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const graph = page.locator("#global-graph");
+  const sessionKeys = () => page.evaluate(() =>
+    Object.keys(sessionStorage).filter((key) => /^graph-(motion|view):/.test(key))
+  );
+  // Fits keep the camera near its default and frame the graph through the
+  // renderer's bounding box, so a saved view's extent is its zoom level.
+  const savedViewArea = (scope: string) => page.evaluate((scope) => {
+    const key = Object.keys(sessionStorage).find((key) =>
+      key.startsWith("graph-view:") && key.includes(`:${scope}:`)
+    );
+    if (!key) return null;
+    const { view } = JSON.parse(sessionStorage.getItem(key)!) as {
+      view: { bbox: { x: [number, number]; y: [number, number] } };
+    };
+    return (view.bbox.x[1] - view.bbox.x[0]) * (view.bbox.y[1] - view.bbox.y[0]);
+  }, scope);
+
+  await page.goto(`${workspace}/brains/engineering/notes/principles/graph`);
+  await expect(graph).toHaveAttribute("data-focused-node", "engineering/principles");
+  await expect.poll(async () => Number(await graph.getAttribute("data-fit-requests"))).toBeGreaterThan(0);
+  // The initial settle completes first, then the focus fit.
+  await expect.poll(async () => Number(await graph.getAttribute("data-motion-completions"))).toBeGreaterThan(1);
+  const neighborhoodScope = "neighborhood:engineering/principles";
+  const neighborhoodArea = await savedViewArea(neighborhoodScope);
+  expect(neighborhoodArea).toBeGreaterThan(0);
+  expect(await savedViewArea("all")).toBeNull();
+  expect((await sessionKeys()).filter((key) => !key.includes(`:${neighborhoodScope}:`))).toEqual([]);
+
+  await page.goto(`${workspace}/`);
+  await expect(graph).toHaveAttribute("data-graph-mode", "all");
+  await expect(graph).not.toHaveAttribute("data-focused-node");
+  // Nothing was saved for the root graph, so it settles and fits every note
+  // instead of restoring the neighborhood close-up.
+  await expect.poll(async () => Number(await graph.getAttribute("data-settle-requests"))).toBeGreaterThan(0);
+  await expect.poll(async () => Number(await graph.getAttribute("data-motion-completions"))).toBeGreaterThan(0);
+  expect(await savedViewArea("all")).toBeGreaterThan(neighborhoodArea!);
+  expect(await savedViewArea(neighborhoodScope)).toBe(neighborhoodArea);
+  await context.close();
+});
+
 test("graph ownership legend remains non-color-readable on mobile", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${workspace}/brains/engineering`);
