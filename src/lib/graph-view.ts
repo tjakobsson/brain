@@ -19,6 +19,7 @@ import {
   type GraphHoverState,
 } from "./graph-interaction";
 import { fitRenderedGraph } from "./graph-fit";
+import { createLensReducers, createLensStore, normalizeLens } from "./graph-lens";
 import { wireLocalGraphLabelReveal } from "./graph-local-labels";
 import { GraphMotionController } from "./graph-motion";
 import { ResponsiveGraphScheduler } from "./graph-motion-core";
@@ -40,11 +41,17 @@ import {
   responsiveLabelSettings,
 } from "./graph-style";
 import {
-  brainSelectionContext,
+  connectedDomains,
+  createFocusUrlSync,
+  graphSessionScope,
+  initialGraphFocus,
+  neighborhoodHref,
+} from "./graph-neighborhood";
+import {
   joinBase,
   routes,
+  routesFor,
   singularQueryValue,
-  withGraphContext,
   withGraphFocus,
   type LogicalRoute,
 } from "./routes";
@@ -659,12 +666,41 @@ export interface GlobalGraphUI {
   contextFocus: HTMLButtonElement;
   contextCopy: HTMLButtonElement;
   contextOpen: HTMLButtonElement;
+  /** The Brain lens control; absent in vault mode. */
+  lens?: GraphLensUI | null;
+  /** Connected-domain chips; present only on workspace-mode neighborhood pages. */
+  domains?: GraphDomainsUI | null;
+}
+
+export interface GraphLensUI {
+  control: HTMLElement;
+  summary: HTMLElement;
+  checkboxes: readonly HTMLInputElement[];
+  reset: HTMLButtonElement;
+}
+
+export interface GraphDomainChipUI {
+  brainId: string;
+  title: string;
+  item: HTMLElement;
+  toggle: HTMLButtonElement;
+  count: HTMLElement;
+  state: HTMLElement;
+}
+
+export interface GraphDomainsUI {
+  list: HTMLElement;
+  /** One chip per configured Brain, already in declared hierarchy order. */
+  chips: readonly GraphDomainChipUI[];
 }
 
 export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   const data = await fetchGraphData();
   const activeBrainId = ui.host.dataset.activeBrainId;
-  const combined = ui.host.dataset.graphMode === "combined";
+  // A note-owned neighborhood page names its note in the host attribute. Its
+  // pathname is the shareable identity, so focus never becomes query state
+  // there and moving focus navigates to the other note's neighborhood page.
+  const neighborhoodPage = ui.host.dataset.neighborhoodPage === "true";
   const relatedBrainsStorageKey = activeBrainId && ui.relatedBrainsToggle
     ? `graph-related-brains:${window.location.pathname}`
     : null;
@@ -693,22 +729,12 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       ui.relatedBrainsToggle.querySelector<HTMLElement>("[data-control-label]")!.textContent = label;
     }
   }
-  const initialQuery = singularQueryValue(new URLSearchParams(window.location.search), "brains");
-  const initialSelection = brainSelectionContext(
-    data.brains,
-    initialQuery.valid && initialQuery.present ? initialQuery.value : "",
-  );
-  let selectedBrainIds = combined && initialSelection.valid ? [...initialSelection.brainIds] : [];
-  const motionScope = () => {
-    if (activeBrainId) return `brain:${activeBrainId}:${showRelatedBrains}`;
-    if (combined) return `combined:${[...selectedBrainIds].sort().join(",")}`;
-    return "all";
-  };
+  const neighborhoodFocus = neighborhoodPage ? ui.host.dataset.initialFocus ?? "" : null;
+  const motionScope = () =>
+    graphSessionScope({ activeBrainId, showRelatedBrains, neighborhoodFocus });
   const visualContext: GraphContext = activeBrainId
     ? { mode: "brain", brainId: activeBrainId }
-    : combined
-      ? { mode: "combined", brainIds: selectedBrainIds }
-      : { mode: "all" };
+    : { mode: "all", encodeBrains: data.mode === "workspace" };
   const graph = buildGraph(data, visualContext);
   const nodeByCompositeId = new Map(data.nodes.map((node) => [node.compositeId, node.id]));
   const compositeIds = [...nodeByCompositeId.keys()];
@@ -806,17 +832,20 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     draggedMoved: false,
     theme,
   };
-  const requestedFocusValue = singularQueryValue(new URLSearchParams(window.location.search), "focus");
-  const requestedFocus = requestedFocusValue.valid && requestedFocusValue.present
-    ? requestedFocusValue.value
-    : null;
+  const requestedFocus = initialGraphFocus(ui.host.dataset.initialFocus, window.location.search);
   setFocusedInspection(
     graph,
     state,
     requestedFocus ? nodeByCompositeId.get(requestedFocus) ?? null : null,
   );
+  const pageNode = neighborhoodPage ? state.focused : null;
   let initialFocusOverride = state.focused !== null;
-  const hoverReducers = createHoverReducers(graph, state);
+  // The personal Brain lens: dimmed Brain IDs remembered per site base in the
+  // reader's own browser. It lowers emphasis in place and never reaches a URL.
+  const knownBrainIds = data.brains.map(({ id }) => id);
+  const lensStore = createLensStore(import.meta.env.BASE_URL);
+  let dimmedBrains: ReadonlySet<string> = new Set(normalizeLens(lensStore.read(), knownBrainIds));
+  const lensReducers = createLensReducers(graph, state, { dimmed: () => dimmedBrains, hidden });
   let query = "";
 
   const activeTypes = () =>
@@ -830,8 +859,56 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     if (activeBrainId) {
       return { mode: "brain", brainId: activeBrainId, includeForeign: showRelatedBrains };
     }
-    if (combined) return { mode: "combined", brainIds: selectedBrainIds };
     return { mode: "all" };
+  }
+
+  // Nodes the lens currently renders dimmed: a hovered or focused neighborhood
+  // is excluded because it outranks the lens.
+  function updateLensStats(): void {
+    ui.host.dataset.lens = [...dimmedBrains].join(",");
+    ui.host.dataset.dimmedNodes = String(graph.nodes().filter((id) =>
+      !hidden.has(id) &&
+      dimmedBrains.has(graph.getNodeAttribute(id, "brainId") as string) &&
+      !isInspectionNeighborhoodNode(state, id)
+    ).length);
+  }
+
+  /**
+   * Connected domains of the focused neighborhood on a workspace neighborhood
+   * page: one chip per Brain owning the focused note or a visible neighbor.
+   * The chip order is the declared hierarchy, fixed in the markup; the
+   * grouping is client-side so it always matches the graph the reader sees.
+   */
+  function updateDomains(): void {
+    const domains = ui.domains;
+    if (!domains) return;
+    const focused = state.focused;
+    if (!focused) {
+      domains.list.hidden = true;
+      return;
+    }
+    const member = (id: string) => ({ id, brainId: graph.getNodeAttribute(id, "brainId") as string });
+    const present = new Map(
+      connectedDomains(
+        member(focused),
+        graph.neighbors(focused).filter((id) => !hidden.has(id)).map(member),
+        domains.chips.map((chip) => chip.brainId),
+      ).map((domain) => [domain.brainId, domain.count]),
+    );
+    for (const chip of domains.chips) {
+      const count = present.get(chip.brainId);
+      chip.item.hidden = count === undefined;
+      if (count === undefined) continue;
+      const dimmed = dimmedBrains.has(chip.brainId);
+      chip.count.textContent = String(count);
+      chip.count.setAttribute("aria-label", `${count} ${count === 1 ? "note" : "notes"}`);
+      chip.state.hidden = !dimmed;
+      chip.toggle.setAttribute("aria-pressed", String(dimmed));
+      chip.toggle.title = dimmed
+        ? `Show ${chip.title} at full emphasis everywhere`
+        : `Dim ${chip.title} outside this neighborhood`;
+    }
+    domains.list.hidden = false;
   }
 
   function edgeKey(source: string, target: string): string {
@@ -846,41 +923,31 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     return deriveGraphData(data, context).nodes.some(({ id }) => id === node);
   };
 
-  const focusedRoute = (): LogicalRoute => {
-    const graphContext = brainSelectionContext(
-      data.brains,
-      combined ? selectedBrainIds : activeBrainId ? [activeBrainId] : [],
-    );
-    const current = graphContext.valid ? graphContext.graph : routes.home;
-    const compositeId = state.focused
-      ? graph.getNodeAttribute(state.focused, "compositeId") as string
-      : null;
-    return withGraphFocus(current, compositeIds, compositeId);
+  const focusedCompositeId = (): string | null => state.focused
+    ? graph.getNodeAttribute(state.focused, "compositeId") as string
+    : null;
+
+  const syncFocusUrlState = createFocusUrlSync({
+    neighborhoodPage,
+    base: import.meta.env.BASE_URL,
+    graphRoute: activeBrainId
+      ? routesFor({ mode: "workspace", brainId: activeBrainId }).graph
+      : routes.home,
+    knownCompositeIds: compositeIds,
+    location: window.location,
+    history: window.history,
+  });
+  const syncFocusUrl = () => syncFocusUrlState(focusedCompositeId());
+
+  /** Pathname-only link to a node's own neighborhood page. */
+  const nodeNeighborhoodHref = (node: string): string => {
+    const datum = data.nodes.find(({ id }) => id === node);
+    if (!datum) throw new Error(`graph: unknown node ${node}`);
+    return neighborhoodHref(import.meta.env.BASE_URL, window.location.origin, datum, data.mode);
   };
 
-  const syncFocusUrl = () => {
-    const href = joinBase(import.meta.env.BASE_URL, focusedRoute());
-    if (`${window.location.pathname}${window.location.search}` !== href) {
-      window.history.replaceState(null, "", href);
-    }
-  };
-
-  const selectedScope = (): readonly string[] => {
-    if (combined) return selectedBrainIds;
-    if (activeBrainId) return [activeBrainId];
-    return [];
-  };
-
-  const noteHref = (route: LogicalRoute): string => {
-    const scope = selectedScope();
-    const focus = state.focused
-      ? graph.getNodeAttribute(state.focused, "compositeId") as string
-      : null;
-    const scoped = scope.length > 0 || focus
-      ? withGraphContext(data.brains, compositeIds, route, scope, focus)
-      : null;
-    return joinBase(import.meta.env.BASE_URL, scoped?.valid ? scoped.route : route);
-  };
+  const noteHref = (route: LogicalRoute): string =>
+    joinBase(import.meta.env.BASE_URL, withGraphFocus(route, compositeIds, focusedCompositeId()));
 
   const focusIds = () => state.focused
     ? [state.focused, ...graph.neighbors(state.focused).filter((id) => !hidden.has(id))]
@@ -902,6 +969,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     ui.focusStatus.hidden = false;
     ui.focusTitle.textContent = title;
     ui.focusOpen.href = noteHref(route);
+    updateDomains();
   };
 
   const fitFocus = () => {
@@ -916,6 +984,15 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   };
 
   const setFocus = (node: string | null, fit = false) => {
+    if (neighborhoodPage) {
+      // The page is one note's neighborhood: another note's focus lives on
+      // that note's page, and clearing has no meaning here.
+      if (node && node !== pageNode && focusAllowed(node)) {
+        window.location.assign(nodeNeighborhoodHref(node));
+        return;
+      }
+      node = pageNode;
+    }
     const next = node && focusAllowed(node) ? node : null;
     initialFocusOverride = false;
     setFocusedInspection(graph, state, next);
@@ -971,6 +1048,8 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     );
     ui.host.dataset.crossEdges = String(visibleCrossEdges.length);
     ui.host.dataset.relatedBrainsVisible = String(Boolean(activeBrainId && showRelatedBrains));
+    updateLensStats();
+    updateDomains();
   }
 
   let revealNarrowLabels = forceLabelsOnNarrowZoom(
@@ -1006,24 +1085,22 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
         res.highlighted = true;
       }
       if (state.focused && node !== state.focused) res.suppressHover = true;
-      if (activeNode) {
-        return hoverReducers.nodeReducer(node, res as typeof attrs);
-      } else if (query && !label.includes(query)) {
-        res.color = state.theme.fadedNode;
-        res.label = "";
+      // Precedence: inspected neighborhood at full emphasis, then the lens,
+      // then search fading and normal styling. `res` is already a copy.
+      const styled = lensReducers.nodeReducer(node, res as typeof attrs) as Record<string, unknown>;
+      if (!activeNode && query && !label.includes(query)) {
+        styled.color = state.theme.fadedNode;
+        styled.label = "";
       }
-      return res as typeof attrs;
+      return styled as typeof attrs;
     });
     renderer.setSetting("edgeReducer", (edge, attrs) => {
-      const activeNode = activeInspectionNode(state);
-      const res = { ...attrs } as Record<string, unknown>;
       const source = graph.source(edge);
       const target = graph.target(edge);
       if (!contextEdges.has(edgeKey(source, target)) || hidden.has(source) || hidden.has(target)) {
-        res.hidden = true;
+        return { ...attrs, hidden: true };
       }
-      else if (activeNode) return hoverReducers.edgeReducer(edge, attrs);
-      return res as typeof attrs;
+      return lensReducers.edgeReducer(edge, attrs);
     });
     renderer.refresh();
   }
@@ -1039,6 +1116,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       [...displayed].filter((id) => graph.getNodeAttribute(id, "foreign") === true && !hidden.has(id)).length,
     );
     ui.host.dataset.renderedMarkers = String(graph.order - hidden.size);
+    if (dimmedBrains.size > 0) updateLensStats();
     const inspected = activeInspectionNode(state);
     if (inspected) updateInspectionTargetStats(ui.host, renderer, graph, inspected);
     else delete ui.host.dataset.inspectionTargetGeometry;
@@ -1136,24 +1214,52 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     renderSearchResults();
   };
   ui.relatedBrainsToggle?.addEventListener("click", onRelatedBrainsToggle);
+
+  const syncLensControl = () => {
+    const lens = ui.lens;
+    if (!lens) return;
+    for (const control of lens.checkboxes) control.checked = !dimmedBrains.has(control.value);
+    const label = dimmedBrains.size === 0 ? "Brains" : `Brains: ${dimmedBrains.size} dimmed`;
+    lens.summary.setAttribute("aria-label", label);
+    lens.summary.title = label;
+    lens.control.toggleAttribute("data-dimmed", dimmedBrains.size > 0);
+  };
+  const setLens = (dimmed: Iterable<string>) => {
+    dimmedBrains = new Set(normalizeLens(dimmed, knownBrainIds));
+    if (dimmedBrains.size === 0) lensStore.reset();
+    else lensStore.write([...dimmedBrains]);
+    syncLensControl();
+    updateLensStats();
+    updateDomains();
+    applyReducers();
+  };
+  const onLensChange = () => {
+    setLens((ui.lens?.checkboxes ?? []).filter((box) => !box.checked).map((box) => box.value));
+  };
+  const onLensReset = () => setLens([]);
+  for (const control of ui.lens?.checkboxes ?? []) control.addEventListener("change", onLensChange);
+  ui.lens?.reset.addEventListener("click", onLensReset);
+  // A domain chip toggles its Brain in the same lens. The neighborhood keeps
+  // every node because focus outranks the lens, and the URL never changes.
+  const toggleDomain = (brainId: string) => {
+    const next = new Set(dimmedBrains);
+    if (next.has(brainId)) next.delete(brainId);
+    else next.add(brainId);
+    setLens(next);
+  };
+  const domainListeners = (ui.domains?.chips ?? []).map((chip) => {
+    const listener = () => toggleDomain(chip.brainId);
+    chip.toggle.addEventListener("click", listener);
+    return () => chip.toggle.removeEventListener("click", listener);
+  });
+  syncLensControl();
+
   const onNarrowGraphChange = () => {
     const next = responsiveState();
     if (state.dragged) responsiveScheduler.defer(next);
     else responsiveScheduler.update(next);
   };
   narrowGraphQuery.addEventListener("change", onNarrowGraphChange);
-
-  if (combined) {
-    document.addEventListener("brain-selection-change", (event) => {
-      const selection = (event as CustomEvent<{ brainIds: readonly string[] }>).detail;
-      selectedBrainIds = [...selection.brainIds];
-      motion.setSessionScope(motionScope());
-      refresh();
-      updateFocusUI();
-      syncFocusUrl();
-      renderSearchResults();
-    });
-  }
 
   /* Search: dim non-matches, list matches, camera-focus on selection. */
   function renderSearchResults(): void {
@@ -1238,12 +1344,11 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     const route = graph.getNodeAttribute(node, "route") as LogicalRoute;
     window.location.assign(noteHref(route));
   };
-  const copyFocusedLink = async (button: HTMLButtonElement) => {
-    if (!state.focused) return;
+  const copyNeighborhoodLink = async (node: string, button: HTMLButtonElement) => {
     const previous = button.textContent ?? "Copy link";
     window.clearTimeout(copyResetTimer ?? undefined);
     try {
-      await navigator.clipboard.writeText(new URL(joinBase(import.meta.env.BASE_URL, focusedRoute()), window.location.origin).href);
+      await navigator.clipboard.writeText(nodeNeighborhoodHref(node));
       button.textContent = "Copied";
       button.setAttribute("aria-label", "Copied neighborhood link");
     } catch {
@@ -1261,14 +1366,18 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     closeContextMenu();
   });
   ui.contextCopy.addEventListener("click", () => {
-    if (menuNode) setFocus(menuNode);
-    void copyFocusedLink(ui.focusCopy);
+    if (menuNode) {
+      if (!neighborhoodPage) setFocus(menuNode);
+      void copyNeighborhoodLink(menuNode, ui.focusCopy);
+    }
     closeContextMenu();
   });
   ui.contextOpen.addEventListener("click", () => {
     if (menuNode) openNode(menuNode);
   });
-  ui.focusCopy.addEventListener("click", () => void copyFocusedLink(ui.focusCopy));
+  ui.focusCopy.addEventListener("click", () => {
+    if (state.focused) void copyNeighborhoodLink(state.focused, ui.focusCopy);
+  });
   ui.focusClear.addEventListener("click", () => setFocus(null));
   document.addEventListener("pointerdown", (event) => {
     if (!ui.contextMenu.hidden && event.target instanceof Node && !ui.contextMenu.contains(event.target)) {
@@ -1337,6 +1446,9 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     window.removeEventListener("pagehide", flushSession);
     ui.fitViewButton.removeEventListener("click", onFitView);
     ui.relatedBrainsToggle?.removeEventListener("click", onRelatedBrainsToggle);
+    for (const control of ui.lens?.checkboxes ?? []) control.removeEventListener("change", onLensChange);
+    ui.lens?.reset.removeEventListener("click", onLensReset);
+    for (const remove of domainListeners) remove();
     narrowGraphQuery.removeEventListener("change", onNarrowGraphChange);
     document.removeEventListener("visibilitychange", onVisibilityChange);
     motion.destroy();
@@ -1536,32 +1648,16 @@ export async function mountLocalGraphs(): Promise<void> {
     };
     wireHoverAndClick(renderer, graph, state, interruptAutomaticMotion, {
       onNavigate: (_node, route) => {
-        const parameters = new URLSearchParams(window.location.search);
-        const requested = singularQueryValue(parameters, "brains");
-        const requestedFocus = singularQueryValue(parameters, "focus");
-        const retained = requested.valid && requested.present
-          ? brainSelectionContext(data.brains, requested.value)
-          : null;
-        if (requested.present && (!requested.valid || !retained?.valid)) {
-          const recovery = `${routes.graphAlias}${window.location.search}` as LogicalRoute;
-          window.location.assign(joinBase(import.meta.env.BASE_URL, recovery));
-          return;
-        }
-        const fallbackBrainId = host.dataset.activeBrainId;
-        const scope = retained?.valid && retained.brainIds.length > 0
-          ? retained.brainIds
-          : fallbackBrainId && data.mode === "workspace" ? [fallbackBrainId] : [];
+        const requestedFocus = singularQueryValue(new URLSearchParams(window.location.search), "focus");
         const focus = requestedFocus.valid && requestedFocus.present ? requestedFocus.value : null;
-        const graphContext: GraphContext = scope.length > 1
-          ? { mode: "combined", brainIds: scope }
-          : scope.length === 1
-            ? { mode: "brain", brainId: scope[0], includeForeign: true }
-            : { mode: "all" };
+        const fallbackBrainId = host.dataset.activeBrainId;
+        const graphContext: GraphContext = fallbackBrainId && data.mode === "workspace"
+          ? { mode: "brain", brainId: fallbackBrainId, includeForeign: true }
+          : { mode: "all" };
         const knownCompositeIds = deriveGraphData(data, graphContext).nodes.map(({ compositeId }) => compositeId);
-        const scoped = scope.length > 0 || focus
-          ? withGraphContext(data.brains, knownCompositeIds, route, scope, focus)
-          : null;
-        window.location.assign(joinBase(import.meta.env.BASE_URL, scoped?.valid ? scoped.route : route));
+        window.location.assign(
+          joinBase(import.meta.env.BASE_URL, withGraphFocus(route, knownCompositeIds, focus)),
+        );
       },
     });
     wireNodeDragging(renderer, graph, state, (node) => {

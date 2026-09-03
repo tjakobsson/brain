@@ -72,7 +72,7 @@ Brain fields:
 
 Unknown fields are rejected. Brain paths must resolve to distinct readable directories. Duplicate IDs, duplicate real paths, missing group references, missing parent groups, hierarchy cycles, invalid accents, and unsupported manifest versions stop generation before output changes.
 
-Groups organize the chooser only. They never become part of a note ID, link target, or URL. A brain ID is the durable identity. Keep it unchanged when renaming a brain, changing its description or accent, or moving it between groups. Those presentation edits then leave cross-brain links and note URLs unchanged.
+Groups order the Brain control on the workspace graph only. They never become part of a note ID, link target, or URL. A brain ID is the durable identity. Keep it unchanged when renaming a brain, changing its description or accent, or moving it between groups. Those presentation edits then leave cross-brain links and note URLs unchanged.
 
 ## Brain Markdown
 
@@ -123,22 +123,29 @@ Workspace mode uses stable brain IDs in routes:
 
 | Route | Scope |
 | --- | --- |
-| `/` | Workspace chooser |
+| `/` | Full workspace graph with every configured brain |
+| `/tags`, `/tags/<tag>`, `/recent`, `/orphans` | Workspace-wide reports; each entry names its owning brain |
 | `/brains/<brain-id>` | One brain's graph |
 | `/brains/<brain-id>/notes/<slug>` | One note |
+| `/brains/<brain-id>/notes/<slug>/graph` | That note's focused neighborhood |
 | `/brains/<brain-id>/tags` | One brain's tags |
 | `/brains/<brain-id>/tags/<tag>` | One brain and tag |
 | `/brains/<brain-id>/recent` | One brain's recent notes |
 | `/brains/<brain-id>/orphans` | One brain's orphans |
-| `/graph?brains=<id,id>` | Reader-selected combined graph |
+
+Every route is a pathname. No reader scope is carried in a query string or fragment; see [Sharing links](../README.md#sharing-links). `/graph` redirects to `/`. Links from earlier releases that selected brains through a query parameter now open the full workspace graph; that parameter is ignored everywhere and there is no combined view of a chosen subset.
 
 Generated attachment URLs are also namespaced by the owning brain, so equal attachment paths in different brains cannot collide.
 
-Combined selections contain exactly the requested declared brains. Brain removes duplicates and writes IDs in manifest registry order to produce one canonical, shareable URL. An unknown ID produces an error instead of silently changing scope.
+A per-brain graph contains all local notes plus directly connected foreign notes as boundary nodes. It does not add unrelated notes from foreign brains. The workspace graph contains every note from every brain and every resolved edge. Graph search identifies each result's owning brain, including when two brains use the same title.
 
-The navigation pill's quick switcher searches note titles and tags. It defaults to the active brain, uses the current selection on a combined page, and offers an explicit all-brains scope. Search opened from the root chooser uses all brains because no brain is active.
+The navigation pill's quick switcher searches note titles and tags. On a brain's pages it defaults to that brain and offers the whole workspace as an explicit wider scope. On workspace-level pages it searches every brain.
 
-A per-brain graph contains all local notes plus directly connected foreign notes as boundary nodes. It does not add unrelated notes from foreign brains. A combined graph contains notes owned by the selected brains and resolved edges whose endpoints remain in that selection. Graph search identifies each result's owning brain, including when two brains use the same title.
+### Brain lens
+
+The workspace graph's Brain control lists every brain in declared hierarchy order with its mark, accent, and description, and opens each brain's own graph. Unchecking a brain dims its notes and edges in place. Dimmed nodes stay in the graph, keep their hover and click behavior, and remain reachable through graph search. Nothing is removed and the reader never has to pick brains before a graph appears. The control's reset action clears the lens, and a lens that would dim every brain renders as no lens at all.
+
+The lens is remembered in the reader's own browser through `localStorage`, never written into a URL, and never shared. A focused neighborhood outranks it: a shared neighborhood link renders at full emphasis regardless of which brains the recipient has dimmed. Neighborhood pages list the connected domains, one chip per brain that owns the focused note or a directly connected neighbor, with that brain's mark, accent, and note count. A chip shows when its brain is dimmed elsewhere in the graph, and toggling it changes the lens.
 
 ## Build from source
 
@@ -265,7 +272,7 @@ It rejects lexical paths and symlinks that resolve outside the caller checkout. 
 
 ## Migrate from one Brain directory
 
-No migration is required to keep a current single-brain site. Continue using `--vault <path>`. That mode preserves `/`, `/notes/<slug>`, and the existing unnamespaced report routes.
+No migration is required to keep a current single-brain site. Continue using `--vault <path>`. That mode preserves `/`, `/notes/<slug>`, `/notes/<slug>/graph`, and the existing unnamespaced report routes.
 
 Move to workspace mode deliberately:
 

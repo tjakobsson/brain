@@ -652,14 +652,26 @@ test("desktop marker and title context menus establish shareable focus without r
     (window as unknown as { copiedNeighborhoodLink?: string }).copiedNeighborhoodLink
   );
   expect(copied).toBeTruthy();
-  expect(copied).not.toMatch(/[?&](?:camera|x|y|ratio|filter|position)=/u);
-  expect(new URL(copied!).searchParams.get("focus")).toBe(`default/${focusedNode}`);
+  const copiedUrl = new URL(copied!);
+  expect(copiedUrl.pathname).toBe(`${base}/notes/${focusedNode}/graph`);
+  expect(copiedUrl.search).toBe("");
+  expect(copiedUrl.hash).toBe("");
   const recipient = await page.context().newPage();
   await recipient.setViewportSize({ width: 390, height: 844 });
   await recipient.route("**/graph-data.json", (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify(graphData) }),
   );
+  // The fixture node is synthetic, so serve a real neighborhood page shell
+  // whose initial focus names it.
+  await recipient.route(`**/notes/${focusedNode}/graph`, async (route) => {
+    const response = await route.fetch({
+      url: new URL(`${base}/notes/welcome/graph/`, route.request().url()).href,
+    });
+    const body = (await response.text()).replaceAll("default/welcome", `default/${focusedNode}`);
+    await route.fulfill({ response, body });
+  });
   await recipient.goto(copied!);
+  await expect(recipient).toHaveURL(copied!);
   const recipientGraph = recipient.locator("#global-graph");
   await expect(recipientGraph).toHaveAttribute("data-focused-node", focusedNode ?? "");
   await expect.poll(async () => Number(await recipientGraph.getAttribute("data-fit-requests")))

@@ -1,23 +1,26 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
-import BrainChooser from "../components/BrainChooser.astro";
 import GlobalGraph from "../components/GlobalGraph.astro";
 import { getWorkspaceSnapshot } from "../lib/vault-state";
 import packageMetadata from "../../package.json";
 
+// The site root is the graph: the vault graph in vault mode, and in workspace
+// mode the full workspace graph with every configured Brain present. The root
+// is the only page that exposes About.
 const snapshot = getWorkspaceSnapshot();
+const isWorkspace = snapshot.mode === "workspace";
 const generatorLabel = `Brain v${packageMetadata.version}`;
 ---
 
-{snapshot.mode === "workspace" ? (
-  <BaseLayout title={snapshot.registry.title} chooser>
-    <BrainChooser registry={snapshot.registry} />
-    <footer class="chooser-about">
+<BaseLayout title={isWorkspace ? snapshot.registry.title : "Graph"} fluid>
+  <GlobalGraph />
+  {isWorkspace && (
+    <footer class="graph-about">
       <button
-        class="chooser-about__trigger"
+        class="graph-about__trigger"
         type="button"
         aria-label="About"
-        aria-controls="chooser-about-disclosure"
+        aria-controls="graph-about-disclosure"
         aria-expanded="false"
       >
         <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -26,22 +29,21 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
         </svg>
         <span>About</span>
       </button>
-      <aside id="chooser-about-disclosure" class="about-disclosure" hidden aria-label="About Brain">
+      <aside id="graph-about-disclosure" class="about-disclosure" hidden aria-label="About Brain">
+        <p class="eyebrow">Brain workspace</p>
+        <p class="about-title">{snapshot.registry.title}</p>
+        {snapshot.registry.description && <p class="about-description">{snapshot.registry.description}</p>}
         <p class="eyebrow">Generated with</p>
         <p class="about-version">{generatorLabel}</p>
         <a href="https://github.com/tjakobsson/brain">Project releases</a>
       </aside>
     </footer>
-  </BaseLayout>
-) : (
-  <BaseLayout title="Graph" fluid>
-    <GlobalGraph />
-  </BaseLayout>
-)}
+  )}
+</BaseLayout>
 
 <script>
-  const trigger = document.querySelector<HTMLButtonElement>(".chooser-about__trigger");
-  const disclosure = document.querySelector<HTMLElement>("#chooser-about-disclosure");
+  const trigger = document.querySelector<HTMLButtonElement>(".graph-about__trigger");
+  const disclosure = document.querySelector<HTMLElement>("#graph-about-disclosure");
   if (trigger && disclosure) {
     const close = (restoreFocus = false) => {
       disclosure.hidden = true;

@@ -2,7 +2,7 @@
 import "../styles/global.css";
 import QuickSwitcher from "../components/QuickSwitcher.astro";
 import packageMetadata from "../../package.json";
-import { joinBase, routes, routesFor } from "../lib/routes";
+import { joinBase, routes, routesFor, type LogicalRoute } from "../lib/routes";
 import { getWorkspaceSnapshot } from "../lib/vault-state";
 
 interface Props {
@@ -11,9 +11,7 @@ interface Props {
   /** Full-bleed pages (graph): no max-width, no padding. */
   fluid?: boolean;
   activeBrainId?: string;
-  combined?: boolean;
-  noteContext?: { ownerBrainId: string; compositeId: string };
-  chooser?: boolean;
+  noteContext?: { ownerBrainId: string; compositeId: string; neighborhoodRoute: LogicalRoute };
 }
 
 const {
@@ -21,9 +19,7 @@ const {
   wide = false,
   fluid = false,
   activeBrainId,
-  combined = false,
   noteContext,
-  chooser = false,
 } = Astro.props;
 const snapshot = getWorkspaceSnapshot();
 const isWorkspace = snapshot.mode === "workspace";
@@ -33,14 +29,24 @@ const activeBrain = activeBrainId
 if (isWorkspace && activeBrainId && !activeBrain) {
   throw new Error(`Unknown active brain ${JSON.stringify(activeBrainId)}.`);
 }
+// Navigation follows the page's path. Beneath `/brains/<id>/` the Graph, Tags,
+// Recent, and Orphans actions are that Brain's; on workspace-level pages (the
+// root graph, workspace-wide reports, not-found) they are the full workspace
+// graph and the root aggregates, which share the vault route shapes.
 const contextualRoutes = activeBrain
   ? routesFor({ mode: "workspace", brainId: activeBrain.id })
   : routesFor({ mode: "vault" });
-const baseGraphRoute = activeBrain ? contextualRoutes.graph : combined ? routes.graphAlias : routes.home;
-const hasGraphRoute = !isWorkspace || Boolean(activeBrain) || combined;
-const hasContextReports = !isWorkspace || Boolean(activeBrain);
-const hasNoteNavigation = isWorkspace && Boolean(noteContext) && !fluid && !chooser;
-const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.meta.env.BASE_URL, route);
+const contextGraphRoute = activeBrain ? contextualRoutes.graph : routes.home;
+// A note page's Graph action opens the note's own neighborhood page unless
+// valid in-session return context redirects it client-side to the originating
+// note's neighborhood page. Both are pathname-only destinations.
+const noteGraphRoute = noteContext?.neighborhoodRoute ?? contextGraphRoute;
+// The workspace root graph is the destination Graph would open, so it omits
+// the action. Every other page, including a Brain's own graph, keeps it.
+const isWorkspaceRootGraph = isWorkspace && fluid && !activeBrain && !noteContext;
+const hasGraphRoute = !isWorkspaceRootGraph;
+const hasNoteNavigation = isWorkspace && Boolean(noteContext) && !fluid;
+const url = (route: LogicalRoute) => joinBase(import.meta.env.BASE_URL, route);
 const brainRegistry = snapshot.registry.brains.map(({ id, title }) => ({ id, title }));
 const generatorLabel = `Brain v${packageMetadata.version}`;
 ---
@@ -51,6 +57,7 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
   data-brain-registry={JSON.stringify(brainRegistry)}
   data-note-focus={noteContext?.compositeId}
   data-note-owner={noteContext?.ownerBrainId}
+  data-note-neighborhood={noteContext?.neighborhoodRoute}
   data-workspace-mode={isWorkspace ? "true" : "false"}
 >
   <head>
@@ -63,7 +70,7 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
   </head>
   <body>
     <div class="site-header-slot">
-      {isWorkspace && !fluid && !chooser && !hasNoteNavigation && (
+      {isWorkspace && !fluid && !hasNoteNavigation && (
         <a class="page-home-action nav-action" href={url(routes.home)} aria-label="Home" title="Home">
           <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
             <path d="m4 10 8-6 8 6v9a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1Z"></path>
@@ -79,7 +86,7 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
           </a>
           <a
             class="nav-action note-graph-trigger"
-            href={url(baseGraphRoute)}
+            href={url(noteGraphRoute)}
             aria-label="Graph"
             title="Graph"
             data-scoped-graph-route
@@ -116,13 +123,11 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
             {!hasNoteNavigation && (
               <a
                 class="nav-action graph-trigger"
-                href={url(baseGraphRoute)}
+                href={url(noteGraphRoute)}
                 aria-label="Graph"
                 title="Graph"
-                data-combined-route={combined ? "" : undefined}
-                data-combined-graph-route={combined ? "" : undefined}
                 data-scoped-graph-route={noteContext ? "" : undefined}
-                hidden={!hasGraphRoute || combined}
+                hidden={!hasGraphRoute}
               >
                 <svg class="nav-icon graph-icon" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M7.5 7.5 12 5l4.5 2.5v5L12 15l-4.5-2.5z"></path>
@@ -147,60 +152,49 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
                 <path d="m16 16 4 4"></path>
               </svg>
             </button>
-            {hasContextReports && (
-              <a class="nav-action nav-direct-action" href={url(contextualRoutes.tags)} aria-label="Tags" title="Tags">
-                <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M4 5.5V11l8.5 8.5 7-7L11 4H5.5A1.5 1.5 0 0 0 4 5.5Z"></path>
-                  <circle cx="8" cy="8" r="1"></circle>
-                </svg>
-              </a>
-            )}
-            {hasContextReports && (
-              <a class="nav-action nav-direct-action" href={url(contextualRoutes.recent)} aria-label="Recent" title="Recent">
-                <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <circle cx="12" cy="12" r="8"></circle>
-                  <path d="M12 7v5l3.5 2"></path>
-                </svg>
-              </a>
-            )}
-            {hasContextReports && (
-              <a class="nav-action nav-direct-action" href={url(contextualRoutes.orphans)} aria-label="Orphans" title="Orphans">
-                <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <circle cx="8" cy="8" r="2.5"></circle>
-                  <circle cx="16" cy="16" r="2.5"></circle>
-                  <path d="m10 10 4 4" stroke-dasharray="2.5 2.5"></path>
-                </svg>
-              </a>
-            )}
+            <a class="nav-action nav-direct-action" href={url(contextualRoutes.tags)} aria-label="Tags" title="Tags">
+              <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 5.5V11l8.5 8.5 7-7L11 4H5.5A1.5 1.5 0 0 0 4 5.5Z"></path>
+                <circle cx="8" cy="8" r="1"></circle>
+              </svg>
+            </a>
+            <a class="nav-action nav-direct-action" href={url(contextualRoutes.recent)} aria-label="Recent" title="Recent">
+              <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="8"></circle>
+                <path d="M12 7v5l3.5 2"></path>
+              </svg>
+            </a>
+            <a class="nav-action nav-direct-action" href={url(contextualRoutes.orphans)} aria-label="Orphans" title="Orphans">
+              <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="8" cy="8" r="2.5"></circle>
+                <circle cx="16" cy="16" r="2.5"></circle>
+                <path d="m10 10 4 4" stroke-dasharray="2.5 2.5"></path>
+              </svg>
+            </a>
             </div>
           </div>
         </nav>
       </header>
     </div>
-    <main class:list={[{ wide, fluid, "has-home": isWorkspace && !fluid && !chooser }]}>
+    <main class:list={[{ wide, fluid, "has-home": isWorkspace && !fluid }]}>
       <slot />
     </main>
     <QuickSwitcher
       activeBrainId={activeBrainId}
-      combined={combined}
       workspace={isWorkspace}
       brainRegistry={brainRegistry}
     />
     <script>
       import {
-        brainSelectionContext,
-        canonicalBrainSelection,
         joinBase,
         routes,
         singularQueryValue,
-        withGraphContext,
-        withBrainScope,
         withGraphFocus,
         withoutGraphFocus,
-        type BrainSelectionContext,
         type LogicalRoute,
       } from "../lib/routes";
-      import { deriveGraphData, normalizeGraphData } from "../lib/graph-data";
+      import { normalizeGraphData } from "../lib/graph-data";
+      import { noteGraphActionRoute } from "../lib/graph-neighborhood";
 
       const header = document.querySelector<HTMLElement>(".site-header")!;
       const launcher = header.querySelector<HTMLButtonElement>(".nav-launcher")!;
@@ -255,101 +249,46 @@ const generatorLabel = `Brain v${packageMetadata.version}`;
       new ResizeObserver(applyNavigationState).observe(actions);
       applyNavigationState();
 
-      const registry = JSON.parse(document.documentElement.dataset.brainRegistry ?? "[]") as { id: string }[];
-      const requestedScope = singularQueryValue(new URLSearchParams(window.location.search), "brains");
-      const retainedScope = !requestedScope.valid || !requestedScope.present
-        ? null
-        : canonicalBrainSelection(registry, requestedScope.value);
       const noteOwner = document.documentElement.dataset.noteOwner;
       const workspaceMode = document.documentElement.dataset.workspaceMode === "true";
-      if (workspaceMode && noteOwner && requestedScope.present && (!requestedScope.valid || !retainedScope?.valid)) {
-        window.location.replace(joinBase(
-          import.meta.env.BASE_URL,
-          `${routes.graphAlias}${window.location.search}` as LogicalRoute,
-        ));
-      }
-      if (retainedScope?.valid && retainedScope.brainIds.length > 0) {
-        for (const anchor of document.querySelectorAll<HTMLAnchorElement>("a[data-note-route]")) {
-          const route = anchor.dataset.noteRoute as LogicalRoute | undefined;
-          if (!route) continue;
-          const scoped = withBrainScope(registry, route, retainedScope.brainIds);
-          if (scoped.valid) anchor.href = joinBase(import.meta.env.BASE_URL, scoped.route);
-        }
-        const focus = document.documentElement.dataset.noteFocus;
-        const graphContext = brainSelectionContext(registry, retainedScope.brainIds);
-        if (focus && graphContext.valid && graphContext.kind !== "chooser") {
-          const route = withGraphFocus(graphContext.graph, [focus], focus);
-          for (const anchor of document.querySelectorAll<HTMLAnchorElement>("[data-focused-graph-route]")) {
-            anchor.href = joinBase(import.meta.env.BASE_URL, route);
-          }
-          for (const anchor of document.querySelectorAll<HTMLAnchorElement>("[data-scoped-graph-route]")) {
-            anchor.href = joinBase(import.meta.env.BASE_URL, graphContext.graph);
-          }
-        }
-      }
       const requestedFocus = singularQueryValue(new URLSearchParams(window.location.search), "focus");
       const clearInvalidFocus = () => {
         const current = `${window.location.pathname}${window.location.search}${window.location.hash}` as LogicalRoute;
         window.history.replaceState(null, "", withoutGraphFocus(current));
       };
       if (noteOwner && requestedFocus.present && !requestedFocus.valid) clearInvalidFocus();
-      const noteGraphContext = retainedScope?.valid && retainedScope.brainIds.length > 0
-        ? brainSelectionContext(registry, retainedScope.brainIds)
-        : workspaceMode && noteOwner ? brainSelectionContext(registry, [noteOwner]) : null;
-      if (
-        noteOwner &&
-        (!workspaceMode || (noteGraphContext?.valid && noteGraphContext.kind !== "chooser")) &&
-        requestedFocus.valid &&
-        requestedFocus.present
-      ) {
+      const ownNeighborhood = document.documentElement.dataset.noteNeighborhood as LogicalRoute | undefined;
+      if (noteOwner && ownNeighborhood && requestedFocus.valid && requestedFocus.present) {
+        // Return context names the note whose neighborhood the reader came
+        // from. Resolve it against the whole graph so the Graph action becomes
+        // that note's neighborhood page; unknown context degrades to this
+        // note's own page. Either way the link is a pathname.
         const restoreOriginatingFocus = async () => {
           const response = await fetch(joinBase(import.meta.env.BASE_URL, routes.graphData));
           if (!response.ok) throw new Error(`Graph data request failed: ${response.status}`);
           const data = normalizeGraphData(await response.json());
-          const context = !workspaceMode
-            ? { mode: "all" as const }
-            : noteGraphContext!.kind === "combined"
-              ? { mode: "combined" as const, brainIds: noteGraphContext!.brainIds }
-              : { mode: "brain" as const, brainId: noteGraphContext!.brainIds[0], includeForeign: true };
-          const knownCompositeIds = deriveGraphData(data, context).nodes.map(({ compositeId }) => compositeId);
+          const knownCompositeIds = data.nodes.map(({ compositeId }) => compositeId);
           if (!knownCompositeIds.includes(requestedFocus.value)) {
             clearInvalidFocus();
             return;
           }
+          const mode = workspaceMode ? "workspace" : "vault";
+          const graphRoute = noteGraphActionRoute(ownNeighborhood, requestedFocus.value, data.nodes, mode);
           document.documentElement.dataset.originatingGraphFocus = requestedFocus.value;
-          const graphRoute = withGraphFocus(
-            workspaceMode ? noteGraphContext!.graph : routes.home,
-            knownCompositeIds,
-            requestedFocus.value,
-          );
           for (const anchor of document.querySelectorAll<HTMLAnchorElement>("[data-scoped-graph-route]")) {
             anchor.href = joinBase(import.meta.env.BASE_URL, graphRoute);
           }
           for (const anchor of document.querySelectorAll<HTMLAnchorElement>("a[data-note-route]")) {
             const route = anchor.dataset.noteRoute as LogicalRoute | undefined;
             if (!route) continue;
-            const scoped = withGraphContext(
-              registry,
-              knownCompositeIds,
-              route,
-              workspaceMode ? noteGraphContext!.brainIds : [],
-              requestedFocus.value,
+            anchor.href = joinBase(
+              import.meta.env.BASE_URL,
+              withGraphFocus(route, knownCompositeIds, requestedFocus.value),
             );
-            if (scoped.valid) anchor.href = joinBase(import.meta.env.BASE_URL, scoped.route);
           }
         };
         restoreOriginatingFocus().catch((error) => console.error("[note-navigation] failed to restore graph focus", error));
       }
-      const combinedGraph = header.querySelector<HTMLAnchorElement>("[data-combined-graph-route]");
-      if (combinedGraph) {
-        combinedGraph.setAttribute("href", `${window.location.pathname}${window.location.search}`);
-      }
-      document.addEventListener("brain-selection-change", (event) => {
-        const selection = (event as CustomEvent<BrainSelectionContext>).detail;
-        if (combinedGraph && selection.valid && selection.kind === "combined") {
-          combinedGraph.href = joinBase(import.meta.env.BASE_URL, selection.graph);
-        }
-      });
     </script>
   </body>
 </html>

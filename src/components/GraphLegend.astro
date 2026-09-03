@@ -7,10 +7,13 @@ interface BrainKey {
 
 interface Props {
   id: string;
-  context: "global" | "brain" | "combined" | "local";
+  /** `global` is the single-vault graph; `workspace` is the full workspace graph. */
+  context: "global" | "brain" | "workspace" | "local";
   brains?: BrainKey[];
   activeBrainId?: string;
   globalControl?: boolean;
+  /** The graph has a Brain lens, so dimmed nodes can appear. */
+  lens?: boolean;
 }
 
 const {
@@ -19,8 +22,9 @@ const {
   brains = [],
   activeBrainId,
   globalControl = false,
+  lens = false,
 } = Astro.props;
-const brainAware = context === "brain" || context === "combined" || context === "local";
+const brainAware = context === "brain" || context === "workspace" || context === "local";
 ---
 
 <div class:list={["graph-legend-disclosure", { "graph-legend-disclosure--global": globalControl }]} data-graph-legend-disclosure>
@@ -54,7 +58,7 @@ const brainAware = context === "brain" || context === "combined" || context === 
     <ul>
       <li><span class="graph-legend-symbols" aria-hidden="true">○ ◇ ◆</span><span>Draft, developing, established</span></li>
       <li><span class="graph-legend-size" aria-hidden="true"><i></i><i></i></span><span>Larger nodes have more connections</span></li>
-      {context === "combined" && (
+      {context === "workspace" && (
         <li><span class="cross-edge-key" aria-hidden="true"></span><span>Thick line links different brains</span></li>
       )}
       {(context === "brain" || context === "local") && (
@@ -65,6 +69,9 @@ const brainAware = context === "brain" || context === "combined" || context === 
       )}
       {context === "local" && (
         <li><span class="graph-legend-related" aria-hidden="true">•••</span><span>Other nodes are notes up to two links away</span></li>
+      )}
+      {lens && (
+        <li><span class="dimmed-node-key" aria-hidden="true"></span><span>Dimmed node belongs to a Brain unchecked in the lens; it is not hidden and still opens on click. A focused neighborhood always shows fully</span></li>
       )}
     </ul>
     {brainAware && brains.length > 0 && (

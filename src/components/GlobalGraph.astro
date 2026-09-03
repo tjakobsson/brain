@@ -1,15 +1,29 @@
 ---
+import { brainHierarchy } from "../lib/brain-hierarchy";
 import { getLinkIndex } from "../lib/link-index";
-import { joinBase, routes } from "../lib/routes";
+import { joinBase, routes, routesFor } from "../lib/routes";
 import { getWorkspaceSnapshot } from "../lib/vault-state";
 import BrainMark from "./BrainMark.astro";
 import GraphLegend from "./GraphLegend.astro";
 
-interface Props { activeBrainId?: string; combined?: boolean }
-const { activeBrainId, combined = false } = Astro.props;
+interface Props {
+  activeBrainId?: string;
+  /**
+   * Composite note ID that a note-owned neighborhood page mounts with. The
+   * page's URL is the destination itself: focus never becomes query state
+   * there, and moving focus navigates to that note's neighborhood page.
+   */
+  initialFocus?: string;
+}
+const { activeBrainId, initialFocus } = Astro.props;
+const neighborhoodPage = Boolean(initialFocus);
 const index = getLinkIndex();
 const snapshot = getWorkspaceSnapshot();
 const isWorkspace = snapshot.mode === "workspace";
+// The workspace root is the full workspace graph: every configured Brain at
+// full emphasis unless the reader's own lens dims it.
+const fullWorkspace = isWorkspace && !activeBrainId;
+const workspaceRoot = fullWorkspace && !neighborhoodPage;
 const allTags = [...new Set(index.notes.flatMap((note) => note.meta.tags))].sort();
 const typeCounts = new Map<string, number>();
 for (const note of index.notes) {
@@ -27,19 +41,17 @@ if (activeBrainId) {
   }
 }
 const legendBrains = snapshot.registry.brains.filter((brain) =>
-  combined || brain.id === activeBrainId || boundaryBrainIds.has(brain.id)
+  fullWorkspace || brain.id === activeBrainId || boundaryBrainIds.has(brain.id)
 );
-const contextActionLabel = activeBrain
-  ? `Brain context: ${activeBrain.title}`
-  : combined ? "Brain context: combined brains" : "Brain context: Brain chooser";
-const brainRouteRegistry = snapshot.registry.brains.map(({ id, title }) => ({ id, title }));
+const hierarchy = isWorkspace ? brainHierarchy(snapshot.registry) : [];
+const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.meta.env.BASE_URL, route);
 ---
 
 <div class="graph-page">
   <div class:list={["graph-shell", "filters-closed", { "has-related-brains": activeBrainId && boundaryBrainIds.size > 0 }]}>
     <div class="graph-controls">
-      {isWorkspace && (
-        <a class="graph-control graph-home-action" href={joinBase(import.meta.env.BASE_URL, routes.home)} aria-label="Home" title="Home">
+      {isWorkspace && !workspaceRoot && (
+        <a class="graph-control graph-home-action" href={url(routes.home)} aria-label="Home" title="Home">
           <svg class="graph-control-icon" viewBox="0 0 24 24" aria-hidden="true">
             <path d="m4 10 8-6 8 6v9a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1Z"></path>
           </svg>
@@ -86,43 +98,61 @@ const brainRouteRegistry = snapshot.registry.brains.map(({ id, title }) => ({ id
       )}
       <GraphLegend
         id="global-graph-legend"
-        context={combined ? "combined" : activeBrainId ? "brain" : "global"}
+        context={activeBrainId ? "brain" : isWorkspace ? "workspace" : "global"}
         brains={legendBrains}
         activeBrainId={activeBrainId}
+        lens={isWorkspace}
         globalControl
       />
       {isWorkspace && (
-        <details
-          class="context-switcher"
-          data-registry={JSON.stringify(brainRouteRegistry)}
-          data-active-brain-id={activeBrainId}
-          data-combined={combined ? "true" : "false"}
-        >
-          <summary
-            role="button"
-            aria-label={contextActionLabel}
-            aria-expanded="false"
-            title={contextActionLabel}
-            style={activeBrain ? `--brain-accent: ${activeBrain.accent}` : undefined}
-          >
-            <span class="context-switcher__mark">
+        <details class="brain-lens" data-graph-lens>
+          <summary role="button" aria-label="Brains" aria-expanded="false" title="Brains">
+            <span class="brain-lens__mark">
               <BrainMark />
-              <span class="context-switcher__satellite" hidden={!combined} aria-hidden="true"></span>
+              <span class="brain-lens__satellite" aria-hidden="true"></span>
             </span>
           </summary>
-          <form class="context-switcher__panel">
-            <fieldset>
-              <legend>Brain context</legend>
-              {snapshot.registry.brains.map((brain) => (
-                <label style={`--brain-accent: ${brain.accent}`}>
-                  <input type="checkbox" name="brain-context" value={brain.id} checked={brain.id === activeBrainId} />
-                  <BrainMark />
-                  <span class="context-switcher__label" title={`@${brain.id}`}>@{brain.id}</span>
-                </label>
-              ))}
-            </fieldset>
-            <button type="submit">Apply</button>
-          </form>
+          <div class="brain-lens__panel" role="group" aria-label="Brain lens">
+            <div class="brain-lens__heading">
+              <h2>Brains</h2>
+              <button type="button" class="brain-lens__reset" data-lens-reset>Show all</button>
+            </div>
+            <p class="brain-lens__hint">Unchecked Brains are dimmed, not hidden: their notes stay in place and still open on click. A focused neighborhood always shows fully.</p>
+            {hierarchy.map((section) => (
+              <div class="brain-lens__group" style={`--group-depth: ${section.depth}`}>
+                <h3>{section.title}</h3>
+                {section.brains.length > 0 && (
+                  <ul>
+                    {section.brains.map((brain) => (
+                      <li class="brain-lens__brain" style={`--brain-accent: ${brain.accent}`} data-lens-brain={brain.id}>
+                        <label class="brain-lens__toggle">
+                          <input
+                            type="checkbox"
+                            name="brain-lens"
+                            value={brain.id}
+                            checked
+                            aria-describedby={brain.description ? `brain-lens-description-${brain.id}` : undefined}
+                          />
+                          <BrainMark />
+                          <span class="brain-lens__name"><span class="brain-lens__title">{brain.title}</span> <span class="brain-lens__id">@{brain.id}</span></span>
+                        </label>
+                        <a
+                          class="brain-lens__enter"
+                          href={url(routesFor({ mode: "workspace", brainId: brain.id }).graph)}
+                          aria-label={`Enter ${brain.title}`}
+                        >
+                          Enter <span aria-hidden="true">→</span>
+                        </a>
+                        {brain.description && (
+                          <p class="brain-lens__description" id={`brain-lens-description-${brain.id}`}>{brain.description}</p>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </div>
         </details>
       )}
     </div>
@@ -157,7 +187,7 @@ const brainRouteRegistry = snapshot.registry.brains.map(({ id, title }) => ({ id
       <h2>Legend</h2>
       <div class="graph-legend" data-graph-legend>
         <p>
-          {combined
+          {fullWorkspace
             ? "Brain accents and @brain labels identify ownership."
             : "Local node color is note type. Related foreign nodes are smaller and gray, with ↗ and an @brain label."}
         </p>
@@ -172,9 +202,15 @@ const brainRouteRegistry = snapshot.registry.brains.map(({ id, title }) => ({ id
         </ul>
         <p><span aria-hidden="true">○</span> draft, <span aria-hidden="true">◇</span> developing, <span aria-hidden="true">◆</span> established</p>
         <p>
-          <span class:list={["cross-edge-key", { "cross-edge-key--muted": !combined }]} aria-hidden="true"></span>
-          {combined ? "thick line: cross-brain link" : "muted line: cross-brain link"}
+          <span class:list={["cross-edge-key", { "cross-edge-key--muted": !fullWorkspace }]} aria-hidden="true"></span>
+          {fullWorkspace ? "thick line: cross-brain link" : "muted line: cross-brain link"}
         </p>
+        {isWorkspace && (
+          <p>
+            <span class="dimmed-node-key" aria-hidden="true"></span>
+            dimmed: Brain unchecked in the lens. Dimmed notes stay hoverable and open on click; a focused neighborhood always shows fully.
+          </p>
+        )}
         <p>Node size shows connections. Hover to inspect a neighborhood; drag to rearrange; click to open.</p>
       </div>
 
@@ -186,8 +222,31 @@ const brainRouteRegistry = snapshot.registry.brains.map(({ id, title }) => ({ id
         <div>
           <button type="button" data-graph-focus-copy>Copy link</button>
           <a data-graph-focus-open>Open note</a>
-          <button type="button" data-graph-focus-clear>Clear</button>
+          <button type="button" data-graph-focus-clear hidden={neighborhoodPage}>Clear</button>
         </div>
+        {fullWorkspace && neighborhoodPage && (
+          <div class="graph-domains" data-graph-domains hidden>
+            <span class="graph-domains__label" id="graph-domains-label">Connected domains</span>
+            <ul aria-labelledby="graph-domains-label">
+              {hierarchy.flatMap((section) => section.brains).map((brain) => (
+                <li style={`--brain-accent: ${brain.accent}`} data-domain-brain={brain.id} data-domain-title={brain.title} hidden>
+                  <button
+                    type="button"
+                    class="graph-domain"
+                    aria-pressed="false"
+                    title={`Dim ${brain.title} outside this neighborhood`}
+                    data-domain-toggle
+                  >
+                    <BrainMark />
+                    <span class="graph-domain__title">{brain.title}</span>
+                    <span class="graph-domain__count" data-domain-count></span>
+                    <span class="graph-domain__state" data-domain-state hidden>· dimmed</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </section>
       <div class="graph-context-menu" data-graph-context-menu role="menu" hidden>
         <button type="button" role="menuitem" data-graph-menu-focus>Pin neighborhood</button>
@@ -197,9 +256,11 @@ const brainRouteRegistry = snapshot.registry.brains.map(({ id, title }) => ({ id
       <div
         id="global-graph"
         class="graph-host"
-        data-graph-mode={combined ? "combined" : activeBrainId ? "brain" : "all"}
+        data-graph-mode={activeBrainId ? "brain" : "all"}
         data-active-brain-id={activeBrainId}
-        aria-label={combined ? "Combined brain graph" : activeBrain ? `${activeBrain.title} graph` : "Brain graph"}
+        data-initial-focus={initialFocus}
+        data-neighborhood-page={neighborhoodPage ? "true" : undefined}
+        aria-label={activeBrain ? `${activeBrain.title} graph` : fullWorkspace ? "Workspace graph" : "Brain graph"}
       ></div>
     </div>
   </div>
@@ -207,7 +268,6 @@ const brainRouteRegistry = snapshot.registry.brains.map(({ id, title }) => ({ id
 
 <script>
   import { mountGlobalGraph } from "../lib/graph-view";
-  import { brainSelectionContext, joinBase, singularQueryValue, type BrainSelectionContext } from "../lib/routes";
 
   const q = <T extends Element>(selector: string): T => {
     const element = document.querySelector<T>(selector);
@@ -222,10 +282,11 @@ const brainRouteRegistry = snapshot.registry.brains.map(({ id, title }) => ({ id
   const typeFilters = document.querySelectorAll<HTMLInputElement>('[data-filter="type"]');
   const statusFilters = document.querySelectorAll<HTMLInputElement>('[data-filter="status"]');
   const tagFilter = q<HTMLSelectElement>("#graph-tag-filter");
-  const context = document.querySelector<HTMLDetailsElement>(".graph-controls > .context-switcher");
+  const lens = document.querySelector<HTMLDetailsElement>(".graph-controls > .brain-lens");
+  const domains = document.querySelector<HTMLElement>("[data-graph-domains]");
 
   function setFiltersOpen(open: boolean, persist = true): void {
-    if (open && context?.open) context.open = false;
+    if (open && lens?.open) lens.open = false;
     sidebar.classList.toggle("is-open", open);
     sidebar.inert = !open;
     graphShell.classList.toggle("filters-closed", !open);
@@ -287,7 +348,7 @@ const brainRouteRegistry = snapshot.registry.brains.map(({ id, title }) => ({ id
     setFiltersOpen(filterToggle.getAttribute("aria-expanded") !== "true");
   });
   document.addEventListener("graph-legend-open", () => {
-    if (context?.open) context.open = false;
+    if (lens?.open) lens.open = false;
     if (filterToggle.getAttribute("aria-expanded") === "true") setFiltersOpen(false);
   });
   document.addEventListener("keydown", (event) => {
@@ -304,73 +365,29 @@ const brainRouteRegistry = snapshot.registry.brains.map(({ id, title }) => ({ id
   }
   tagFilter.addEventListener("change", persistGraphFilters);
 
-  if (context) {
-    const summary = context.querySelector<HTMLElement>(":scope > summary")!;
-    const form = context.querySelector<HTMLFormElement>("form")!;
-    const controls = [...form.querySelectorAll<HTMLInputElement>('input[name="brain-context"]')];
-    const satellite = summary.querySelector<HTMLElement>(".context-switcher__satellite")!;
-    const registry = JSON.parse(context.dataset.registry ?? "[]") as { id: string; title: string }[];
-    const activeBrainId = context.dataset.activeBrainId;
-    const query = singularQueryValue(new URLSearchParams(window.location.search), "brains");
-    const initialInput = context.dataset.combined === "true" && query.valid && query.present
-      ? query.value
-      : activeBrainId ? [activeBrainId] : [];
-    let current = brainSelectionContext(registry, initialInput);
-
-    const updateContext = (selection: BrainSelectionContext) => {
-      if (!selection.valid) return;
-      current = selection;
-      const label = selection.kind === "chooser"
-        ? "Brain context: Brain chooser"
-        : selection.kind === "combined"
-          ? `Brain context: ${selection.brainIds.length} brains combined`
-          : `Brain context: ${registry.find((brain) => brain.id === selection.brainIds[0])?.title ?? selection.brainIds[0]}`;
-      summary.setAttribute("aria-label", label);
-      summary.title = label;
-      satellite.hidden = selection.kind !== "combined";
-    };
-    const resetControls = () => {
-      if (!current.valid) return;
-      for (const control of controls) control.checked = current.brainIds.includes(control.value);
-    };
-    context.addEventListener("toggle", () => {
-      summary.setAttribute("aria-expanded", String(context.open));
-      if (context.open) {
+  // The lens panel is a disclosure like the legend: one open at a time, closed
+  // by Escape or by pointing elsewhere. Lens state itself lives in graph-view.
+  const lensSummary = lens?.querySelector<HTMLElement>(":scope > summary") ?? null;
+  if (lens && lensSummary) {
+    lens.addEventListener("toggle", () => {
+      lensSummary.setAttribute("aria-expanded", String(lens.open));
+      if (lens.open) {
         if (filterToggle.getAttribute("aria-expanded") === "true") setFiltersOpen(false);
         document.dispatchEvent(new CustomEvent("graph-legend-close"));
-        resetControls();
-      }
-    });
-    form.addEventListener("submit", (event) => {
-      event.preventDefault();
-      const selection = brainSelectionContext(
-        registry,
-        controls.filter((control) => control.checked).map((control) => control.value),
-      );
-      if (!selection.valid) return;
-      const target = joinBase(import.meta.env.BASE_URL, selection.graph);
-      if (selection.kind === "combined" && context.dataset.combined === "true") {
-        window.history.replaceState(null, "", target);
-        updateContext(selection);
-        context.open = false;
-        document.dispatchEvent(new CustomEvent("brain-selection-change", { detail: selection }));
-      } else {
-        window.location.assign(target);
       }
     });
     document.addEventListener("pointerdown", (event) => {
-      if (context.open && event.target instanceof Node && !context.contains(event.target)) {
-        context.open = false;
+      if (lens.open && event.target instanceof Node && !lens.contains(event.target)) {
+        lens.open = false;
       }
     });
     document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && context.open) {
+      if (event.key === "Escape" && lens.open) {
         event.stopImmediatePropagation();
-        context.open = false;
-        summary.focus();
+        lens.open = false;
+        lensSummary.focus();
       }
     });
-    updateContext(current);
   }
 
   mountGlobalGraph({
@@ -392,5 +409,26 @@ const brainRouteRegistry = snapshot.registry.brains.map(({ id, title }) => ({ id
     contextFocus: q<HTMLButtonElement>("[data-graph-menu-focus]"),
     contextCopy: q<HTMLButtonElement>("[data-graph-menu-copy]"),
     contextOpen: q<HTMLButtonElement>("[data-graph-menu-open]"),
+    lens: lens && lensSummary
+      ? {
+          control: lens,
+          summary: lensSummary,
+          checkboxes: [...lens.querySelectorAll<HTMLInputElement>('input[name="brain-lens"]')],
+          reset: lens.querySelector<HTMLButtonElement>("[data-lens-reset]")!,
+        }
+      : null,
+    domains: domains
+      ? {
+          list: domains,
+          chips: [...domains.querySelectorAll<HTMLElement>("[data-domain-brain]")].map((item) => ({
+            brainId: item.dataset.domainBrain!,
+            title: item.dataset.domainTitle ?? item.dataset.domainBrain!,
+            item,
+            toggle: item.querySelector<HTMLButtonElement>("[data-domain-toggle]")!,
+            count: item.querySelector<HTMLElement>("[data-domain-count]")!,
+            state: item.querySelector<HTMLElement>("[data-domain-state]")!,
+          })),
+        }
+      : null,
   }).catch((error) => console.error("[graph] failed to mount", error));
 </script>

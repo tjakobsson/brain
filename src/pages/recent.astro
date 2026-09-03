@@ -1,9 +1,8 @@
 ---
 import RecentNotes from "../components/RecentNotes.astro";
-import WorkspaceRouteRedirect from "../components/WorkspaceRouteRedirect.astro";
-import { getWorkspaceSnapshot } from "../lib/vault-state";
 
-const workspaceMode = getWorkspaceSnapshot().mode === "workspace";
+// In workspace mode this is the workspace-wide aggregate with an owner label
+// per note. Brain-scoped recent pages live beneath `/brains/<id>/recent/`.
 ---
 
-{workspaceMode ? <WorkspaceRouteRedirect label="Recent notes" /> : <RecentNotes />}
+<RecentNotes />

@@ -94,7 +94,7 @@ const STATUS_MARKER: Record<string, string> = {
 
 export function graphNodeAttributes(node: GraphNodeDatum, context: GraphContext) {
   const foreign = context.mode === "brain" && node.brainId !== context.brainId;
-  const brainEncoded = context.mode === "combined" || foreign;
+  const brainEncoded = (context.mode === "all" && context.encodeBrains === true) || foreign;
   const owner = foreign ? `↗ @${node.brainId}` : `@${node.brainId}`;
   return {
     label: `${STATUS_MARKER[node.status] ?? "○"} ${brainEncoded ? `${owner} · ` : ""}${node.title}`,

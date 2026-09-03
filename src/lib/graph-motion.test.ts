@@ -380,6 +380,27 @@ describe("GraphMotionController", () => {
     controller.destroy();
   });
 
+  it("keeps a neighborhood page's focus fit out of the root graph's session", () => {
+    const { storage, renderer, graph, data } = fixture();
+    const controller = new GraphMotionController(
+      renderer as never,
+      graph,
+      data,
+      undefined,
+      "neighborhood:engineering/principles",
+    );
+
+    controller.fitView(["a", "b"]);
+
+    expect(storage.values.size).toBe(2);
+    for (const key of storage.values.keys()) {
+      expect(key).toContain(":neighborhood:engineering/principles:");
+    }
+    controller.setSessionScope("all");
+    expect(controller.restoreSession()).toEqual({ positions: false, view: false });
+    controller.destroy();
+  });
+
   it("does not report settlement when stale cache entries cannot be removed", () => {
     const { storage, renderer, graph, data } = fixture();
     const onSettled = vi.fn();

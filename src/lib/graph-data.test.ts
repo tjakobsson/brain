@@ -127,38 +127,22 @@ describe("workspace graph data", () => {
     )).toBe(true);
   });
 
-  it("ignores focus outside the selected graph", () => {
+  it("ignores focus outside a brain graph's reach", () => {
     const data = buildGraphData(index, registry, "workspace");
     const view = deriveFocusedGraphData(data, {
-      mode: "combined",
-      brainIds: ["engineering"],
+      mode: "brain",
+      brainId: "engineering",
+      includeForeign: false,
     }, "research:evidence");
     expect(new Set(view.nodes.map(({ brainId }) => brainId))).toEqual(new Set(["engineering"]));
   });
 
-  it("does not reveal an unselected Brain through in-scope combined focus", () => {
+  it("keeps every Brain and every edge on the full workspace graph, focused or not", () => {
     const data = buildGraphData(index, registry, "workspace");
-    const view = deriveFocusedGraphData(data, {
-      mode: "combined",
-      brainIds: ["engineering", "design"],
-    }, "engineering:principles");
-    expect(new Set(view.nodes.map(({ brainId }) => brainId))).toEqual(
-      new Set(["engineering", "design"]),
-    );
-    expect(view.nodes.some(({ id }) => id === "research:evidence")).toBe(false);
-    expect(view.edges.some(({ source, target }) =>
-      source === "research:evidence" || target === "research:evidence"
-    )).toBe(false);
-  });
-
-  it("includes exactly selected brains and drops every incident edge for hidden brains", () => {
-    const view = deriveGraphData(buildGraphData(index, registry, "workspace"), {
-      mode: "combined",
-      brainIds: ["engineering", "research"],
-    });
-    expect(new Set(view.nodes.map(({ brainId }) => brainId))).toEqual(new Set(["engineering", "research"]));
-    expect(view.edges).toHaveLength(1);
-    expect(view.edges[0].crossBrain).toBe(false);
+    expect(deriveGraphData(data, { mode: "all" })).toBe(data);
+    const focused = deriveFocusedGraphData(data, { mode: "all", encodeBrains: true }, "engineering:principles");
+    expect(focused.nodes).toEqual(data.nodes);
+    expect(focused.edges).toEqual(data.edges);
   });
 
   it("keeps local depth and direct foreign relationships in a note neighborhood", () => {
