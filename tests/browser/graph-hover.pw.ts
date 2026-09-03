@@ -376,7 +376,7 @@ test("fractional-scale breakpoint changes settle global and local targets once",
   await context.close();
 });
 
-test("global inspection flushes a pending fractional breakpoint change", async ({ browser }, testInfo) => {
+test("global inspection follows a fractional breakpoint camera change", async ({ browser }, testInfo) => {
   test.skip(testInfo.project.name !== "chromium-root", "Fractional scale coverage runs once in Chromium.");
   const { base } = deployment(testInfo);
   const context = await browser.newContext({
@@ -393,19 +393,21 @@ test("global inspection flushes a pending fractional breakpoint change", async (
   await expect(graph.locator("canvas.sigma-nodes")).toBeVisible();
   await expect.poll(async () => (await graphCounts(graph)).completions).toBeGreaterThan(0);
   await graph.scrollIntoViewIfNeeded();
-  const point = await nodeLeftOfLabel(page, graph, await renderedLabelAnchor(graph.locator("canvas.sigma-labels")));
-  const graphBounds = (await graph.boundingBox())!;
-  const targetPosition = { x: point.x - graphBounds.x, y: point.y - graphBounds.y };
   await page.mouse.move(0, 0);
   await expect(graph).not.toHaveAttribute("data-transient-inspection");
   const before = await graphCounts(graph);
 
   await page.setViewportSize({ width: 699, height: 760 });
-  await graph.hover({ position: targetPosition });
-  await expect(graph).toHaveAttribute("data-transient-inspection", /.+/u);
-  expect((await graphCounts(graph)).responsive).toBe(before.responsive + 1);
+  await expect(graph).toHaveAttribute("data-responsive-policy", "narrow");
   await expect.poll(async () => (await graphCounts(graph)).completions).toBe(before.completions + 1);
   await page.waitForTimeout(300);
+  await targetWithinLabel(
+    page,
+    graph,
+    await renderedLabelAnchor(graph.locator("canvas.sigma-labels"), "shortest"),
+  );
+  await expect(graph).toHaveAttribute("data-transient-inspection", /.+/u);
+  expect((await graphCounts(graph)).responsive).toBe(before.responsive + 1);
 
   expect(await graphCounts(graph)).toEqual({
     responsive: before.responsive + 1,
@@ -413,7 +415,6 @@ test("global inspection flushes a pending fractional breakpoint change", async (
     fits: before.fits,
     completions: before.completions + 1,
   });
-  await expect(graph).toHaveAttribute("data-responsive-policy", "narrow");
   await context.close();
 });
 

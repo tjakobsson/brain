@@ -5,6 +5,7 @@ import {
   convertCameraToBoundingBox,
   fitCorrection,
   fitRenderedGraph,
+  graphFitInsets,
   measureRenderedBounds,
   planRenderedGraphFit,
   type GraphBoundingBox,
@@ -28,6 +29,11 @@ function fakeRenderer(initialMaximumRatio = 10) {
   let cameraState = { x: 0.5, y: 0.5, angle: 0, ratio: 1 };
   let maximumRatio = initialMaximumRatio;
   let displayedLabels = new Set(graph.nodes());
+  let focusBounds: DOMRect | null = null;
+  const hostBounds = { left: 0, top: 0, right: 320, bottom: 180 } as DOMRect;
+  const focusScope = {
+    querySelector: vi.fn(() => focusBounds ? { getBoundingClientRect: () => focusBounds } : null),
+  };
   const camera = {
     getState: vi.fn(() => ({ ...cameraState })),
     setState: vi.fn((state: Partial<typeof cameraState>) => {
@@ -48,6 +54,10 @@ function fakeRenderer(initialMaximumRatio = 10) {
   };
   const renderer = {
     getGraph: vi.fn(() => graph),
+    getContainer: vi.fn(() => ({
+      getBoundingClientRect: () => hostBounds,
+      closest: () => focusScope,
+    })),
     getDimensions: vi.fn(() => dimensions),
     getCamera: vi.fn(() => camera),
     getCustomBBox: vi.fn(() => bbox),
@@ -106,6 +116,9 @@ function fakeRenderer(initialMaximumRatio = 10) {
     getMaximumRatio: () => maximumRatio,
     setDisplayedLabels: (ids: string[]) => {
       displayedLabels = new Set(ids);
+    },
+    setFocusBounds: (bounds: Partial<DOMRect> | null) => {
+      focusBounds = bounds as DOMRect | null;
     },
   };
 }
@@ -174,6 +187,59 @@ describe("rendered graph fitting", () => {
     expect(bounds!.bottom).toBeLessThanOrEqual(dimensions.height - 19);
     expect(getBBox().x[1]).toBeLessThan(3);
     expect(renderer.refresh.mock.calls.length).toBeLessThanOrEqual(10);
+  });
+
+  it("keeps narrow marker fitting independent of fixed-pixel label width", () => {
+    const { graph, renderer } = fakeRenderer();
+    graph.setNodeAttribute("right", "label", "A".repeat(200));
+
+    const markerPlan = planRenderedGraphFit(renderer as never, ["left", "right"], 20, false);
+    const renderedPlan = planRenderedGraphFit(renderer as never, ["left", "right"], 20, true);
+
+    expect(markerPlan.camera.ratio).toBeLessThan(2);
+    expect(renderedPlan.camera.ratio).toBeGreaterThan(markerPlan.camera.ratio * 10);
+  });
+
+  it("reserves a constant trailing extent without fitting the full label", () => {
+    const { graph, renderer } = fakeRenderer();
+    graph.setNodeAttribute("right", "label", "A".repeat(200));
+
+    const markerPlan = planRenderedGraphFit(renderer as never, ["left", "right"], 20, false, 51);
+    const renderedPlan = planRenderedGraphFit(renderer as never, ["left", "right"], 20, true);
+
+    expect(markerPlan.camera.ratio).toBeLessThan(renderedPlan.camera.ratio);
+    renderer.getCamera().setState(markerPlan.camera);
+    const markerBounds = measureRenderedBounds(renderer as never, ["left", "right"], false)!;
+    expect(markerBounds.right).toBeLessThanOrEqual(250);
+  });
+
+  it("preserves wide rendered-label fitting while narrow marker bounds stay contained", () => {
+    const { renderer, dimensions } = fakeRenderer();
+    fitRenderedGraph(renderer as never, ["left", "right"], { padding: 20, includeLabels: false });
+
+    const markerBounds = measureRenderedBounds(renderer as never, ["left", "right"], false)!;
+    expect(markerBounds.left).toBeGreaterThanOrEqual(19);
+    expect(markerBounds.top).toBeGreaterThanOrEqual(19);
+    expect(markerBounds.right).toBeLessThanOrEqual(dimensions.width - 19);
+    expect(markerBounds.bottom).toBeLessThanOrEqual(dimensions.height - 19);
+
+    fitRenderedGraph(renderer as never, ["left", "right"], { padding: 20 });
+    const renderedBounds = measureRenderedBounds(renderer as never, ["left", "right"])!;
+    expect(renderedBounds.right).toBeLessThanOrEqual(dimensions.width - 19);
+  });
+
+  it("derives collapsed and expanded bottom insets from the visible focus bar", () => {
+    const { renderer, setFocusBounds } = fakeRenderer();
+    vi.stubGlobal("document", {
+      querySelector: vi.fn(() => null),
+    });
+
+    setFocusBounds({ left: 16, top: 108, right: 304, bottom: 164 });
+    expect(graphFitInsets(renderer as never, 20).bottom).toBe(84);
+    setFocusBounds({ left: 16, top: 58, right: 304, bottom: 164 });
+    expect(graphFitInsets(renderer as never, 20).bottom).toBe(134);
+
+    vi.unstubAllGlobals();
   });
 
   it("measures only selected rendered labels and includes the foreign brain mark", () => {

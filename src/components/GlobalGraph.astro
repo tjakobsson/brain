@@ -218,35 +218,50 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
     </aside>
     <div class="graph-container">
       <section class="graph-focus-status" data-graph-focus-status hidden aria-label="Focused graph neighborhood">
-        <span>Focused: <strong data-graph-focus-title></strong></span>
-        <div>
-          <button type="button" data-graph-focus-copy>Copy link</button>
-          <a data-graph-focus-open>Open note</a>
-          <button type="button" data-graph-focus-clear hidden={neighborhoodPage}>Clear</button>
+        <div class="graph-focus-summary" data-graph-focus-summary>
+          <span>Focused: <strong data-graph-focus-title></strong></span>
+          <a data-graph-focus-open aria-label="Open focused note">Open</a>
+          <button
+            type="button"
+            class="graph-focus-disclosure"
+            data-graph-focus-disclosure
+            aria-controls="graph-focus-details"
+            aria-expanded="false"
+            aria-label="Show focus details"
+          >
+            <span aria-hidden="true">•••</span>
+          </button>
         </div>
-        {fullWorkspace && neighborhoodPage && (
-          <div class="graph-domains" data-graph-domains hidden>
-            <span class="graph-domains__label" id="graph-domains-label">Connected domains</span>
-            <ul aria-labelledby="graph-domains-label">
-              {hierarchy.flatMap((section) => section.brains).map((brain) => (
-                <li style={`--brain-accent: ${brain.accent}`} data-domain-brain={brain.id} data-domain-title={brain.title} hidden>
-                  <button
-                    type="button"
-                    class="graph-domain"
-                    aria-pressed="false"
-                    title={`Dim ${brain.title} outside this neighborhood`}
-                    data-domain-toggle
-                  >
-                    <BrainMark />
-                    <span class="graph-domain__title">{brain.title}</span>
-                    <span class="graph-domain__count" data-domain-count></span>
-                    <span class="graph-domain__state" data-domain-state hidden>· dimmed</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+        <div id="graph-focus-details" class="graph-focus-details" data-graph-focus-details hidden>
+          <p class="graph-focus-full-title">Focused: <strong data-graph-focus-title-full></strong></p>
+          <div class="graph-focus-actions">
+            <button type="button" data-graph-focus-copy>Copy link</button>
+            <button type="button" data-graph-focus-clear hidden={neighborhoodPage}>Clear</button>
           </div>
-        )}
+          {fullWorkspace && neighborhoodPage && (
+            <div class="graph-domains" data-graph-domains hidden>
+              <span class="graph-domains__label" id="graph-domains-label">Connected domains</span>
+              <ul aria-labelledby="graph-domains-label">
+                {hierarchy.flatMap((section) => section.brains).map((brain) => (
+                  <li style={`--brain-accent: ${brain.accent}`} data-domain-brain={brain.id} data-domain-title={brain.title} hidden>
+                    <button
+                      type="button"
+                      class="graph-domain"
+                      aria-pressed="false"
+                      title={`Dim ${brain.title} outside this neighborhood`}
+                      data-domain-toggle
+                    >
+                      <BrainMark />
+                      <span class="graph-domain__title">{brain.title}</span>
+                      <span class="graph-domain__count" data-domain-count></span>
+                      <span class="graph-domain__state" data-domain-state hidden>· dimmed</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
       </section>
       <div class="graph-context-menu" data-graph-context-menu role="menu" hidden>
         <button type="button" role="menuitem" data-graph-menu-focus>Pin neighborhood</button>
@@ -354,6 +369,7 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
   document.addEventListener("keydown", (event) => {
     if (document.querySelector("#quick-switcher:not([hidden])")) return;
     if (event.key === "Escape" && filterToggle.getAttribute("aria-expanded") === "true") {
+      event.stopImmediatePropagation();
       setFiltersOpen(false);
       filterToggle.focus();
     }
@@ -402,6 +418,9 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
     relatedBrainsToggle: document.querySelector<HTMLButtonElement>("#graph-related-toggle"),
     focusStatus: q("[data-graph-focus-status]"),
     focusTitle: q("[data-graph-focus-title]"),
+    focusTitleFull: q("[data-graph-focus-title-full]"),
+    focusDisclosure: q<HTMLButtonElement>("[data-graph-focus-disclosure]"),
+    focusDetails: q("[data-graph-focus-details]"),
     focusCopy: q<HTMLButtonElement>("[data-graph-focus-copy]"),
     focusOpen: q<HTMLAnchorElement>("[data-graph-focus-open]"),
     focusClear: q<HTMLButtonElement>("[data-graph-focus-clear]"),

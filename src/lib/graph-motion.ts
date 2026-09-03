@@ -5,6 +5,7 @@ import {
   fitRenderedGraph,
   planRenderedGraphFit,
   type GraphCameraState,
+  type RenderedGraphFitOptions,
   type RenderedGraphFitPlan,
 } from "./graph-fit";
 import {
@@ -51,6 +52,10 @@ export class GraphMotionController {
     private sessionScope = "",
     private readonly persistSession = true,
     private readonly fitViewportAspect = false,
+    private readonly fitOptions: () => Pick<
+      RenderedGraphFitOptions,
+      "includeLabels" | "trailingNodeExtent"
+    > = () => ({}),
   ) {
     this.baseline = this.capturePositions();
     this.signature = graphSignature(data.nodes, data.edges);
@@ -256,9 +261,16 @@ export class GraphMotionController {
     let fitPlan: RenderedGraphFitPlan | null = null;
     let cameraStart = sourceCamera;
     if (fitCamera) {
+      const options = this.fitOptions();
       const sourceBBox = this.renderer.getCustomBBox() ?? this.renderer.getBBox();
       this.applyPositions(targets);
-      fitPlan = planRenderedGraphFit(this.renderer, visibleIds);
+      fitPlan = planRenderedGraphFit(
+        this.renderer,
+        visibleIds,
+        undefined,
+        options.includeLabels,
+        options.trailingNodeExtent,
+      );
       this.applyPositions(starts);
       cameraStart = convertCameraToBoundingBox(sourceCamera, sourceBBox, fitPlan.bbox);
       this.renderer.setCustomBBox(fitPlan.bbox);
@@ -318,8 +330,10 @@ export class GraphMotionController {
     onComplete: () => void = () => {},
   ): void {
     if (!this.generations.isCurrent(generation)) return;
+    const options = this.fitOptions();
     fitRenderedGraph(this.renderer, ids, {
       animate,
+      ...options,
       onAnimationStart: () => {
         this.cameraAnimating = true;
       },
