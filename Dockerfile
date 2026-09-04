@@ -1,10 +1,10 @@
-FROM cgr.dev/chainguard/node:latest@sha256:d6ca8dfc9d0a8f369cd86c0bb6a8f9e4b304b3bb12aaf8fd26bd1352e6b6efc1 AS dependencies
+FROM cgr.dev/chainguard/node:latest@sha256:716088322be7b5d08a5ae97d8d534f0d743ec06e16dc33ae170b015422262bd8 AS dependencies
 
 WORKDIR /app
 COPY --chown=65532:65532 package.json package-lock.json ./
 RUN ["/usr/bin/npm", "ci", "--omit=dev"]
 
-FROM cgr.dev/chainguard/node:latest@sha256:d6ca8dfc9d0a8f369cd86c0bb6a8f9e4b304b3bb12aaf8fd26bd1352e6b6efc1
+FROM cgr.dev/chainguard/node:latest@sha256:716088322be7b5d08a5ae97d8d534f0d743ec06e16dc33ae170b015422262bd8
 
 ENV ASTRO_TELEMETRY_DISABLED=1 \
     BRAIN_WORK=/work \
