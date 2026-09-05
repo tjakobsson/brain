@@ -855,6 +855,39 @@ test("graph search reaches dimmed Brains and focuses their notes at full emphasi
   expect(new URL(page.url()).search).toBe("");
 });
 
+test("connected domains stay direct while the connected-note reach expands", async ({ page }) => {
+  const ids = ["engineering/principles", "design/principles", "research/evidence", "design/interaction-model"];
+  await page.route("**/graph-data.json", async (route) => {
+    const response = await route.fetch();
+    const data = await response.json();
+    data.nodes = data.nodes.filter((node: { id: string }) => ids.includes(node.id));
+    data.edges = [[ids[0], ids[1]], [ids[1], ids[2]], [ids[1], ids[3]]].map(([source, target]) => ({ source, target }));
+    await route.fulfill({ response, json: data });
+  });
+  await page.goto(`${workspace}/brains/engineering/notes/principles/graph`);
+  const graph = page.locator("#global-graph");
+  await expect(graph).toHaveAttribute("data-focused-node", ids[0]);
+  const domains = page.locator("[data-graph-domains]");
+  const chips = domains.locator("li:not([hidden])");
+  const rows = page.locator("[data-neighbor-node]");
+  for (const depth of [1, 2, 5, 1]) {
+    await page.keyboard.press(String(depth));
+    await expect(graph).toHaveAttribute("data-neighborhood-depth", String(depth));
+    await expect(rows).toHaveCount(depth === 1 ? 1 : 3);
+    if (depth > 1) {
+      for (const id of ids.slice(2)) {
+        await expect(page.locator(`[data-neighbor-node="${id}"]`)).toContainText("2 links away");
+      }
+    }
+    expect(await chips.evaluateAll((items) => items.map((item) => (item as HTMLElement).dataset.domainBrain)))
+      .toEqual(["engineering", "design"]);
+    for (const brainId of ["engineering", "design"]) {
+      await expect(domains.locator(`[data-domain-brain="${brainId}"] [data-domain-count]`)).toHaveText("1");
+    }
+    await expect(domains.locator('[data-domain-brain="research"]')).toBeHidden();
+  }
+});
+
 test("neighborhood pages list connected domains as lens chips that never remove nodes", async ({ page }) => {
   const focusedTitle = Array.from(
     { length: 6 },

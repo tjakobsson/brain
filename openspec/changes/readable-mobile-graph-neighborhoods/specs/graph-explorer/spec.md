@@ -383,6 +383,10 @@ In workspace mode the page MUST list the connected domains of the neighborhood: 
 - **WHEN** a reader opens `/brains/engineering/notes/principles/graph/` directly with the default one-link reach
 - **THEN** the full workspace graph renders with Principles persistently focused, its direct neighbors emphasized, and the camera fitted to that neighborhood
 
+#### Scenario: Keep connected domains local when expanding reach
+- **WHEN** a reader increases the focused neighborhood reach beyond one link
+- **THEN** the connected-note rows and highlighting expand, but connected-domain membership and counts still include only the focused note and its visible direct neighbors, excluding indirect notes even when their Brain already has a domain chip
+
 #### Scenario: Clear focus on a shared neighborhood
 - **WHEN** a reader who followed a shared neighborhood link clears focus from the bar or the context menu
 - **THEN** the same page shows the unfocused context graph, its address is that graph's own path with no query string, and no focus remains

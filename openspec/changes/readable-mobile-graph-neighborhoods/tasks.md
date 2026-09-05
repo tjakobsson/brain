@@ -105,3 +105,5 @@ PR-review verification: strict change validation passed, 675 unit tests passed, 
 
 - [x] 12.1 Keep Home visibility synchronized with in-place focus paths, matching fresh loads on desktop and phone without leaving a divider before the first visible control. Verify root pinning, cross-Brain focus moves, clearing, and reloads in the browser tests.
 - [x] 12.2 Correct touch Help to distinguish tap navigation from long-press focus changes and verify the guide in the phone browser test. Keep the existing tap behavior unchanged.
+- [x] 12.3 Hand a marker-start touch gesture from node dragging to pinch zoom when a second contact arrives. Verify both lift orders, simultaneous landing, preserved pre-pinch drag positions and focus, no node movement during the pinch even after a deferred resize, and fresh single-touch dragging afterward on global and local graphs.
+- [x] 12.4 Keep Connected domains limited to the focused note and visible direct neighbors at every reach. Verify a cross-Brain chain expands connected-note rows without adding indirect domain chips or inflating existing counts.

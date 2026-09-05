@@ -1057,6 +1057,174 @@ for (const landing of ["empty canvas", "marker", "title"] as const) {
   });
 }
 
+for (const kind of ["global", "local"] as const) {
+  for (const gesture of [
+    "first lifts first", "second lifts first", "simultaneous landing", "after a drag", "drag, resize, then pinch",
+  ] as const) {
+    test(`marker-start pinch on ${kind}: ${gesture}`, async ({ browser }, testInfo) => {
+      test.skip(testInfo.project.name !== "chromium-root", "Touch handoff coverage runs once in Chromium.");
+      const { base } = deployment(testInfo);
+      const context = await browser.newContext({
+        baseURL: String(testInfo.project.use.baseURL), hasTouch: true,
+        viewport: { width: 390, height: 844 },
+      });
+      const page = await context.newPage();
+      await page.route("**/graph-data.json", (route) =>
+        route.fulfill({ contentType: "application/json", body: JSON.stringify(localGraphData) }),
+      );
+      await page.goto(kind === "global" ? `${base}/` : `${base}/notes/welcome`);
+      const graph = page.locator(kind === "global" ? "#global-graph" : ".local-graph");
+      await expect(graph.locator("canvas.sigma-nodes")).toBeVisible();
+      await graph.scrollIntoViewIfNeeded();
+      await expect.poll(async () => (await graphCounts(graph)).completions).toBeGreaterThan(0);
+
+      const cdp = await context.newCDPSession(page);
+      type Contact = { id: number; x: number; y: number };
+      let previous: Contact[] = [];
+      const send = async (type: "touchStart" | "touchMove" | "touchEnd", points: Contact[]) => {
+        if (gesture === "simultaneous landing") {
+          // CDP splits a combined landing into two DOM events. Exercise a real
+          // two-contact touchstart, and a combined final release, explicitly.
+          await graph.evaluate((host, { type, points, previous }) => {
+            const canvas = host.querySelector("canvas.sigma-mouse")!;
+            const touch = (p: Contact) => new Touch({
+              identifier: p.id, target: canvas, clientX: p.x, clientY: p.y,
+            });
+            const touches = points.map(touch);
+            const changed = type === "touchEnd"
+              ? previous.filter((p) => !points.some((next) => next.id === p.id)) : points;
+            canvas.dispatchEvent(new TouchEvent(type.toLowerCase(), {
+              bubbles: true, cancelable: true, touches, targetTouches: touches,
+              changedTouches: changed.map(touch),
+            }));
+          }, { type, points, previous });
+        } else {
+          await cdp.send("Input.dispatchTouchEvent", { type, touchPoints: points });
+        }
+        previous = points;
+      };
+      const snapshot = async () => {
+        await graph.evaluate((host) => {
+          host.setAttribute("data-geometry-check-pending", "");
+          // Ask Sigma for a fresh frame without changing viewport dimensions.
+          window.dispatchEvent(new Event("resize"));
+        });
+        await expect(graph).not.toHaveAttribute("data-geometry-check-pending");
+        return graph.evaluate((element) => {
+          const host = element as HTMLElement;
+          const bounds = host.getBoundingClientRect();
+          const targets = JSON.parse(host.dataset.inspectionTargetGeometry!) as
+            { kind: string; left: number; right: number; top: number; bottom: number }[];
+          const marker = targets.find((target) => target.kind === "marker")!;
+          const camera = host.dataset.cameraGeometry!.split(":").map(Number);
+          return {
+            positions: host.dataset.graphGeometry!, angle: camera[2]!, ratio: camera[3]!,
+            settles: Number(host.dataset.settleRequests ?? 0),
+            responsive: Number(host.dataset.responsiveUpdates ?? 0),
+            marker: { x: bounds.left + (marker.left + marker.right) / 2,
+              y: bounds.top + (marker.top + marker.bottom) / 2 },
+            saved: Object.fromEntries(Object.entries(sessionStorage).filter(([key]) => key.startsWith("graph-motion:"))),
+          };
+        });
+      };
+
+      const target = await nodeAboveLabel(page, graph, await renderedLabelAnchor(graph.locator("canvas.sigma-labels")));
+      await page.mouse.move(0, 0);
+      await send("touchStart", [{ id: 1, ...target }]);
+      await page.waitForTimeout(550);
+      await send("touchEnd", []);
+      await expect(graph).toHaveAttribute("data-focused-inspection");
+      await page.waitForTimeout(500);
+      const focusUrl = page.url();
+      const pinned = await snapshot();
+      let first = { id: 1, ...pinned.marker };
+      if (gesture !== "simultaneous landing") {
+        await send("touchStart", [first]);
+        await expect.poll(() => graph.evaluate((host) => host.style.cursor)).toBe("grabbing");
+      }
+      const dragBeforePinch = gesture === "after a drag" || gesture === "drag, resize, then pinch";
+      if (dragBeforePinch) {
+        first = { ...first, x: first.x + 20, y: first.y + 12 };
+        await send("touchMove", [first]);
+      }
+      if (gesture === "drag, resize, then pinch") {
+        const dragged = await snapshot();
+        await graph.evaluate((host) => { host.style.width = `${host.clientWidth - 48}px`; });
+        // Let ResizeObserver defer the change while the first finger still
+        // owns the drag. Exceed the scheduler delay to catch an early settle.
+        await page.waitForTimeout(250);
+        const resized = await snapshot();
+        expect(resized.positions).toBe(dragged.positions);
+        expect(resized.settles).toBe(dragged.settles);
+        expect(resized.responsive).toBe(dragged.responsive);
+      }
+      const before = await snapshot();
+      if (dragBeforePinch) expect(before.positions).not.toBe(pinned.positions);
+      const bounds = (await graph.boundingBox())!;
+      const direction = first.x < bounds.x + bounds.width / 2 ? 1 : -1;
+      const second = { id: 2, x: first.x + direction * 70, y: first.y };
+      await send("touchStart", [first, second]);
+      await expect.poll(() => graph.evaluate((host) => host.style.cursor)).not.toBe("grabbing");
+      const handoff = await snapshot();
+      expect(handoff.positions).toBe(before.positions);
+      expect(handoff.settles).toBe(before.settles);
+      if (gesture === "drag, resize, then pinch") expect(handoff.responsive).toBe(before.responsive + 1);
+      if (kind === "global" && dragBeforePinch) {
+        expect(handoff.saved).not.toEqual(pinned.saved);
+      }
+      let contacts = [first, second];
+      for (const progress of [0.25, 0.5, 0.75, 1]) {
+        contacts = [
+          gesture === "simultaneous landing" ? first :
+            { ...first, x: first.x - direction * 20 * progress, y: first.y - 8 * progress },
+          { ...second, x: second.x + direction * 45 * progress, y: second.y + 12 * progress },
+        ];
+        await send("touchMove", contacts);
+        const moving = await snapshot();
+        expect(moving.positions).toBe(before.positions);
+        expect(moving.angle).toBe(before.angle);
+        expect(moving.settles).toBe(before.settles);
+      }
+      if (gesture === "drag, resize, then pinch") {
+        // Keep both fingers down past the layout worker timeout and animation
+        // duration; a handoff must not merely delay the unwanted movement.
+        await page.waitForTimeout(1500);
+        const held = await snapshot();
+        expect(held.positions).toBe(before.positions);
+        expect(held.settles).toBe(before.settles);
+      }
+      expect((await snapshot()).ratio).toBeLessThan(before.ratio * 0.75);
+      if (gesture !== "simultaneous landing") {
+        const remaining = contacts[gesture === "first lifts first" ? 1 : 0]!;
+        await send("touchEnd", [remaining]);
+        // Sigma's synthetic down on this lift must not rearm dragging, even
+        // when the remaining contact moves before the last finger lifts.
+        await send("touchMove", [{ ...remaining, x: remaining.x + 12, y: remaining.y + 10 }]);
+        expect((await snapshot()).positions).toBe(before.positions);
+        await expect.poll(() => graph.evaluate((host) => host.style.cursor)).not.toBe("grabbing");
+      }
+      await send("touchEnd", []);
+      await page.waitForTimeout(200);
+      const after = await snapshot();
+      expect(after.positions).toBe(before.positions);
+      expect(after.angle).toBe(before.angle);
+      expect(after.settles).toBe(before.settles);
+      await expect(graph).toHaveAttribute("data-focused-inspection");
+      expect(page.url()).toBe(focusUrl);
+
+      // The handoff disarms this sequence, not future one-finger drags.
+      await send("touchStart", [{ id: 1, ...after.marker }]);
+      await expect.poll(() => graph.evaluate((host) => host.style.cursor)).toBe("grabbing");
+      await send("touchMove", [{ id: 1, x: after.marker.x + 18, y: after.marker.y + 12 }]);
+      await send("touchEnd", []);
+      expect((await snapshot()).positions).not.toBe(after.positions);
+      await expect(graph).toHaveAttribute("data-focused-inspection");
+      expect(page.url()).toBe(focusUrl);
+      await context.close();
+    });
+  }
+}
+
 /**
  * A pinch turns a few degrees every time a hand makes one, and sigma reads
  * that twist as a camera rotation: the graph tilts under labels that stay

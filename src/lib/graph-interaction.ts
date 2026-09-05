@@ -110,8 +110,16 @@ export function setTransientInspection(
   return true;
 }
 
-export function permitsNodeDrag(event: Pick<MouseEvent, "button" | "ctrlKey" | "type">): boolean {
-  return event.type.startsWith("touch") || (event.button === 0 && !event.ctrlKey);
+export function permitsNodeDrag(event: {
+  type: string;
+  button?: number;
+  ctrlKey?: boolean;
+  touches?: { length: number };
+}): boolean {
+  if (event.type.startsWith("touch")) {
+    return event.type === "touchstart" && event.touches?.length === 1;
+  }
+  return event.button === 0 && !event.ctrlKey;
 }
 
 /**

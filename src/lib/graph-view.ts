@@ -541,7 +541,7 @@ function graphTargetNode(renderer: Sigma, graph: Graph, state: GraphHoverState, 
  * upright. Dropping the rotation means the gesture can no longer honor both
  * contacts at once, so it honors the point between them.
  */
-function wirePinchZoom(renderer: Sigma, state: InteractionState): void {
+function wirePinchZoom(renderer: Sigma, onStart: () => void): void {
   const touch = renderer.getTouchCaptor();
   const camera = renderer.getCamera();
   let gesture: Parameters<typeof pinchCameraState>[0] | null = null;
@@ -551,6 +551,9 @@ function wirePinchZoom(renderer: Sigma, state: InteractionState): void {
     y: (contacts[0]!.y + contacts[1]!.y) / 2,
   });
   const begin = (contacts: readonly { x: number; y: number }[]) => {
+    // Complete any one-finger drag before measuring the camera anchor. Keep
+    // its positions and run its normal cleanup/session callback exactly once.
+    onStart();
     gesture = {
       anchor: renderer.viewportToFramedGraph(midpointOf(contacts)),
       ratio: camera.getState().ratio,
@@ -582,19 +585,16 @@ function wirePinchZoom(renderer: Sigma, state: InteractionState): void {
     begin(event.touches);
   };
   const zoom = (event: TouchCoords) => {
-    // A node being dragged owns the gesture; the camera stays out of it.
-    if (state.dragged) return;
     if (event.touches.length !== 2) {
       gesture = null;
       return;
     }
+    // Sigma's captor has already called `preventDefault` on the touch event;
+    // suppress its camera update even if coincident contacts cannot zoom yet.
+    event.preventSigmaDefault();
     if (!gesture) begin(event.touches);
     const next = gesture && pinchCameraState(gesture, event.touches, frame());
-    if (!next) return;
-    // Sigma's captor has already called `preventDefault` on the touch event;
-    // this only tells it to skip its own camera update.
-    event.preventSigmaDefault();
-    camera.setState(next);
+    if (next) camera.setState(next);
   };
   const end = () => {
     gesture = null;
@@ -639,7 +639,6 @@ function wireHoverAndClick(
     hoverPreview?: () => boolean;
   } = {},
 ): { reapplyPointer(): void; nodeUnderPointer(): string | null } {
-  wirePinchZoom(renderer, state);
   const canNavigateToNode = (node: string) =>
     state.focused === null || isInspectionNeighborhoodNode(state, node);
   const navigateToNode = (node: string) => {
@@ -890,7 +889,7 @@ function wireNodeDragging(
   renderer: Sigma,
   graph: Graph,
   state: InteractionState,
-  onDragComplete?: (node: string, neighborhood: string[], moved: boolean) => void,
+  onDragComplete?: (node: string, neighborhood: string[], moved: boolean, reason: "release" | "pinch") => void,
   onDragStart?: () => void,
 ): void {
   let startPointer: { x: number; y: number } | null = null;
@@ -898,7 +897,7 @@ function wireNodeDragging(
   let starts = new Map<string, { x: number; y: number; weight: number }>();
 
   renderer.on("downNode", ({ node, event, preventSigmaDefault }) => {
-    if (!permitsNodeDrag(event.original as MouseEvent)) return;
+    if (!permitsNodeDrag(event.original)) return;
     state.dragged = node;
     state.draggedMoved = false;
     onDragStart?.();
@@ -956,7 +955,7 @@ function wireNodeDragging(
     event.original.stopPropagation();
   };
 
-  const finish = () => {
+  const finish = (reason: "release" | "pinch") => {
     if (!state.dragged) return;
     const dragged = state.dragged;
     const moved = state.draggedMoved;
@@ -968,27 +967,32 @@ function wireNodeDragging(
     starts.clear();
     renderer.getContainer().style.cursor = state.hovered ? "pointer" : "";
     if (state.draggedMoved) window.setTimeout(() => (state.draggedMoved = false), 0);
-    onDragComplete?.(dragged, neighborhood, moved);
+    onDragComplete?.(dragged, neighborhood, moved, reason);
   };
+  const release = () => finish("release");
 
   const mouse = renderer.getMouseCaptor();
   const moveMouse = (event: MouseCoords) => move(event, event);
   mouse.on("mousemovebody", moveMouse);
-  mouse.on("mouseup", finish);
+  mouse.on("mouseup", release);
 
   const touch = renderer.getTouchCaptor();
+  // Sigma emits downNode before our touchdown listener. Its two-contact down
+  // must not restart a drag; finish the old one before custom zoom can run.
+  wirePinchZoom(renderer, () => finish("pinch"));
   const moveTouch = (event: TouchCoords) => {
+    if (event.touches.length !== 1) return;
     const point = event.touches[0];
     if (point) move(point, event);
   };
   touch.on("touchmove", moveTouch);
-  touch.on("touchup", finish);
+  touch.on("touchup", release);
 
   renderer.on("kill", () => {
     mouse.off("mousemovebody", moveMouse);
-    mouse.off("mouseup", finish);
+    mouse.off("mouseup", release);
     touch.off("touchmove", moveTouch);
-    touch.off("touchup", finish);
+    touch.off("touchup", release);
   });
 }
 
@@ -1280,7 +1284,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
 
   /**
    * Connected domains of the focused neighborhood on a workspace neighborhood
-   * page: one chip per Brain owning the focused note or a visible neighbor.
+   * page: one chip per Brain owning the focused note or a visible direct neighbor.
    * The chip order is the declared hierarchy, fixed in the markup; the
    * grouping is client-side so it always matches the graph the reader sees.
    */
@@ -1297,7 +1301,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     const present = new Map(
       connectedDomains(
         member(focused),
-        [...state.neighbors].filter((id) => !hidden.has(id)).map(member),
+        graph.neighbors(focused).filter((id) => !hidden.has(id)).map(member),
         domains.chips.map((chip) => chip.brainId),
       ).map((domain) => [domain.brainId, domain.count]),
     );
@@ -2303,12 +2307,14 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     onContextMenu: openContextMenu,
     onNavigate: (_node, route) => window.location.assign(noteHref(route)),
   });
-  const commitDrag = (_node: string, _neighborhood: string[], moved: boolean) => {
+  const commitDrag = (_node: string, _neighborhood: string[], moved: boolean, reason: "release" | "pinch") => {
     cancelFilterSettle();
     stopCamera();
     motion.cancel();
-    const responsiveFlushed = responsiveScheduler.flush();
-    if (moved && !responsiveFlushed) {
+    // A pinch consumes a deferred resize without starting layout motion under
+    // the fingers. Unlike a resize settle, this flush does not save the drag.
+    const responsiveFlushed = responsiveScheduler.flush(reason === "pinch" ? applyResponsiveState : undefined);
+    if (moved && (reason === "pinch" || !responsiveFlushed)) {
       relatedBrainsSessionInvalid = false;
       commitSession();
     }
@@ -2685,9 +2691,14 @@ export async function mountLocalGraphs(): Promise<void> {
     };
     document.addEventListener("keydown", onLocalKey);
     renderer.on("kill", () => document.removeEventListener("keydown", onLocalKey));
-    wireNodeDragging(renderer, graph, state, (node) => {
+    wireNodeDragging(renderer, graph, state, (node, _neighborhood, _moved, reason) => {
       if (!resizeDeferredDuringDrag) return;
       resizeDeferredDuringDrag = false;
+      if (reason === "pinch") {
+        deferredResizePinnedId = null;
+        responsiveScheduler.flush(applyResponsiveState);
+        return;
+      }
       deferredResizePinnedId = node;
       if (!responsiveScheduler.flush()) deferredResizePinnedId = null;
     }, interruptAutomaticMotion);

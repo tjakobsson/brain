@@ -41,6 +41,10 @@ Both guards, not one. The type check alone fixes the observed sequence, but sigm
 
 Rejected: comparing camera state at press and release. That couples tap classification to camera state, and a pinch returning to the same scale would still clear.
 
+Node dragging starts only from a single-contact `touchstart`. When a second contact arrives, finish the drag before capturing the pinch anchor, retaining any positions already moved and releasing its highlight. The two-contact camera handler runs before touch-drag movement; neither simultaneous landing nor Sigma's synthetic `touchend` press may arm dragging.
+
+Drag completion distinguishes a normal release from a pinch handoff. A resize deferred during dragging updates viewport presentation at handoff without starting automatic layout beneath the fingers; any legitimate pre-pinch drag is still saved. Normal release keeps its existing resize-settle behavior.
+
 ### Centre labels below the node
 
 A right-hand label needs its full length in horizontal room on one side. A centred label needs half its longest line on each side. Combined with wrapping to three lines, a 537 pixel title needs roughly 90 pixels of clearance either side instead of 537 to the right.
@@ -103,6 +107,8 @@ Rows call `setFocus(node, true)` to move focus and fit the camera in place. URL 
 `setFocus` currently does `if (next !== state.focused) focusDetailsExpanded = false`, which would collapse the bar the reader is reading from. A focus move needs a way to declare it came from inside the bar; every other caller keeps today's collapse.
 
 Rows come from the same neighborhood set the reducers use at the selected reach of one to five links, filtered by `hidden`. Sort by distance, then alphabetically by title, and show distances beyond the first ring. A shared neighborhood's filter visibility exception follows the newly focused neighborhood on row moves until the reader explicitly edits type, status, or tag filters. Moving focus is not a filter edit.
+
+Connected domains remain a direct-neighbor summary regardless of the selected reach. Derive their members from `graph.neighbors(focused)`, filtered by visibility, rather than the inspection state's multi-hop set. Indirect notes neither add a domain nor increase an existing domain's count.
 
 ### Keep in-place identity and state aligned
 

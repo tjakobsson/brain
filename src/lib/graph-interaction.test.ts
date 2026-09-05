@@ -215,11 +215,22 @@ describe("graph hover interaction", () => {
     expect(activeInspectionNode(state)).toBe("c");
   });
 
-  it("permits only touch and unmodified primary-button node drags", () => {
+  it("permits only single-contact presses and unmodified primary-button node drags", () => {
     expect(permitsNodeDrag({ type: "mousedown", button: 0, ctrlKey: false })).toBe(true);
-    expect(permitsNodeDrag({ type: "touchstart", button: 0, ctrlKey: false })).toBe(true);
+    expect(permitsNodeDrag({ type: "touchstart", touches: { length: 1 } })).toBe(true);
     expect(permitsNodeDrag({ type: "mousedown", button: 2, ctrlKey: false })).toBe(false);
     expect(permitsNodeDrag({ type: "mousedown", button: 0, ctrlKey: true })).toBe(false);
+  });
+
+  it.each([
+    ["touchstart", 2],
+    ["touchstart", 3],
+    ["touchend", 1],
+    ["touchend", 0],
+    ["touchmove", 1],
+    ["touchcancel", 1],
+  ])("does not rearm node dragging on %s with %i contacts", (type, length) => {
+    expect(permitsNodeDrag({ type, touches: { length } })).toBe(false);
   });
 
   it("lets shared focus override stored filters once and clears on explicit exclusion", () => {

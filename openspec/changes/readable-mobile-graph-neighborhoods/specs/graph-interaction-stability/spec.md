@@ -27,6 +27,14 @@ A touch reader SHALL be able to long press a node to activate the same neighborh
 - **WHEN** a touch reader pinches to zoom while a long-press neighborhood is active, and lifts the two contact points in either order
 - **THEN** the camera scale changes and the same neighborhood stays emphasized, with the focused note still identified in the focused-neighborhood bar and, on the global graph, by its neighborhood pathname
 
+#### Scenario: Start a pinch on a node marker
+- **WHEN** a touch reader lands on a marker and then adds a second contact, or lands both contacts together over a marker
+- **THEN** the gesture belongs to camera zoom rather than node dragging, graph-space node positions stay unchanged during the pinch, and any pin is preserved
+
+#### Scenario: Change a drag into a pinch
+- **WHEN** a reader adds a second contact after moving a node with one finger
+- **THEN** the drag ends at its current positions and the pinch changes only the camera; lifting one contact does not restart node dragging, but a fresh single-contact press can start another drag
+
 #### Scenario: Lift both contacts together
 - **WHEN** a touch reader releases both contacts in one event after a two-finger camera gesture on a global graph or note-page connection map, over a node or empty space
 - **THEN** neither the release nor its synthetic events produce a click, navigate, or clear focus, and any pinned neighborhood remains active
