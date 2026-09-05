@@ -82,10 +82,22 @@ describe("graph session scope", () => {
       graphSessionScope({}),
       graphSessionScope({ activeBrainId: "engineering" }),
     ]).size).toBe(4);
-    // A neighborhood page never mounts under a Brain scope, even if the host
-    // also names a Brain.
-    expect(graphSessionScope({ activeBrainId: "engineering", neighborhoodFocus: "engineering/principles" }))
-      .toBe(neighborhood);
+  });
+
+  it.each([
+    ["engineering", undefined],
+    ["engineering", false],
+    ["engineering", true],
+    ["design", false],
+    ["design", true],
+  ] as const)("isolates focused sessions for Brain %s with related Brains %s", (activeBrainId, showRelatedBrains) => {
+    const context = { activeBrainId, showRelatedBrains };
+    for (const neighborhoodFocus of ["engineering/principles", "design/principles"]) {
+      const scope = graphSessionScope({ ...context, neighborhoodFocus });
+      expect(scope).toBe(`neighborhood:${neighborhoodFocus}:brain:${activeBrainId}:${Boolean(showRelatedBrains)}`);
+      expect(scope).not.toBe(graphSessionScope({ neighborhoodFocus }));
+      expect(scope).not.toBe(graphSessionScope({ ...context, neighborhoodFocus: null }));
+    }
   });
 });
 

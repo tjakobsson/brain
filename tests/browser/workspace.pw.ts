@@ -1694,6 +1694,32 @@ test("graph search pins in-session focus and copies the neighborhood path", asyn
   await expect(graph).not.toHaveAttribute("data-focused-node");
 });
 
+async function expectGraphShellScope(page: Page, brainId?: string) {
+  const scopePath = brainId ? `/brains/${brainId}` : "";
+  for (const route of ["tags", "recent", "orphans"]) {
+    await expect(page.locator(`[data-scope-route="${route}"]`)).toHaveJSProperty(
+      "href", `${workspace}${scopePath}/${route}`,
+    );
+  }
+  const graphLink = page.locator(".graph-trigger");
+  await expect(graphLink).toHaveJSProperty("href", `${workspace}${scopePath || "/"}`);
+  expect(await graphLink.evaluate((anchor) => (anchor as HTMLAnchorElement).hidden)).toBe(!brainId);
+  await page.keyboard.press("Control+k");
+  const scope = page.getByLabel("Quick switcher scope");
+  await expect(scope).toHaveValue(brainId ? "active" : "all");
+  await expect(scope.locator("option")).toHaveCount(brainId ? 2 : 1);
+  if (brainId) await expect(scope.locator('[value="active"]')).toContainText(`@${brainId}`);
+  await page.getByLabel("Search notes and tags").fill("Principles");
+  const results = page.locator("#switcher-results li");
+  await expect(results).toHaveCount(brainId ? 1 : 2);
+  if (brainId) await expect(results).toContainText(`@${brainId}`);
+  else {
+    await expect(results.filter({ hasText: "@engineering" })).toHaveCount(1);
+    await expect(results.filter({ hasText: "@design" })).toHaveCount(1);
+  }
+  await page.keyboard.press("Escape");
+}
+
 test("neighborhood pages keep query-free URLs and move focus in place", async ({ page }) => {
   await page.addInitScript(() => {
     const calls: string[] = [];
@@ -1713,6 +1739,7 @@ test("neighborhood pages keep query-free URLs and move focus in place", async ({
   await expect(page.locator("[data-graph-focus-clear]")).toHaveText("Clear focus");
   await expect(page.locator("[data-graph-focus-copy]")).toBeVisible();
   await expect(page).toHaveURL(neighborhood);
+  await expectGraphShellScope(page, "engineering");
 
   await page.getByRole("button", { name: "Filters" }).click();
   await page.locator("#graph-search").fill("Principles");
@@ -1728,6 +1755,7 @@ test("neighborhood pages keep query-free URLs and move focus in place", async ({
   expect(await page.evaluate(() =>
     (window as unknown as { replaceStateCalls: string[] }).replaceStateCalls
   )).toEqual([`${new URL(workspace).pathname}/brains/design/notes/principles/graph`]);
+  await expectGraphShellScope(page, "design");
 
   const focusedType = (await page.evaluate(async () =>
     (await fetch("/workspace-demo/graph-data.json")).json()
@@ -1741,7 +1769,29 @@ test("neighborhood pages keep query-free URLs and move focus in place", async ({
   await expect(page).toHaveURL(`${workspace}/`);
   expect(page.url()).not.toContain("?");
   expect(await page.evaluate(() => (window as unknown as { samePage?: boolean }).samePage)).toBe(true);
+  await expectGraphShellScope(page);
 });
+
+for (const brainId of [undefined, "engineering"]) {
+  test(`graph shell follows pin and clear from ${brainId ?? "workspace"}`, async ({ page }) => {
+    const graphPath = brainId ? `/brains/${brainId}` : "/";
+    await page.goto(`${workspace}${graphPath}`);
+    const graph = page.locator("#global-graph");
+    await expect(graph).toHaveAttribute("data-visible-nodes");
+    await graph.evaluate((host) => { host.dataset.scopeTest = "same-page"; });
+    await expectGraphShellScope(page, brainId);
+    if (brainId) await page.locator("#graph-related-toggle").click();
+    await page.getByRole("button", { name: "Filters", exact: true }).click();
+    await page.locator("#graph-search").fill("Principles");
+    await page.locator("#graph-search-results button", { hasText: "@design" }).click();
+    await expect(page).toHaveURL(`${workspace}/brains/design/notes/principles/graph`);
+    await expectGraphShellScope(page, "design");
+    await page.locator("[data-graph-focus-clear]").click();
+    await expect(page).toHaveURL(`${workspace}${graphPath}`);
+    await expectGraphShellScope(page, brainId);
+    await expect(graph).toHaveAttribute("data-scope-test", "same-page");
+  });
+}
 
 test("a neighborhood page's focus fit never becomes the root graph's saved camera", async ({ browser }) => {
   const context = await browser.newContext();

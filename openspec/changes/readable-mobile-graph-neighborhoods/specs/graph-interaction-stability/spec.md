@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Touch long press keeps a neighborhood available for inspection
-A touch reader SHALL be able to long press a node to activate the same neighborhood emphasis used by pointer hover. Activation MUST suppress navigation for that press, remain active after release, and end when the reader next taps empty graph space or navigates by tapping a node. Movement that becomes a node drag MUST cancel pending long-press activation and preserve existing drag behavior. A camera gesture is not a tap: any touch sequence that involves more than one simultaneous contact point MUST NOT clear the active neighborhood, at any point during the gesture or when its contact points lift, whatever order they lift in. Only a touch sequence that begins and ends as a single stationary contact on empty graph space MAY clear it. The global graph and every note-page connection map MUST behave the same way.
+A touch reader SHALL be able to long press a node to activate the same neighborhood emphasis used by pointer hover. Activation MUST suppress navigation for that press, remain active after release, and end when the reader next taps empty graph space or navigates by tapping a node. Movement that becomes a node drag MUST cancel pending long-press activation and preserve existing drag behavior. A camera gesture is not a tap: any touch sequence that involves more than one simultaneous contact point MUST NOT produce a click, navigate, or clear the active neighborhood, at any point during the gesture or when its contact points lift, whatever order they lift in, including both contacts lifting in one event. Suppression MUST include synthetic click handling caused by the final release. Only a touch sequence that begins and ends as a single stationary contact on empty graph space MAY clear it. The global graph and every note-page connection map MUST behave the same way.
 
 #### Scenario: Long press and release a node
 - **WHEN** a touch reader holds a node without moving beyond the gesture tolerance and then releases
@@ -21,7 +21,11 @@ A touch reader SHALL be able to long press a node to activate the same neighborh
 
 #### Scenario: Pinch to zoom a pinned neighborhood
 - **WHEN** a touch reader pinches to zoom while a long-press neighborhood is active, and lifts the two contact points in either order
-- **THEN** the camera scale changes and the same neighborhood stays emphasized, with the focused note still identified in the focused-neighborhood bar and in any in-session focus URL state
+- **THEN** the camera scale changes and the same neighborhood stays emphasized, with the focused note still identified in the focused-neighborhood bar and, on the global graph, by its neighborhood pathname
+
+#### Scenario: Lift both contacts together
+- **WHEN** a touch reader releases both contacts in one event after a two-finger camera gesture on a global graph or note-page connection map, over a node or empty space
+- **THEN** neither the release nor its synthetic events produce a click, navigate, or clear focus, and any pinned neighborhood remains active
 
 #### Scenario: Two-finger pan a pinned neighborhood
 - **WHEN** a touch reader moves two contact points together across empty graph space while a long-press neighborhood is active

@@ -23,10 +23,11 @@ import {
   stopCameraAnimation,
   type GraphHoverState,
 } from "./graph-interaction";
-import { fitRenderedGraph, graphFitInsets } from "./graph-fit";
+import { fitRenderedGraph, graphFitInsets, setGraphFitLabelRefresh } from "./graph-fit";
 import { createLensReducers, createLensStore, normalizeLens } from "./graph-lens";
 import { wireLocalGraphLabelReveal } from "./graph-local-labels";
 import { GraphMotionController } from "./graph-motion";
+import { syncGraphPageScope } from "./graph-page-scope";
 import { ResponsiveGraphScheduler } from "./graph-motion-core";
 import {
   deriveGraphData,
@@ -637,7 +638,7 @@ function wireHoverAndClick(
      */
     hoverPreview?: () => boolean;
   } = {},
-): { reapplyPointer(): void } {
+): { reapplyPointer(): void; nodeUnderPointer(): string | null } {
   wirePinchZoom(renderer, state);
   const canNavigateToNode = (node: string) =>
     state.focused === null || isInspectionNeighborhoodNode(state, node);
@@ -679,6 +680,15 @@ function wireHoverAndClick(
   };
   const container = renderer.getContainer();
   let pointerNode: string | null = null;
+  let pointerPosition: { x: number; y: number } | null = null;
+  const nodeUnderPointer = () => {
+    if (!pointerPosition) return null;
+    const bounds = container.getBoundingClientRect();
+    return graphTargetNode(renderer, graph, state, {
+      x: pointerPosition.x - bounds.left,
+      y: pointerPosition.y - bounds.top,
+    });
+  };
   const setPointerTarget = (node: string | null) => {
     if (options.holdInspection?.()) return;
     container.style.cursor = node ? "pointer" : "";
@@ -707,27 +717,27 @@ function wireHoverAndClick(
     }
     renderer.refresh({ skipIndexation: true });
   };
-  const onPointerMove = (event: PointerEvent) => {
-    if (event.pointerType === "touch" || state.dragged !== null) return;
-    const bounds = container.getBoundingClientRect();
-    const node = graphTargetNode(renderer, graph, state, {
-      x: event.clientX - bounds.left,
-      y: event.clientY - bounds.top,
-    });
+  const reapplyPointer = () => {
+    const node = nodeUnderPointer();
     setPointerTarget(node && canNavigateToNode(node) ? node : null);
   };
+  const onPointerMove = (event: PointerEvent) => {
+    if (event.pointerType === "touch") return;
+    // Keep the physical pointer current even while a menu holds inspection.
+    pointerPosition = { x: event.clientX, y: event.clientY };
+    if (state.dragged === null) reapplyPointer();
+  };
   const onPointerLeave = (event: PointerEvent) => {
-    if (event.pointerType !== "touch") setPointerTarget(null);
+    if (event.pointerType === "touch") return;
+    pointerPosition = null;
+    setPointerTarget(null);
   };
   container.addEventListener("pointermove", onPointerMove);
   container.addEventListener("pointerleave", onPointerLeave);
   const onContextMenu = (event: MouseEvent) => {
     if (!options.onContextMenu) return;
-    const bounds = container.getBoundingClientRect();
-    const node = graphTargetNode(renderer, graph, state, {
-      x: event.clientX - bounds.left,
-      y: event.clientY - bounds.top,
-    });
+    pointerPosition = { x: event.clientX, y: event.clientY };
+    const node = nodeUnderPointer();
     event.preventDefault();
     // Emphasize the node the menu is about before the menu opens, so it stays
     // emphasized for as long as the menu names it.
@@ -756,8 +766,9 @@ function wireHoverAndClick(
       emptyStageTouch = { x: event.x, y: event.y };
     }
   });
-  renderer.on("clickNode", ({ node }) => {
+  renderer.on("clickNode", ({ node, event }) => {
     if (longPress.consumeActivatedPress()) return;
+    if (multiTouchSequence && event.original.type.startsWith("touch")) return;
     if (state.draggedMoved) {
       state.draggedMoved = false;
       return;
@@ -767,6 +778,7 @@ function wireHoverAndClick(
   renderer.on("clickStage", ({ event }) => {
     const touchEvent = event.original.type.startsWith("touch");
     if (longPress.consumeActivatedPress()) return;
+    if (multiTouchSequence && touchEvent) return;
     if (state.draggedMoved) {
       state.draggedMoved = false;
       return;
@@ -817,7 +829,8 @@ function wireHoverAndClick(
     longPress.destroy();
   });
   return {
-    reapplyPointer: () => setPointerTarget(pointerNode),
+    reapplyPointer,
+    nodeUnderPointer,
   };
 }
 
@@ -1047,9 +1060,6 @@ export interface GraphDomainsUI {
 export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   const data = await fetchGraphData();
   const activeBrainId = ui.host.dataset.activeBrainId;
-  // A note-owned neighborhood page names its note in the host attribute. Its
-  // pathname is the shareable identity, so focus never becomes query state
-  // there and moving focus navigates to the other note's neighborhood page.
   /** The unfocused graph this page's focus belongs to. */
   const graphRoute = activeBrainId
     ? routesFor({ mode: "workspace", brainId: activeBrainId }).graph
@@ -1089,7 +1099,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   // A page generated at a note's path keeps its layout and camera under a
   // scope of its own, so its close-up never comes back as the graph page's
   // restored view.
-  const neighborhoodFocus = ui.host.dataset.initialFocus ?? null;
+  let neighborhoodFocus = ui.host.dataset.initialFocus ?? null;
   const motionScope = () =>
     graphSessionScope({ activeBrainId, showRelatedBrains, neighborhoodFocus });
   const visualContext: GraphContext = activeBrainId
@@ -1132,8 +1142,8 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     focusAfterMotion = null;
     afterMotion?.();
   }, motionScope(), true, false, () => ({
-    includeLabels: false,
-    // The focused note's own title stays inside a fit; nothing else's does.
+    includeLabels: !narrowGraphQuery.matches,
+    // Narrow fits still keep the focused note's title and plate inside.
     labelIds: state.focused ? [state.focused] : [],
   }));
   const requestSettle = (...args: Parameters<GraphMotionController["settle"]>) => {
@@ -1408,7 +1418,18 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     location: window.location,
     history: window.history,
   });
-  const syncFocusUrl = () => syncFocusUrlState(focusedCompositeId());
+  const syncFocusUrl = () => {
+    const focus = focusedCompositeId();
+    syncFocusUrlState(focus);
+    neighborhoodFocus = focus;
+    motion.setSessionScope(motionScope());
+    if (data.mode === "workspace") {
+      const owner = state.focused
+        ? graph.getNodeAttribute(state.focused, "brainId") as string
+        : activeBrainId;
+      syncGraphPageScope(import.meta.env.BASE_URL, owner);
+    }
+  };
 
   /** Pathname-only link to a node's own neighborhood page. */
   const nodeNeighborhoodHref = (node: string): string => {
@@ -1476,7 +1497,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     // A move made from inside the bar leaves it open: the reader is reading
     // the list and expects the list to refill, not to close under them.
     if (next !== state.focused && !fromFocusBar) focusDetailsExpanded = false;
-    initialFocusOverride = false;
+    if (!next) initialFocusOverride = false;
     setFocusedInspection(graph, state, next);
     delete ui.host.dataset.transientInspection;
     updateFocusUI();
@@ -1560,15 +1581,6 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   const scaleMarkerSize = (size: number) => renderer.scaleSize(size);
   const labelLayouts = createGraphLabelLayouts(renderer);
   const baseLabelSize = renderer.getSetting("labelSize");
-  /**
-   * Puts the camera-scaled label size into settings, so the renderer, hit
-   * testing and label-aware fitting all read one value for a camera state.
-   */
-  function syncRenderedLabelSize(): number {
-    const size = renderedLabelSize(baseLabelSize, renderer.getCamera().getState().ratio);
-    if (renderer.getSetting("labelSize") !== size) renderer.setSetting("labelSize", size);
-    return size;
-  }
   /** Labels collision selection has kept; `null` during the layout pass. */
   let selectedLabels: Set<string> | null = null;
   /** Labels already on screen, so only genuinely new ones fade in. */
@@ -1589,9 +1601,9 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     );
     if (visible.length) renderer.refresh({ partialGraph: { nodes: visible }, skipIndexation: true });
   };
-  function applyReducers(): void {
+  function applyReducers(fitting = false): void {
     const dimensions = renderer.getDimensions();
-    const labelSize = syncRenderedLabelSize();
+    const labelSize = renderedLabelSize(baseLabelSize, renderer.getCamera().getState().ratio);
     // Screen geometry is independent of what the reducer decides to show, so
     // it can be gathered once and read from inside the reducer.
     const centers = new Map<string, { x: number; y: number; radius: number }>();
@@ -1605,7 +1617,9 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       // put nodes thousands of pixels off screen, which collapsed their label
       // width budget to zero and silently suppressed every label on the graph.
       const center = renderer.graphToViewport({ x: attrs.x as number, y: attrs.y as number });
-      centers.set(node, { ...center, radius: renderer.scaleSize(data.size) });
+      // Cached display sizes were reduced for the previous camera state.
+      const radius = scaleMarkerSize(flooredNodeSize(attrs.size as number, scaleMarkerSize));
+      centers.set(node, { ...center, radius });
     });
     const laidOut = new Map<string, { layout: GraphLabelLayout; box: GraphLabelBox }>();
     const labelFor = (node: string, label: string, foreign: boolean) => {
@@ -1623,7 +1637,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       laidOut.set(node, placed);
       return placed;
     };
-    renderer.setSetting("nodeReducer", (node, attrs) => {
+    const nodeReducer: NonNullable<ReturnType<Sigma["getSettings"]>["nodeReducer"]> = (node, attrs) => {
       const activeNode = activeInspectionNode(state);
       const res = { ...attrs } as Record<string, unknown>;
       if (hidden.has(node)) {
@@ -1673,12 +1687,15 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
         return styled as typeof attrs;
       }
       if (placed) {
+        // Keep measurement separate from visibility: a required title must fit
+        // even when panning or collision selection removed it from the canvas.
+        styled.fitLabelLayout = placed.layout;
         // Whatever the reader is pointing at always shows its title, even when
         // collision selection had no room to place it.
         if (
           selectedLabels &&
           !selectedLabels.has(node) &&
-          !retiringLabels.has(node) &&
+          (fitting || !retiringLabels.has(node)) &&
           !underPointer
         ) {
           styled.label = "";
@@ -1694,8 +1711,8 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
         styled.labelLineHeight = placed.layout.lineHeight;
       }
       return styled as typeof attrs;
-    });
-    renderer.setSetting("edgeReducer", (edge, attrs) => {
+    };
+    const edgeReducer: NonNullable<ReturnType<Sigma["getSettings"]>["edgeReducer"]> = (edge, attrs) => {
       const source = graph.source(edge);
       const target = graph.target(edge);
       if (!contextEdges.has(edgeKey(source, target)) || hidden.has(source) || hidden.has(target)) {
@@ -1705,15 +1722,20 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
         ...attrs,
         size: easedEdgeSize(attrs.size, scaleMarkerSize),
       });
-    });
+    };
     // Two passes, because collision selection needs to know the box every
     // candidate label would occupy before it can tell which of them collide.
     // The first pass lays them all out; the second draws the survivors.
     selectedLabels = null;
-    renderer.refresh();
+    // Sigma indexes immediately when settings change. Batch the changes, then
+    // render that index rather than building it again for the layout pass.
+    renderer.setSettings({ labelSize, nodeReducer, edgeReducer });
+    if (!fitting) renderer.refresh({ partialGraph: {}, skipIndexation: true });
     const focusPriority = (node: string) =>
       node === activeInspectionNode(state) ? 0 : state.neighbors.has(node) ? 1 : 2;
-    const labelCandidates = [...paintedLabels(renderer)].flatMap((node) => {
+    // A fit already frames its included nodes. Its layout pass needs boxes,
+    // not a provisional WebGL frame containing every candidate label.
+    const labelCandidates = [...(fitting ? laidOut.keys() : paintedLabels(renderer))].flatMap((node) => {
       const placed = laidOut.get(node);
       return placed
         ? [{
@@ -1740,7 +1762,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       ui.host.dataset.labelSelected = String(selectedLabels.size);
       ui.host.dataset.labelRetiring = String(retiringLabels.size);
     }
-    const labelContext = renderer.getCanvases().labels?.getContext("2d");
+    const labelContext = fitting ? null : renderer.getCanvases().labels?.getContext("2d");
     if (labelContext) {
       // A selection change that swaps several titles at once reads as a
       // flicker. Arriving labels fade in and leaving ones fade out, so the
@@ -1757,6 +1779,8 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     }
     renderer.refresh();
   }
+
+  setGraphFitLabelRefresh(renderer, () => applyReducers(true));
 
   const updateRenderedLabelStats = () => {
     const displayed = paintedLabels(renderer);
@@ -1904,10 +1928,14 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     (window as unknown as Record<string, unknown>).__graphDebug = { renderer, graph, hidden };
   }
 
+  const onFilterChange = () => {
+    initialFocusOverride = false;
+    refresh();
+  };
   for (const box of [...ui.typeFilters, ...ui.statusFilters]) {
-    box.addEventListener("change", () => refresh());
+    box.addEventListener("change", onFilterChange);
   }
-  ui.tagFilter.addEventListener("change", () => refresh());
+  ui.tagFilter.addEventListener("change", onFilterChange);
 
   const onRelatedBrainsToggle = () => {
     showRelatedBrains = !showRelatedBrains;
@@ -2063,11 +2091,9 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   const closeContextMenu = (restoreFocus = false) => {
     if (ui.contextMenu.hidden) return;
     ui.contextMenu.hidden = true;
-    // The pointer moved while inspection was held, so what it is over now is
-    // whatever the reader last pointed at rather than the menu's node.
-    if (!state.focused) setTransientInspection(graph, state, null);
     if (restoreFocus) ui.fitViewButton.focus({ preventScroll: true });
     menuNode = null;
+    pointer.reapplyPointer();
   };
   const openContextMenu = (node: string | null, event: MouseEvent) => {
     document.dispatchEvent(new CustomEvent("graph-context-menu-open"));
@@ -2178,7 +2204,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       return;
     }
     if (isGraphKey(event, "f")) {
-      const node = pointerLabelNode;
+      const node = ui.contextMenu.hidden ? pointer.nodeUnderPointer() : menuNode;
       if (!node) return;
       event.preventDefault();
       if (node === state.focused) setFocus(null);
@@ -2344,7 +2370,6 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   else if (!restored.view) {
     fitRenderedGraph(renderer, visibleIds(), { includeLabels: !narrowGraphQuery.matches });
   }
-  initialFocusOverride = false;
 }
 
 /* ------------------------------------------------------------------------ */
@@ -2376,11 +2401,6 @@ export async function mountLocalGraphs(): Promise<void> {
     const narrowGraphQuery = window.matchMedia("(max-width: 700px)");
     const localLabelLayouts = createGraphLabelLayouts(renderer);
     const localBaseLabelSize = renderer.getSetting("labelSize");
-    function syncLocalLabelSize(): number {
-      const size = renderedLabelSize(localBaseLabelSize, renderer.getCamera().getState().ratio);
-      if (renderer.getSetting("labelSize") !== size) renderer.setSetting("labelSize", size);
-      return size;
-    }
     let localSelectedLabels: Set<string> | null = null;
     /** The node under the pointer on the connection map; it wears the plate. */
     let localPointerNode: string | null = null;
@@ -2400,21 +2420,25 @@ export async function mountLocalGraphs(): Promise<void> {
       theme,
     };
     const hoverReducers = createHoverReducers(graph, state);
+    const scaleMarkerSize = (size: number) => renderer.scaleSize(size);
     let revealNarrowLabels = false;
     const applyLocalReducers = () => {
       const dimensions = renderer.getDimensions();
-      const labelSize = syncLocalLabelSize();
+      const labelSize = renderedLabelSize(localBaseLabelSize, renderer.getCamera().getState().ratio);
       const centers = new Map<string, { x: number; y: number; radius: number }>();
       graph.forEachNode((node, attrs) => {
         const data = renderer.getNodeDisplayData(node);
         if (!data || data.hidden) return;
         const center = renderer.graphToViewport({ x: attrs.x as number, y: attrs.y as number });
-        centers.set(node, { ...center, radius: renderer.scaleSize(data.size) });
+        const radius = scaleMarkerSize(flooredNodeSize(attrs.size as number, scaleMarkerSize));
+        centers.set(node, { ...center, radius });
       });
       const laidOut = new Map<string, { layout: GraphLabelLayout; box: GraphLabelBox }>();
+      localSelectedLabels = null;
       renderer.setSettings({
+        labelSize,
         nodeReducer: (node, attrs) => {
-          const sized = { ...attrs, size: flooredNodeSize(attrs.size, (size) => renderer.scaleSize(size)) };
+          const sized = { ...attrs, size: flooredNodeSize(attrs.size, scaleMarkerSize) };
           const brainAware = sized.foreign
             ? { ...sized, forceLabel: forceForeignLabel(true, narrowGraphQuery.matches) }
             : sized;
@@ -2449,6 +2473,7 @@ export async function mountLocalGraphs(): Promise<void> {
             return { ...styled, label: "", forceLabel: false } as typeof attrs;
           }
           laidOut.set(node, { layout, box });
+          styled.fitLabelLayout = layout;
           if (localSelectedLabels && !localSelectedLabels.has(node) && !underPointer) {
             return { ...styled, label: "", forceLabel: false } as typeof attrs;
           }
@@ -2470,8 +2495,7 @@ export async function mountLocalGraphs(): Promise<void> {
 
       // Same two passes as the global graph: lay every candidate out, then draw
       // the ones that survive collision selection.
-      localSelectedLabels = null;
-      renderer.refresh();
+      renderer.refresh({ partialGraph: {}, skipIndexation: true });
       const priority = (node: string) =>
         node === slug ? 0 : isInspectionNeighborhoodNode(state, node) ? 1 : 2;
       localSelectedLabels = selectGraphLabels(
@@ -2493,7 +2517,9 @@ export async function mountLocalGraphs(): Promise<void> {
       );
       renderer.refresh();
     };
+    setGraphFitLabelRefresh(renderer, applyLocalReducers);
     applyLocalReducers();
+    let labelInspection = activeInspectionNode(state);
     const updateRenderedLabelStats = () => {
       const displayed = paintedLabels(renderer);
       const rendered = activeInspectionNode(state)
@@ -2503,6 +2529,12 @@ export async function mountLocalGraphs(): Promise<void> {
       host.dataset.renderedLabelIds = [...rendered].sort().join(",");
       host.dataset.renderedMarkers = String(graph.order);
       const inspected = activeInspectionNode(state);
+      // Pointer leave and preview toggles change inspection without moving the
+      // camera. Observe the updated state, not the earlier pointer callback.
+      if (inspected !== labelInspection) {
+        labelInspection = inspected;
+        scheduleLocalLabelRefresh();
+      }
       if (inspected) updateInspectionTargetStats(host, renderer, graph, inspected);
       else delete host.dataset.inspectionTargetGeometry;
       if (host.hasAttribute("data-geometry-check-pending")) {
@@ -2513,14 +2545,14 @@ export async function mountLocalGraphs(): Promise<void> {
     renderer.on("afterRender", updateRenderedLabelStats);
     const camera = renderer.getCamera();
     let localLabelBudgetFrame: number | null = null;
-    const onLocalCameraUpdated = () => {
+    const scheduleLocalLabelRefresh = () => {
       if (localLabelBudgetFrame !== null) window.clearTimeout(localLabelBudgetFrame);
       localLabelBudgetFrame = window.setTimeout(() => {
         localLabelBudgetFrame = null;
         applyLocalReducers();
       }, 120);
     };
-    camera.on("updated", onLocalCameraUpdated);
+    camera.on("updated", scheduleLocalLabelRefresh);
     const labelReveal = wireLocalGraphLabelReveal(
       () => camera.getState().ratio,
       () => narrowGraphQuery.matches,
@@ -2549,13 +2581,9 @@ export async function mountLocalGraphs(): Promise<void> {
       `local:${slug}`,
       false,
       true,
-      // Markers decide the frame, not labels. A label is bounded to twice its
-      // node's distance from the nearer edge, so it cannot be clipped no matter
-      // how tight the fit; letting labels into the measurement instead zooms
-      // out to make room for text that collision selection may not even draw,
-      // and a 320 pixel label on a 390 pixel viewport shrinks the graph to a
-      // speck. This is the loop design.md warned about, broken on the fit side.
-      () => ({ includeLabels: false, labelIds: state.focused ? [state.focused] : [] }),
+      // Narrow fits reserve label space only for the focused note. Desktop
+      // fits include every label selected at the fitted camera state.
+      () => ({ includeLabels: !narrowGraphQuery.matches, labelIds: state.focused ? [state.focused] : [] }),
     );
     const fitView = () => {
       pendingMotion = "fit";
@@ -2732,7 +2760,7 @@ export async function mountLocalGraphs(): Promise<void> {
       resizeObserver.disconnect();
       responsiveScheduler.cancel();
       if (localLabelBudgetFrame !== null) window.clearTimeout(localLabelBudgetFrame);
-      camera.off("updated", onLocalCameraUpdated);
+      camera.off("updated", scheduleLocalLabelRefresh);
       motion.destroy();
       labelReveal.destroy();
       renderer.off("afterRender", updateRenderedLabelStats);

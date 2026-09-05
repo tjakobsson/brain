@@ -25,7 +25,7 @@ Confirmed with trusted CDP touch events. Lifting the second contact point first,
 
 **Non-Goals:**
 
-- Reading a label whose node has been panned off the canvas. Panning back is the answer.
+- Reading a label while its node remains off the canvas. Fit view must still recover offscreen nodes and measure their labels at the candidate camera state.
 - Changing the force-directed layout itself. Only how it is drawn.
 - Changing edge rendering weight or the type and status colour encoding. The overview reads as confetti partly because of colour, but that is a separate judgement about `Meaningful visual encoding` and is not in this change.
 
@@ -33,7 +33,7 @@ Confirmed with trusted CDP touch events. Lifting the second contact point first,
 
 ### Disqualify the whole touch sequence, not the stray event
 
-Track whether the current touch sequence ever had more than one contact point, and refuse to clear focus for the rest of that sequence. The flag arms on any `touchstart` with `event.touches.length > 1` and disarms only on a `touchend` with `event.touches.length === 0`, or on `touchcancel`.
+Track whether the current touch sequence ever had more than one contact point, and refuse clicks, navigation, and focus clearing for the rest of that sequence. The flag arms on any `touchstart` with `event.touches.length > 1`. Retire it only after the final release and its synthetic click handling have been suppressed, including when both contacts lift in one event; `touchcancel` also ends the sequence without an action.
 
 Also require `event.original.type === "touchstart"` before `downStage` or `downNode` arms `emptyStageTouch` or starts a long press. A `downStage` synthesised from a `touchend` is not a press.
 
@@ -80,9 +80,11 @@ Rejected: deriving size from node count. That is a proxy for what we actually ca
 
 Today `labelRenderedSizeThreshold: 0` on narrow leaves only `labelGridCellSize: 180` to cull, which picks a fixed handful per screen regardless of whether they fit. That produces six overlapping labels on a 400-node overview and would produce none on an eight-node connection map if the grid cells happened to fall badly.
 
-Replace it with a rule stated in terms of the outcome: do not render a label whose box overlaps an already-rendered label's box, or whose text falls below the legible minimum. Density then decides. A dense overview yields zero labels, matching the reference behaviour. A connection map yields all of them, which the grid rule could not guarantee.
+Replace it with a rule stated in terms of the outcome: do not render a label whose box overlaps an already-rendered label's box or another visible node's marker, or whose text falls below the legible minimum. Marker collision bounds use rendered radii at the current camera state, not raw graph-space sizes. Density then decides. A dense overview yields zero labels, matching the reference behaviour. A sparse connection map labels every node when the boxes fit, which the grid rule could not guarantee.
 
 Selection must be stable frame to frame at a fixed camera state, so it needs a deterministic priority order rather than iteration order. Focused note first, then its neighbors, then by descending degree, then by id.
+
+Local graphs recompute selection when hover preview ends or its preference changes, even if the camera has not moved. F targets the visible marker under the pointer independently of left-click navigation eligibility, so a dimmed unrelated note can receive the pin. Dismissing a context menu releases its held target; F must not act on that stale target when the pointer is now over empty space.
 
 ### The owner prefix is a reader preference
 
@@ -96,11 +98,25 @@ The preference must not reach the per-brain graph, where a rendered foreign labe
 
 ### The neighbor list is a control that moves focus
 
-Rows call the existing `setFocus(node, true)`, which brings camera fitting and URL sync for free, and on a neighborhood page already navigates to the target's own neighborhood page.
+Rows call `setFocus(node, true)` to move focus and fit the camera in place. URL sync replaces the address with the target's neighborhood path on both graph and neighborhood pages; no row causes a page load. Clearing also happens in place and restores the context graph's own path.
 
 `setFocus` currently does `if (next !== state.focused) focusDetailsExpanded = false`, which would collapse the bar the reader is reading from. A focus move needs a way to declare it came from inside the bar; every other caller keeps today's collapse.
 
-Rows come from the same neighbor set the reducers use, filtered by `hidden`, so filters, the lens and the graph context are respected without a second notion of visibility. Alphabetical because scanning for a half-remembered title is what the list is for; exploring is what the canvas is for.
+Rows come from the same neighborhood set the reducers use at the selected reach of one to five links, filtered by `hidden`. Sort by distance, then alphabetically by title, and show distances beyond the first ring. A shared neighborhood's filter visibility exception follows the newly focused neighborhood on row moves until the reader explicitly edits type, status, or tag filters. Moving focus is not a filter edit.
+
+### Keep in-place identity and state aligned
+
+After replacing a focus URL, refresh navigation and site-search owner Brain scope from the current pathname, as the existing site-search contract requires. Cover pinning from the root graph, moving across Brains, and clearing to the context graph path. No new site-search delta is needed.
+
+The layout session key follows the current neighborhood identity, or the unfocused context graph after clearing. Changing that key must not restore another session's node positions during the transition; retain the live layout and use the new key for subsequent persistence.
+
+Keep shipped full workspace `neighborhood:<id>` keys unchanged. For focus originating in a Brain graph, append `:brain:<activeBrainId>:<showRelatedBrains>` using the graph's original context, not the focused note's owner. Related-Brains off, related-Brains on, and the full workspace must not overwrite each other's neighborhood layouts or cameras.
+
+### Fit rendered bounds at the candidate camera
+
+Desktop fits include labels selected at the fitted camera, even if an offscreen pan hid them at the starting camera. Focused fits also include the focused title and its actual rendered plate, on desktop and narrow viewports. Measure candidate-camera label selection, rendered marker radii, text, and plate bounds, then use a bounded number of corrections to contain and centre them within the usable viewport. Do not reuse clipped starting-camera bounds or iterate toward a fixed point that can oscillate as label selection changes.
+
+Only optional labels need the lock against zooming back into a suppressed selection. Required-title-only fits can correct an outward overshoot; retain the tightest measured contained camera if wrapping prevents convergence within eight corrections. Batch reducer settings and omit provisional all-label WebGL frames during planning so large graphs stay within the existing performance budgets.
 
 ### Fixtures that can fail
 
@@ -113,7 +129,7 @@ Titles must be generated, not copied. `brain-vault` is a personal vault in a sep
 - Centred labels sit below their node, so they collide with nodes underneath rather than with labels to the right. Collision-based selection will suppress more labels than the grid did in vertically dense layouts. → The reference behaviour accepts exactly this, and the neighbor list carries the text that the canvas drops. Check on the 400-note fixture that detailed zoom still labels a useful number of nodes.
 - Four sites compute label geometry and only the renderer is obviously wrong when they disagree. Hit testing and fitting fail silently. → The layout function returns the box; the other three consume it. Cover the function directly in vitest and assert the hit box against the returned box rather than recomputing it in the test.
 - `itemSizesReference: "positions"` changes marker size everywhere, including desktop and the demo vault, so every existing screenshot baseline shifts. → Expect broad baseline churn and review it deliberately. Re-take `screenshots/` afterwards and compare against the recorded numbers, not against impressions.
-- Scaled label text interacts with label-aware camera fitting, which measures labels to decide the camera, while the camera decides the text size. → Break the loop by measuring at the current camera state and accepting one settle iteration, as the existing fit already does. Do not iterate to a fixed point.
+- Scaled label text interacts with label-aware camera fitting, which measures labels to decide the camera, while the camera decides the text size. → Remeasure at candidate camera states and bound the corrections. Include selected labels and the actual focused plate even after an offscreen pan; do not iterate to an oscillating fixed point.
 - Recalibrating the stress fixture changes what `npm run test:stress-graph` measures, so its performance budgets may need re-baselining alongside the correctness work. → Re-baseline deliberately and record the new numbers, rather than loosening a budget to make a run pass.
 
 ## Open Questions

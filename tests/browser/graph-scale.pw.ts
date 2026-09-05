@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { graphSignature, positionCacheKey } from "../../src/lib/graph-motion-core";
 
 /**
  * The realistic-scale fixture: 400 notes across four brains, with the
@@ -443,7 +444,50 @@ test("a hovered title withdraws when the pointer leaves an unpinned graph", asyn
   await expect(graph).toHaveAttribute("data-rendered-labels", "0");
 });
 
-test("a focus fit keeps the focused note's title on screen", async ({ page }) => {
+/** Record unclipped draw bounds: reading canvas pixels cannot detect text cut at an edge. */
+async function recordFitDraws(page: Page) {
+  await page.addInitScript(() => {
+    type Bounds = { left: number; top: number; right: number; bottom: number };
+    type MeasuredCanvas = HTMLCanvasElement & { fitDraws?: Bounds[] };
+    const prototype = CanvasRenderingContext2D.prototype;
+    const clear = prototype.clearRect;
+    prototype.clearRect = function (...args) {
+      (this.canvas as MeasuredCanvas).fitDraws = [];
+      clear.apply(this, args);
+    };
+    const text = prototype.fillText;
+    prototype.fillText = function (value, x, y, maxWidth) {
+      if (this.canvas.classList.contains("sigma-labels")) {
+        const metrics = this.measureText(value);
+        ((this.canvas as MeasuredCanvas).fitDraws ??= []).push({
+          left: x - metrics.actualBoundingBoxLeft,
+          right: x + metrics.actualBoundingBoxRight,
+          top: y - metrics.actualBoundingBoxAscent,
+          bottom: y + metrics.actualBoundingBoxDescent,
+        });
+      }
+      text.call(this, value, x, y, maxWidth);
+    };
+    const plate = prototype.roundRect;
+    prototype.roundRect = function (x, y, width, height, radii) {
+      if (this.canvas.classList.contains("sigma-hovers")) {
+        ((this.canvas as MeasuredCanvas).fitDraws ??= []).push({ left: x, top: y, right: x + width, bottom: y + height });
+      }
+      return plate.call(this, x, y, width, height, radii);
+    };
+  });
+}
+
+async function fitDraws(graph: Locator, canvas: "labels" | "hovers") {
+  return graph.locator(`canvas.sigma-${canvas}`).evaluate((element) =>
+    (element as HTMLCanvasElement & {
+      fitDraws?: { left: number; top: number; right: number; bottom: number }[];
+    }).fitDraws ?? []
+  );
+}
+
+test("a focus fit recovers the complete title and plate after panning offscreen", async ({ page }) => {
+  await recordFitDraws(page);
   // A neighborhood whose neighbors lie far to the right and below: the
   // marker-only fit pins the focused note to the left padding, where a centred
   // 300 pixel title would run off the screen. The reported case, made certain.
@@ -491,6 +535,120 @@ test("a focus fit keeps the focused note's title on screen", async ({ page }) =>
     expect(line.left).toBeGreaterThan(2);
     expect(line.right).toBeLessThan(canvasWidth - 2);
   }
+
+  const box = (await graph.boundingBox())!;
+  // Start on empty canvas rather than dragging a node. Panning far enough
+  // removes the focused title from label selection before Z tries to fit it.
+  const markers = JSON.parse((await graph.getAttribute("data-focused-marker-geometry"))!) as
+    { x: number; y: number; radius: number }[];
+  const start = [0.3, 0.5, 0.7].flatMap((x) => [0.3, 0.5, 0.7].map((y) => ({ x: box.width * x, y: box.height * y })))
+    .find((point) => markers.every((marker) => Math.hypot(point.x - marker.x, point.y - marker.y) > marker.radius + 30))!;
+  await page.mouse.move(box.x + start.x, box.y + start.y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + start.x + box.width * 4, box.y + start.y, { steps: 12 });
+  await page.mouse.up();
+  await expect.poll(async () => {
+    const markers = JSON.parse((await graph.getAttribute("data-focused-marker-geometry"))!) as
+      { id: string; x: number; radius: number }[];
+    return markers.find((marker) => marker.id === "eng/edge-focus")!.x;
+  }).toBeGreaterThan(box.width);
+  await page.waitForTimeout(500);
+  await expect(graph).toHaveAttribute("data-inspection-canvas-label", "");
+
+  const fits = Number(await graph.getAttribute("data-fit-requests"));
+  await page.keyboard.press("z");
+  await expect(graph).toHaveAttribute("data-fit-requests", String(fits + 1));
+  await page.waitForTimeout(700);
+  const plates = await fitDraws(graph, "hovers");
+  expect(plates).toHaveLength(1);
+  const bar = (await page.locator("[data-graph-focus-status]").boundingBox())!;
+  const controls = (await page.locator(".graph-controls").boundingBox())!;
+  for (const plate of plates) {
+    expect(plate.left).toBeGreaterThanOrEqual(23);
+    expect(plate.right).toBeLessThanOrEqual(box.width - 23);
+    expect(plate.top).toBeGreaterThanOrEqual(controls.y + controls.height - box.y + 11);
+    expect(plate.bottom).toBeLessThanOrEqual(bar.y - box.y - 11);
+  }
+});
+
+test("desktop Fit view includes labels selected at the fitted camera", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await recordFitDraws(page);
+  await page.route("**/graph-data.json", (route) => route.fulfill({ json: {
+    nodes: [
+      { id: "left", title: "A long note title that reaches beyond the left edge of the viewport", x: 0, y: 0 },
+      { id: "right", title: "Another long note title that reaches beyond the right edge of the viewport", x: 5, y: 0 },
+    ].map((node) => ({ ...node, route: `/notes/${node.id}`, type: "permanent", status: "draft", degree: 1, tags: [] })),
+    edges: [{ source: "left", target: "right" }],
+  } }));
+  await page.goto("./");
+  const graph = page.locator("#global-graph");
+  await expect(graph).toHaveAttribute("data-visible-nodes", "2");
+  await page.waitForTimeout(1_000);
+
+  // Start at a different text scale with both notes outside the zoomed view.
+  await zoomTo(page, graph, 0.1);
+  await page.mouse.move(5, 5);
+  await page.waitForTimeout(400);
+  await page.keyboard.press("z");
+  await page.waitForTimeout(700);
+  await expect(graph).toHaveAttribute("data-rendered-labels", "2");
+  const bounds = await fitDraws(graph, "labels");
+  expect(bounds.length).toBeGreaterThanOrEqual(2);
+  const box = (await graph.boundingBox())!;
+  for (const label of bounds) {
+    expect(label.left).toBeGreaterThanOrEqual(23);
+    expect(label.right).toBeLessThanOrEqual(box.width - 23);
+    expect(label.top).toBeGreaterThanOrEqual(23);
+    expect(label.bottom).toBeLessThanOrEqual(box.height - 23);
+  }
+});
+
+test("a sparse narrow focused fit fills the available width without clipping its plate", async ({ page }) => {
+  await recordFitDraws(page);
+  const nodes = [
+    { id: "focus", title: "Documentation as a product is worth more than the first draft", x: 0, y: 0 },
+    { id: "right", title: "Right", x: 100, y: 0 },
+    { id: "corner", title: "Corner", x: 100, y: 20 },
+    { id: "below", title: "Below", x: 0, y: 20 },
+  ].map((node) => ({ ...node, route: `/notes/${node.id}`, type: "permanent", status: "established", tags: [],
+    degree: node.id === "focus" ? 3 : 1 }));
+  const edges = ["right", "corner", "below"].map((target) => ({ source: "focus", target }));
+  // Restore this deliberately wide composition instead of letting a cold
+  // layout worker change the geometry that exposed the oversized fit.
+  await page.addInitScript(({ key, positions }) => {
+    sessionStorage.setItem(key, JSON.stringify({ version: 2, positions }));
+  }, {
+    key: positionCacheKey(`${graphSignature(nodes, edges)}:all`, "portrait"),
+    positions: Object.fromEntries(nodes.map(({ id, x, y }) => [id, { x, y }])),
+  });
+  await page.route("**/graph-data.json", (route) => route.fulfill({ json: { nodes, edges } }));
+  await page.goto("./?focus=default%2Ffocus");
+  const graph = page.locator("#global-graph");
+  await expect(graph).toHaveAttribute("data-focused-node", "focus");
+  await expect(graph).not.toHaveAttribute("data-settle-requests");
+  await page.keyboard.press("z");
+  await page.waitForTimeout(700);
+
+  const markers = JSON.parse((await graph.getAttribute("data-focused-marker-geometry"))!) as
+    { x: number; y: number; radius: number }[];
+  expect(markers).toHaveLength(4);
+  const left = Math.min(...markers.map((marker) => marker.x - marker.radius));
+  const right = Math.max(...markers.map((marker) => marker.x + marker.radius));
+  // The broken zoom-out lock stopped at a 39px span; the title leaves room
+  // for more than 150px of markers while retaining the normal 24px margins.
+  expect(right - left).toBeGreaterThan(150);
+  expect(left).toBeGreaterThanOrEqual(23);
+  expect(right).toBeLessThanOrEqual(367);
+  const plates = await fitDraws(graph, "hovers");
+  expect(plates).toHaveLength(1);
+  expect(plates[0]!.left).toBeGreaterThanOrEqual(23);
+  expect(plates[0]!.right).toBeLessThanOrEqual(367);
+  const box = (await graph.boundingBox())!;
+  const bar = (await page.locator("[data-graph-focus-status]").boundingBox())!;
+  const controls = (await page.locator(".graph-controls").boundingBox())!;
+  expect(plates[0]!.top).toBeGreaterThanOrEqual(controls.y + controls.height - box.y + 11);
+  expect(plates[0]!.bottom).toBeLessThanOrEqual(bar.y - box.y - 11);
 });
 
 test("help on a phone shows gestures, not keys", async ({ page }) => {

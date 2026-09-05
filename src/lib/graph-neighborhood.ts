@@ -10,9 +10,8 @@ import {
 
 /**
  * Note-owned focused neighborhoods. A neighborhood is identified by the note's
- * canonical path followed by `graph/`; that pathname is the only shareable
- * form. Graph pages that are not note-owned keep `?focus=` as in-session state,
- * and note pages may carry `?focus=` as return context.
+ * canonical path followed by `graph/`; graph focus changes replace the
+ * pathname in place. Note pages may carry `?focus=` as return context.
  */
 
 export interface NeighborhoodNode {
@@ -59,7 +58,7 @@ export interface GraphSessionScopeOptions {
   /** The Brain whose graph page this is; absent on the full graph. */
   activeBrainId?: string;
   showRelatedBrains?: boolean;
-  /** The note that owns a neighborhood page; `null` on other graph pages. */
+  /** The currently focused note; `null` on unfocused graph pages. */
   neighborhoodFocus?: string | null;
 }
 
@@ -71,7 +70,10 @@ export interface GraphSessionScopeOptions {
  */
 export function graphSessionScope(options: GraphSessionScopeOptions): string {
   if (typeof options.neighborhoodFocus === "string") {
-    return `neighborhood:${options.neighborhoodFocus}`;
+    const neighborhood = `neighborhood:${options.neighborhoodFocus}`;
+    return options.activeBrainId
+      ? `${neighborhood}:brain:${options.activeBrainId}:${Boolean(options.showRelatedBrains)}`
+      : neighborhood;
   }
   if (options.activeBrainId) {
     return `brain:${options.activeBrainId}:${Boolean(options.showRelatedBrains)}`;

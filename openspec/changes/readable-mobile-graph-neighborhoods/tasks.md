@@ -6,9 +6,9 @@
 
 ## 2. Pinch keeps the pin
 
-- [x] 2.1 Add a multi-touch sequence flag to `wireHoverAndClick` in `src/lib/graph-view.ts`: arm on any container `touchstart` with `event.touches.length > 1`, disarm on `touchend` with `event.touches.length === 0` and on `touchcancel`, and refuse to clear focus while armed. Verify with a unit test over the flag's transition function covering one-then-two-then-lift in either order, single contact throughout, and a `touchcancel` mid-gesture.
+- [x] 2.1 Add a multi-touch sequence flag to `wireHoverAndClick` in `src/lib/graph-view.ts`: arm on any container `touchstart` with `event.touches.length > 1`, suppress release actions through the final `touchend` and its synthetic clicks, and end canceled sequences without an action. Verify with a unit test over the flag's transition function covering one-then-two-then-lift in either order, single contact throughout, and a `touchcancel` mid-gesture. Section 11 covers combined-release regression verification.
 - [x] 2.2 Require `event.original.type === "touchstart"` before `downStage` arms `emptyStageTouch` and before `downStage` or `downNode` starts a long press. Verify with a unit case asserting a `touchend`-typed press is ignored, and that the existing graph-interaction suite still passes.
-- [x] 2.3 Add a browser test that long-presses a node, pinches to zoom with two CDP touch points, and asserts `data-focused-inspection` and the `?focus=` query both survive, for both lift orders and simultaneous landing. Verify with `npm run test:browser`.
+- [x] 2.3 Add a browser test that long-presses a node, pinches to zoom with two CDP touch points, and asserts `data-focused-inspection` and the neighborhood pathname both survive, for both lift orders and simultaneous landing. Verify with `npm run test:browser`.
 - [x] 2.5 Stop the camera rotating: set `enableCameraRotation: false` in `baseSettings` and drive the two-contact gesture from a `pinchCameraState` in `src/lib/graph-interaction.ts` that holds the midpoint of the contacts and never turns, wired in `wireHoverAndClick` so both graphs get it. Verify with unit tests over the anchor, the zoom limit, and a gesture that is not two contacts.
 - [x] 2.6 Add a browser test that pinches with a twist and asserts the drawn graph zoomed without tilting. Confirm it fails against sigma's own pinch. Verify with `npm run test:browser`.
 - [x] 2.4 Add the same pinch assertion for a note-page connection map, confirming the shared `wireHoverAndClick` fix covers it. Verify with `npm run test:browser`.
@@ -23,7 +23,7 @@
 ## 4. Label layout
 
 - [x] 4.1 Add a layout function to `src/lib/graph-style.ts` that takes a label, an available width, a rendered font size and a measure callback, and returns rendered lines plus a measured box: one line when it fits, two or three wrapped at word boundaries, the last line shortened by `shortenGraphLabel` when three still do not fit, and an empty result when not even a shortened line fits. Verify with vitest cases for each branch.
-- [x] 4.2 Make `drawGraphNodeLabel` render those lines centred horizontally on the node and below its marker. Verify with a browser assertion that no rendered label crosses a canvas edge for a fully visible node on the 400-note fixture.
+- [x] 4.2 Make `drawGraphNodeLabel` render those lines centred horizontally on the node and below its marker. Verify wrapping and fitted focused-label containment on the 400-note fixture; panning may clip labels without rewrapping them.
 - [x] 4.3 Rewrite the label hit box in `graphScreenTargets` in `src/lib/graph-interaction.ts` to consume the box the layout function returns, below and centred rather than right of the node. Verify with vitest that a three-line label's hit box covers every line and matches the returned box.
 - [x] 4.4 Update `measureRenderedGraph` in `src/lib/graph-fit.ts` to take label extents from the same box, vertical rather than horizontal. Verify with a unit test that a label-aware fit accounts for a wrapped label's height.
 - [x] 4.5 Rewrite `drawGraphNodeHover` for a centred multi-line label, replacing the right-hand pill and its marker-join tangent construction. Verify with vitest over the extracted geometry at small and large marker radii and one to three lines.
@@ -32,7 +32,7 @@
 
 - [x] 5.1 Derive rendered label size from `labelSize / sqrt(cameraRatio)`, clamped to a legible minimum and a maximum, and use it in the layout function, the renderer, hit testing and fitting. Verify with a unit test that all four report the same size at a given camera state.
 - [x] 5.2 Confirm text and markers grow together across a zoom range, and that the clamps hold at `minCameraRatio` and `maxCameraRatio`. Verify with a browser test sampling rendered label width at several camera states on the 400-note fixture.
-- [x] 5.3 Confirm label-aware fitting still settles in one pass and does not oscillate now that measured label size depends on the camera. Verify with the existing fit tests plus a case that fits a graph whose labels are large at the fitted state.
+- [x] 5.3 Confirm label-aware fitting settles with bounded candidate-camera remeasurement and corrections rather than fixed-point oscillation now that measured label size depends on the camera. Verify with the existing fit tests plus a case that fits a graph whose labels are large at the fitted state.
 
 ## 6. Label selection by collision
 
@@ -50,11 +50,11 @@
 ## 8. Connected neighbors list
 
 - [x] 8.1 Add the list markup to `graph-focus-details` in `src/components/GlobalGraph.astro`, ungated by the `fullWorkspace && neighborhoodPage` condition that gates connected domains. Verify the element is present in the built HTML for vault, brain and workspace modes.
-- [x] 8.2 Populate rows from the focused note's neighbors filtered by `hidden`, alphabetically, uncapped, hiding the block when the set is empty. Verify with a unit test over the row-derivation function using a filtered graph fixture.
+- [x] 8.2 Populate rows from the focused note's neighborhood at the selected reach of one to five links, filtered by `hidden`, ordered by distance then alphabetically, uncapped, hiding the block when the set is empty. Verify with a unit test over the row-derivation function using a filtered graph fixture.
 - [x] 8.3 Identify a foreign neighbor in the row regardless of the canvas owner preference. Verify with a workspace-mode browser assertion with the preference off.
 - [x] 8.4 Wire rows to `setFocus(node, true)` and give `setFocus` a way to keep `focusDetailsExpanded` true when the move originated in the bar. Verify with a browser test that a row moves focus, refills the list, and leaves the bar expanded.
 - [x] 8.5 Style the list in `src/styles/global.css` for 44 by 44 CSS pixel rows on narrow and coarse-pointer layouts, wrapping long titles rather than truncating, scrolling within the bar's height limit. Verify with a browser test on a hub note.
-- [x] 8.6 Confirm a row on a note-owned neighborhood page navigates to that neighbor's neighborhood page through the existing `setFocus` branch. Verify with a browser test asserting the resulting URL.
+- [x] 8.6 Confirm a row on a note-owned neighborhood page moves focus in place and replaces the address with that neighbor's neighborhood path. Verify with a browser test asserting the resulting URL and no page load.
 
 ## 10. The address bar carries the shareable identity
 
@@ -65,7 +65,7 @@
 - [x] 10.5 Add Clear focus and Fit view to the graph context menu, and open the menu on empty graph space with only the actions that do not need a note. Verify with browser tests in each state.
 - [x] 10.6 Hold the inspected node while a context menu is open. Verify with a browser test that the node stays inspected as the pointer moves to the menu.
 - [x] 10.7 Update the browser assertions that expect `?focus=` on a graph page. Verify with `npm run test:browser`.
-- [x] 10.8 Move focus in place on a neighborhood page: `setFocus` no longer navigates to another note's page, `createFocusUrlSync` replaces the address there too, and only clearing is refused. Verify with a unit test over the URL sync and browser tests that the page survives a move from a neighbor row and from a search result, with the address becoming the new neighborhood path.
+- [x] 10.8 Move focus in place on a neighborhood page: `setFocus` no longer navigates to another note's page and `createFocusUrlSync` replaces the address there too. Clearing also happens in place as completed in 10.10. Verify with a unit test over the URL sync and browser tests that the page survives a move from a neighbor row and from a search result, with the address becoming the new neighborhood path.
 - [x] 10.9 Fit the camera to the focus before the first painted frame when a page opens already focused, so arriving is never a zoom away from the whole graph. Verify by sampling screen pixels per graph unit every frame on a cold neighborhood page load and confirming the first sample is the fitted value.
 - [x] 10.10 Remove the remaining behavioural distinction between a note's neighborhood path and the graph page: one "Clear focus" that clears in place everywhere with the address following, no `data-graph-focus-clear-navigates`, no `neighborhoodPage` branch in the view. Verify with browser tests that clearing on a note path keeps the page and lands on the graph's own address.
 - [x] 10.11 Put Clear focus in the collapsed focus bar as a 44px icon segment beside Open, so clearing is one tap from anywhere rather than two behind the disclosure. Verify with browser tests that the control is visible and clears without expanding the bar.
@@ -79,8 +79,24 @@
 
 ## 9. Verification
 
+Existing checks record earlier implementation and verification. Section 11 tracks PR-review fixes separately; these historical checks do not certify those fixes.
+
 - [x] 9.1 Run `npm test` and confirm the full vitest suite including main-spec validation passes.
 - [x] 9.2 Run `npm run test:browser`, review every changed screenshot baseline, and confirm each diff is intended rather than a regression. Expect broad churn from the marker sizing change.
 - [x] 9.3 Run `npm run test:stress-graph` against the recalibrated fixture and confirm both correctness and the re-baselined budgets.
 - [x] 9.4 Re-take all five shots in `screenshots/` under the recorded conditions, save them alongside the baselines as `after-*.png`, and update `screenshots/README.md` with the new measurements next to the old ones.
 - [ ] 9.5 Walk the reported flow by hand at 390x844 on the 400-note fixture: open the overview, zoom in and read a title, long-press a hub, pinch to zoom without losing the pin, expand the bar, read the neighbor list, move focus from a row, and toggle the owner preference. Confirm each step matches the scenarios in the delta specs.
+
+## 11. PR review regressions
+
+- [x] 11.1 Verify in-place URL changes refresh pathname-derived navigation and search owner Brain scope for root-graph pinning, cross-Brain moves, and clearing.
+- [x] 11.2 Verify the layout session key follows the current neighborhood and unfocused graph without restoring different node positions during either transition. Keep shipped full workspace neighborhood keys unchanged and verify focused Brain sessions remain separate by original active Brain and related-Brains visibility, without overwriting the full workspace layout or camera.
+- [x] 11.3 Verify a shared neighborhood's filter visibility exception survives row moves and ends only on an explicit type, status, or tag filter edit; verify distance-first row ordering at reaches one to five and no row navigation reload.
+- [x] 11.4 Verify combined two-contact release produces no click, navigation, or focus clear on global and local graphs, alongside both staggered lift orders.
+- [x] 11.5 Verify F targets an unrelated visible marker even when left-click navigation is ineligible, and cannot reuse a stale target after context-menu dismissal.
+- [x] 11.6 Verify local label selection refreshes after hover preview ends or is toggled, without requiring camera movement.
+- [x] 11.7 Verify label collisions use marker sizes rendered at the current camera state, including zoomed-in markers.
+- [x] 11.8 Verify desktop Fit view contains labels selected at the candidate camera and the focused title's actual plate, including after offscreen panning. Cover bounded candidate-camera remeasurement and corrections without fixed-point oscillation, and retain narrow focused-title fit coverage.
+- [x] 11.9 After final edits, run `openspec validate readable-mobile-graph-neighborhoods --strict`, `npm test`, `npm run test:browser`, and `npm run test:stress-graph`; review the final results before checking off this section. Keep manual task 9.5 pending until the walkthrough is performed.
+
+PR-review verification: strict change validation passed, 675 unit tests passed, 157 browser tests passed, and both stress tests passed without changing the performance budgets. The 2,000-note stress run measured a 365.9 ms maximum frame gap and a 335 ms maximum long task, below the 500 ms limits. Task 9.5 remains the only incomplete task.

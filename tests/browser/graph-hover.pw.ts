@@ -980,6 +980,83 @@ for (const gesture of ["second contact lifts first", "first contact lifts first"
   });
 }
 
+for (const landing of ["empty canvas", "marker", "title"] as const) {
+  test(`a combined touch release on ${landing} cannot clear focus or navigate`, async ({ browser }, testInfo) => {
+    test.skip(testInfo.project.name !== "chromium-root", "Combined TouchEvent coverage runs once.");
+    const { base } = deployment(testInfo);
+    const context = await browser.newContext({
+      baseURL: String(testInfo.project.use.baseURL),
+      hasTouch: true,
+      viewport: { width: 390, height: 844 },
+    });
+    const page = await context.newPage();
+    await page.route("**/graph-data.json", (route) =>
+      route.fulfill({ contentType: "application/json", body: JSON.stringify(graphData) }),
+    );
+    await page.goto(`${base}/?focus=default%2F${targetId}`);
+    const graph = page.locator("#global-graph");
+    await expect(graph).toHaveAttribute("data-focused-node", targetId);
+    await expect.poll(async () => (await graphCounts(graph)).completions).toBeGreaterThan(0);
+    await page.waitForTimeout(800);
+    await graph.evaluate((host) => host.setAttribute("data-measure-markers", ""));
+    await expect(graph).toHaveAttribute("data-camera-ratio", /.+/u);
+    const ratio = await graph.getAttribute("data-camera-ratio");
+    const focusedUrl = page.url();
+
+    // CDP releases contacts separately. A DOM event is needed to exercise one
+    // final touchend carrying both changed contacts, which Sigma can read as a tap.
+    await graph.evaluate((host, landing) => {
+      const canvas = host.querySelector<HTMLCanvasElement>("canvas.sigma-mouse")!;
+      const bounds = host.getBoundingClientRect();
+      const markers = JSON.parse(host.dataset.focusedMarkerGeometry!) as { id: string; x: number; y: number }[];
+      const marker = markers.find(({ id }) => id === host.dataset.focusedNode)!;
+      const targets = JSON.parse(host.dataset.inspectionTargetGeometry!) as
+        { kind: string; left: number; right: number; top: number; bottom: number }[];
+      const label = targets.find(({ kind }) => kind === "label")!;
+      const point = landing === "empty canvas"
+        ? { x: bounds.width - 12, y: bounds.height - 12 }
+        : landing === "marker"
+          ? marker
+          : { x: (label.left + label.right) / 2, y: label.bottom - 9 };
+      const contact = (identifier: number, x: number) => new Touch({
+        identifier,
+        target: canvas,
+        clientX: bounds.left + x,
+        clientY: bounds.top + point.y,
+      });
+      const send = (type: string, touches: Touch[], changedTouches: Touch[]) =>
+        canvas.dispatchEvent(new TouchEvent(type, {
+          bubbles: true, cancelable: true, touches, targetTouches: touches, changedTouches,
+        }));
+      const first = contact(1, point.x);
+      let second = contact(2, point.x - 60);
+      send("touchstart", [first, second], [first, second]);
+      second = contact(2, point.x - 110);
+      send("touchmove", [first, second], [second]);
+      send("touchend", [], [first, second]);
+    }, landing);
+
+    await page.waitForTimeout(600);
+    await expect(page).toHaveURL(focusedUrl);
+    await expect(graph).toHaveAttribute("data-focused-node", targetId);
+    if (landing === "empty canvas") await expect(graph).not.toHaveAttribute("data-camera-ratio", ratio!);
+    // Disqualification must end with this sequence: a fresh empty tap still clears.
+    await graph.evaluate((host) => {
+      const canvas = host.querySelector<HTMLCanvasElement>("canvas.sigma-mouse")!;
+      const bounds = host.getBoundingClientRect();
+      const point = new Touch({ identifier: 1, target: canvas, clientX: bounds.right - 12, clientY: bounds.bottom - 12 });
+      for (const type of ["touchstart", "touchend"]) {
+        const touches = type === "touchstart" ? [point] : [];
+        canvas.dispatchEvent(new TouchEvent(type, {
+          bubbles: true, cancelable: true, touches, targetTouches: touches, changedTouches: [point],
+        }));
+      }
+    });
+    await expect(graph).not.toHaveAttribute("data-focused-node");
+    await context.close();
+  });
+}
+
 /**
  * A pinch turns a few degrees every time a hand makes one, and sigma reads
  * that twist as a camera rotation: the graph tilts under labels that stay
@@ -1126,6 +1203,27 @@ test("pinch keeps a pinned neighborhood on a note-page connection map", async ({
   await page.waitForTimeout(200);
 
   expect((await nodesCanvas.screenshot()).equals(pinned)).toBe(false);
+  await expect(graph).toHaveAttribute("data-focused-inspection");
+  await expect(page).toHaveURL(new RegExp(`${base}/notes/welcome/?$`));
+  // Some browsers release both contacts in one event, which Sigma can mistake
+  // for a tap when the first contact stayed still during the pinch.
+  await graph.evaluate((host) => {
+    const canvas = host.querySelector<HTMLCanvasElement>("canvas.sigma-mouse")!;
+    const bounds = host.getBoundingClientRect();
+    const contact = (identifier: number, x: number) => new Touch({
+      identifier, target: canvas, clientX: x, clientY: bounds.bottom - 12,
+    });
+    const send = (type: string, touches: Touch[], changedTouches: Touch[]) =>
+      canvas.dispatchEvent(new TouchEvent(type, {
+        bubbles: true, cancelable: true, touches, targetTouches: touches, changedTouches,
+      }));
+    const first = contact(1, bounds.right - 12);
+    let second = contact(2, bounds.right - 72);
+    send("touchstart", [first, second], [first, second]);
+    second = contact(2, bounds.right - 122);
+    send("touchmove", [first, second], [second]);
+    send("touchend", [], [first, second]);
+  });
   await expect(graph).toHaveAttribute("data-focused-inspection");
   await expect(page).toHaveURL(new RegExp(`${base}/notes/welcome/?$`));
   await context.close();
@@ -1286,6 +1384,74 @@ test("F pins, moves and lifts the pin for the node under the pointer", async ({ 
   const fitsBefore = Number(await graph.getAttribute("data-fit-requests"));
   await page.keyboard.press("z");
   await expect.poll(async () => Number(await graph.getAttribute("data-fit-requests"))).toBe(fitsBefore + 1);
+});
+
+test("F moves focus to an unrelated node without enabling click navigation", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium-root", "Keyboard focus runs once.");
+  const { base } = deployment(testInfo);
+  await page.route("**/graph-data.json", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(graphData) }),
+  );
+  await page.goto(`${base}/`);
+  const graph = page.locator("#global-graph");
+  await expect.poll(async () => (await graphCounts(graph)).completions).toBeGreaterThan(0);
+  await page.waitForTimeout(400);
+  const hub = await nodeAboveLabel(page, graph, await renderedLabelAnchor(graph.locator("canvas.sigma-labels")));
+  await page.mouse.click(hub.x, hub.y, { button: "right" });
+  const menu = page.getByRole("menu");
+  // Copy pins without fitting, keeping the disconnected pair in the viewport.
+  await menu.getByRole("menuitem", { name: "Copy neighborhood link" }).click();
+  await expect(graph).toHaveAttribute("data-focused-node", targetId);
+  const target = await unrelatedContextTarget(page, graph, menu);
+  await page.mouse.move(target.x, target.y);
+  await expect(graph).toHaveCSS("cursor", "auto");
+  await expect(graph).not.toHaveAttribute("data-pointer-node");
+  const focusedUrl = page.url();
+  await page.mouse.click(target.x, target.y);
+  await expect(page).toHaveURL(focusedUrl);
+  await expect(graph).toHaveAttribute("data-focused-node", targetId);
+
+  await page.keyboard.press("f");
+  await expect(graph).toHaveAttribute("data-focused-node", /^unrelated-[ab]$/u);
+  const focused = await graph.getAttribute("data-focused-node");
+  await expect(page).toHaveURL(new RegExp(`${base}/notes/${focused}/graph/?$`));
+});
+
+test("closing a context menu reconciles the pointer before F can pin", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium-root", "Keyboard context-menu coverage runs once.");
+  const { base } = deployment(testInfo);
+  await page.route("**/graph-data.json", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(graphData) }),
+  );
+  await page.goto(`${base}/`);
+  const graph = page.locator("#global-graph");
+  await expect.poll(async () => (await graphCounts(graph)).completions).toBeGreaterThan(0);
+  await page.waitForTimeout(400);
+  await enableHoverPreview(page, graph);
+  const target = await nodeAboveLabel(page, graph, await renderedLabelAnchor(graph.locator("canvas.sigma-labels")));
+  const bounds = (await graph.boundingBox())!;
+  const menu = page.getByRole("menu");
+
+  for (const destination of ["empty canvas", "outside graph"] as const) {
+    await page.mouse.click(target.x, target.y, { button: "right" });
+    await expect(menu).toBeVisible();
+    const inspected = await graph.getAttribute("data-transient-inspection");
+    expect(inspected).toBeTruthy();
+    if (destination === "empty canvas") {
+      await page.mouse.move(bounds.x + 5, bounds.y + bounds.height / 2);
+    } else {
+      await page.locator("#graph-fit-view").hover();
+    }
+    // Inspection remains on the menu's note until dismissal, not on the route to it.
+    await expect(graph).toHaveAttribute("data-transient-inspection", inspected!);
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+    await expect(graph).not.toHaveAttribute("data-pointer-node");
+    await expect(graph).not.toHaveAttribute("data-transient-inspection");
+    await page.keyboard.press("f");
+    await expect(graph).not.toHaveAttribute("data-focused-node");
+    await expect(page).toHaveURL(new RegExp(`${base}/?$`));
+  }
 });
 
 test("hovering a node by its title shows its plate, preview or not", async ({ page }, testInfo) => {
