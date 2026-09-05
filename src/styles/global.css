@@ -2021,6 +2021,11 @@ div[data-callout] [data-callout-body] > :last-child {
   font-size: 0.86rem;
 }
 
+.local-graph-panel__actions .graph-hover-preview-toggle[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
 .local-graph-panel__header a {
   flex: none;
   font-size: 0.86rem;
@@ -2749,7 +2754,8 @@ div[data-callout] [data-callout-body] > :last-child {
    Last, and as specific as the pill's own control rules, so nothing above
    turns it back on. */
 @media (hover: none), (pointer: coarse), (max-width: 700px) {
-  .graph-controls > .graph-hover-preview-toggle {
+  .graph-controls > .graph-hover-preview-toggle,
+  .local-graph-panel__actions > .graph-hover-preview-toggle {
     display: none;
   }
 }

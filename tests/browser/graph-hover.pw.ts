@@ -1495,6 +1495,54 @@ test("hover previews a neighborhood only when the reader asks", async ({ page },
   await expect(graph).not.toHaveAttribute("data-transient-inspection");
 });
 
+test("local hover preview has a visible control synchronized with keys and the global preference", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium-root", "Shared fine-pointer preference runs once.");
+  const { base } = deployment(testInfo);
+  await page.route("**/graph-data.json", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(localGraphData) }),
+  );
+  const note = `${base}/notes/welcome`;
+  await page.goto(note);
+  const graph = page.locator(".local-graph");
+  await graph.scrollIntoViewIfNeeded();
+  await expect.poll(async () => (await graphCounts(graph)).completions).toBeGreaterThan(0);
+  const toggle = page.getByRole("button", { name: "Preview neighborhood on hover (D)", exact: true });
+  await expect(toggle).toBeVisible();
+  await expect(toggle).toHaveText("Hover preview");
+  await expect(toggle).toHaveAttribute("title", "Preview neighborhood on hover (D)");
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await nodeAboveLabel(page, graph, await renderedLabelAnchor(graph.locator("canvas.sigma-labels")));
+  await expect(graph).toHaveAttribute("data-pointer-node", /.+/u);
+  await expect(graph).not.toHaveAttribute("data-transient-inspection");
+  await page.keyboard.press("d");
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  await expect(graph).toHaveAttribute("data-transient-inspection", /.+/u);
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await expect(graph).toHaveAttribute("data-hover-preview", "false");
+  await expect(graph).not.toHaveAttribute("data-transient-inspection");
+  await toggle.focus();
+  await page.keyboard.press("Space");
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  await expect(graph).toHaveAttribute("data-hover-preview", "true");
+  await page.reload();
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  await page.goto(`${base}/`);
+  await expect(page.locator("#graph-hover-preview")).toHaveAttribute("aria-pressed", "true");
+  await page.locator("#graph-hover-preview").click();
+  await page.goto(note);
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await expect(graph).toHaveAttribute("data-hover-preview", "false");
+  for (const width of [701, 800, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(toggle).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(toggle).toBeHidden();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
 test("F pins, moves and lifts the pin for the node under the pointer", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "chromium-root", "Keyboard focus runs once.");
   const { base } = deployment(testInfo);

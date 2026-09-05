@@ -152,6 +152,10 @@ Desktop fitting MUST measure labels selected at the candidate camera state, not 
 - **WHEN** a candidate fit changes rendered marker sizes, text sizes, or label selection
 - **THEN** fitting remeasures at the candidate camera and settles with bounded corrections without oscillating between label sets
 
+#### Scenario: Recover from a wider wrap after zooming out
+- **WHEN** a zoom-out fit correction changes wrapping so the rendered bounds become wider before any contained fit has been found
+- **THEN** fitting checks an intermediate camera within its bounded correction budget instead of repeatedly stepping past a valid contained view
+
 ### Requirement: Hover neighborhood highlight
 Inspecting a node in either graph SHALL retain full emphasis for that node, visible neighbors within the selected reach of one to five links, their titles, and edges joining successive rings. The default reach is one link, emphasizing direct neighbors and incident edges. Unrelated node markers and edges MUST remain visible with a substantially lower-emphasis treatment, while unrelated titles MUST be hidden for the duration of inspection. Every title in the inspected neighborhood MUST remain rendered while eligible for the viewport, including when normal density selection would omit it.
 
@@ -172,6 +176,10 @@ Help MUST remain reachable on every supported graph viewport, including 320px-wi
 #### Scenario: Turn hover preview on and off
 - **WHEN** a reader presses D or activates the hover preview control
 - **THEN** the preference flips, the control shows the new state, whatever the pointer is over follows the new setting at once, and the choice survives a reload
+
+#### Scenario: Control hover preview on a note page
+- **WHEN** a fine-pointer reader opens a desktop note-page connection map
+- **THEN** its actions include a visible Hover preview toggle with an accessible pressed state and D key hint, synchronized with the shortcut and the preference shared with the global graph
 
 #### Scenario: Pin from the keyboard
 - **WHEN** a reader presses F while pointing at an unpinned note, then at another note, then at the pinned note

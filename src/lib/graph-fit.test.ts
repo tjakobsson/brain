@@ -513,6 +513,65 @@ describe("rendered graph fitting", () => {
     expect(far.x + renderer.scaleSize(right.size)).toBeLessThanOrEqual(dimensions.width - 23);
   });
 
+  it.each([
+    { characterWidth: 0.534, backtracks: 1 },
+    { characterWidth: 0.5413, backtracks: 2 },
+  ])("backtracks across $backtracks wrapping transitions before finding a contained fit", ({ characterWidth, backtracks }) => {
+    const { graph, renderer, camera, dimensions, setDisplayedLabels } = fakeRenderer();
+    dimensions.width = 390;
+    dimensions.height = 844;
+    const title = "Documentation as a product is worth more than the first draft of a system";
+    graph.setNodeAttribute("left", "label", title);
+    setDisplayedLabels([]);
+    camera.setState({ x: 10, ratio: 10 });
+    const readDisplay = renderer.getNodeDisplayData.getMockImplementation()!;
+    let layout = layoutGraphLabel(title, 320, 9, (text) => text.length * 9 * characterWidth);
+    renderer.getNodeDisplayData.mockImplementation((id) => ({
+      ...readDisplay(id),
+      // Both horizontal bounds belong to the required plate, not the neighbor.
+      x: id === "left" ? 0.5 : 0.8,
+      y: id === "left" ? 0.5 : 0.9,
+      size: id === "left" ? 16 : 8,
+      label: "",
+      fitLabelLayout: id === "left" ? layout : undefined,
+    }));
+    const samples: { ratio: number; width: number; firstLine: string }[] = [];
+    const refreshLabels = vi.fn(() => {
+      const ratio = camera.getState().ratio;
+      const size = renderedLabelSize(11, ratio);
+      // Synthetic font metrics exercise real word wrapping without a platform font.
+      layout = layoutGraphLabel(title, 320, size, (text) => text.length * size * characterWidth);
+      const data = renderer.getNodeDisplayData("left");
+      const plate = graphHoverPlate(renderer.framedGraphToViewport(data), renderer.scaleSize(data.size), layout);
+      samples.push({ ratio, width: plate.right - plate.left, firstLine: layout.lines[0]! });
+    });
+    setGraphFitLabelRefresh(renderer as never, refreshLabels);
+
+    planRenderedGraphFit(renderer as never, ["left", "right"], 24, false, 0, ["left"]);
+
+    const data = renderer.getNodeDisplayData("left");
+    const plate = graphHoverPlate(renderer.framedGraphToViewport(data), renderer.scaleSize(data.size), layout);
+    const markers = measureRenderedBounds(renderer as never, ["left", "right"], false)!;
+    for (const bounds of [plate, markers]) {
+      expect(bounds.left).toBeGreaterThanOrEqual(24);
+      expect(bounds.right).toBeLessThanOrEqual(dimensions.width - 24);
+      expect(bounds.top).toBeGreaterThanOrEqual(24);
+      expect(bounds.bottom).toBeLessThanOrEqual(dimensions.height - 24);
+    }
+    expect(camera.getState().ratio).toBeLessThan(samples[1]!.ratio);
+    expect(markers.right - markers.left).toBeGreaterThan(100);
+    expect(samples[1]!.ratio).toBeGreaterThan(samples[0]!.ratio);
+    for (let pass = 1; pass <= backtracks; pass += 1) {
+      expect(samples[pass]!.width).toBeGreaterThan(samples[0]!.width);
+      expect(samples[pass]!.firstLine).not.toBe(samples[0]!.firstLine);
+      expect(samples[pass + 1]!.ratio).toBeCloseTo(Math.sqrt(samples[0]!.ratio * samples[pass]!.ratio), 8);
+    }
+    // Eight candidates, the final correction, and at most one best-fit restore.
+    expect(refreshLabels.mock.calls.length).toBeLessThanOrEqual(10);
+    expect(renderer.refresh.mock.calls.length).toBeLessThanOrEqual(10);
+    expect(renderer.refresh.mock.calls.filter(([options]) => !options)).toHaveLength(1);
+  });
+
   it("does not repeat label indexing after a fit already settled", () => {
     const { renderer, camera } = fakeRenderer();
     const ratios: number[] = [];

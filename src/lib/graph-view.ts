@@ -2652,7 +2652,14 @@ export async function mountLocalGraphs(): Promise<void> {
       else responsiveScheduler.flush();
     };
     const hoverPreview = createHoverPreviewPreference();
-    host.dataset.hoverPreview = String(hoverPreview.read());
+    const hoverPreviewToggle = host.closest(".local-graph-panel")
+      ?.querySelector<HTMLButtonElement>("[data-local-hover-preview]");
+    const syncHoverPreviewToggle = () => {
+      const on = String(hoverPreview.read());
+      host.dataset.hoverPreview = on;
+      hoverPreviewToggle?.setAttribute("aria-pressed", on);
+    };
+    syncHoverPreviewToggle();
     const pointer = wireHoverAndClick(renderer, graph, state, interruptAutomaticMotion, {
       hoverPreview: hoverPreview.read,
       onPointerNode: (node) => {
@@ -2677,6 +2684,12 @@ export async function mountLocalGraphs(): Promise<void> {
         );
       },
     });
+    const toggleHoverPreview = () => {
+      hoverPreview.write(!hoverPreview.read());
+      syncHoverPreviewToggle();
+      pointer.reapplyPointer();
+    };
+    hoverPreviewToggle?.addEventListener("click", toggleHoverPreview);
     const onLocalKey = (event: KeyboardEvent) => {
       if (isGraphKey(event, "z")) {
         event.preventDefault();
@@ -2685,12 +2698,13 @@ export async function mountLocalGraphs(): Promise<void> {
       }
       if (!isGraphKey(event, "d")) return;
       event.preventDefault();
-      hoverPreview.write(!hoverPreview.read());
-      host.dataset.hoverPreview = String(hoverPreview.read());
-      pointer.reapplyPointer();
+      toggleHoverPreview();
     };
     document.addEventListener("keydown", onLocalKey);
-    renderer.on("kill", () => document.removeEventListener("keydown", onLocalKey));
+    renderer.on("kill", () => {
+      document.removeEventListener("keydown", onLocalKey);
+      hoverPreviewToggle?.removeEventListener("click", toggleHoverPreview);
+    });
     wireNodeDragging(renderer, graph, state, (node, _neighborhood, _moved, reason) => {
       if (!resizeDeferredDuringDrag) return;
       resizeDeferredDuringDrag = false;

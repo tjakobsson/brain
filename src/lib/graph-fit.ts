@@ -302,6 +302,7 @@ export function planRenderedGraphFit(
   let labelsCurrent = false;
   const inset = fitInsets(padding);
   let bestFit: GraphCameraState | null = null;
+  let previous: { ratio: number; width: number } | null = null;
   const rememberFit = (bounds: ViewportBounds) => {
     const camera = renderer.getCamera().getState();
     if (
@@ -352,6 +353,15 @@ export function planRenderedGraphFit(
       // At the text-size ceiling, tiny proportional steps cannot shrink an
       // oversized plate. Leave that plateau within the bounded fit budget.
       zoomScale = Math.max(zoomScale, 1.5);
+    }
+    const width = measurement.bounds.right - measurement.bounds.left;
+    if (!includeLabels && requiredLabels.length > 0 && !bestFit && previous &&
+      state.ratio > previous.ratio && width > previous.width) {
+      // Zooming out can wrap more words onto a line and skip a contained fit.
+      // Keep the narrower anchor until a midpoint escapes the wrapping jump.
+      zoomScale = Math.sqrt(previous.ratio / state.ratio);
+    } else {
+      previous = { ratio: state.ratio, width };
     }
     if (includeLabels && zoomScale > 1) labelsExpandedView = true;
     if (zoomScale === 1 && centerError <= 0.5) break;

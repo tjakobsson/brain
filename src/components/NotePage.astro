@@ -103,6 +103,14 @@ const neighborhoodRoute = contextualRoutes.neighborhood(note.slug);
         </div>
         <div class="local-graph-panel__actions">
           <button class="graph-control" type="button" data-fit-local-graph>Fit view</button>
+          <button
+            class="graph-control graph-hover-preview-toggle"
+            type="button"
+            aria-label="Preview neighborhood on hover (D)"
+            title="Preview neighborhood on hover (D)"
+            aria-pressed="false"
+            data-local-hover-preview
+          >Hover preview</button>
           <GraphLegend
             id="local-graph-legend"
             context="local"

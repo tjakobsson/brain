@@ -130,6 +130,12 @@ Desktop fits include labels selected at the fitted camera, even if an offscreen 
 
 Only optional labels need the lock against zooming back into a suppressed selection. Required-title-only fits can correct an outward overshoot; retain the tightest measured contained camera if wrapping prevents convergence within eight corrections. Batch reducer settings and omit provisional all-label WebGL frames during planning so large graphs stay within the existing performance budgets.
 
+Font metrics can make a wrapped title wider after a zoom-out step. Before finding a contained view, backtrack to the geometric midpoint between the last narrower camera and the widened candidate; retain that narrower anchor across consecutive wrapping changes. Keep the eight-correction budget and the existing containment assertions.
+
+### Expose local hover preview
+
+Local connection maps expose Hover preview beside Fit view. The button and D shortcut use one toggle handler, update the pressed state together, and persist through the same preference as the global graph. Hide the button on touch layouts where hover is unavailable.
+
 ### Fixtures that can fail
 
 `scripts/generate-stress-vault.mjs` gains sentence-length titles and realistic brain ids. Reference distribution from `tjakobsson/brain-vault`: titles min 7, median 37, max 60 characters; longest brain id `capability-backed-product-engineering` at 37. The fixture should sit at or slightly above that so it stresses rather than merely matches.

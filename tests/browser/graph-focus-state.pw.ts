@@ -241,13 +241,22 @@ test("Brain-focused sessions with related Brains off and on cannot overwrite the
   await page.locator("#graph-search-results").getByRole("button", {
     name: `${a.title}, ${a.brainTitle} brain @${a.brainId}`, exact: true,
   }).click();
+  let motionBeforeSettle = Number(await graph.getAttribute("data-motion-completions"));
   await page.locator("#graph-filter-toggle").click();
   await expect(graph).toHaveAttribute("data-focused-node", a.id);
   await expect(page).toHaveURL(`${workspace}${a.route}/graph`);
 
   for (const related of [false, true]) {
-    if (related) await page.locator("#graph-related-toggle").click();
+    if (related) {
+      motionBeforeSettle = Number(await graph.getAttribute("data-motion-completions"));
+      await page.locator("#graph-related-toggle").click();
+    }
     await expect(graph).toHaveAttribute("data-related-brains-visible", String(related));
+    // Sidebar resize and related-Brain filtering each settle, then refit focus.
+    // Wait for both and a fresh render before sampling the drag's baseline.
+    await expect.poll(async () => Number(await graph.getAttribute("data-motion-completions")))
+      .toBeGreaterThanOrEqual(motionBeforeSettle + 2);
+    await geometry(graph);
     const scope = `${workspaceScope}:brain:${a.brainId}:${related}`;
     await expect.poll(() => savedLayout(page, scope)).not.toBeNull();
     await expect(graph).not.toHaveAttribute("data-filter-settle-pending");
