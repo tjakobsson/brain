@@ -185,6 +185,37 @@ test("clearing focus saves rearrangement under the root scope and restores it on
   await expect(graph).not.toHaveAttribute("data-settle-requests");
 });
 
+for (const brainScoped of [false, true]) {
+  test(`a rotated saved ${brainScoped ? "Brain" : "workspace"} view restores upright without losing pan or zoom`, async ({ page }) => {
+    const { a } = await twoNoteGraph(page, true);
+    const scope = brainScoped ? `brain:${a.brainId}:false` : "all";
+    await page.goto(brainScoped ? `${workspace}/brains/${a.brainId}` : `${workspace}/`);
+    const graph = page.locator("#global-graph");
+    await expect.poll(() => savedLayout(page, scope)).not.toBeNull();
+    const originalLayout = (await savedLayout(page, scope))!;
+    const before = await geometry(graph);
+    const savedCamera = { x: 0.61, y: 0.37, ratio: 1.27, angle: (brainScoped ? -1 : 1) * Math.PI / 4 };
+
+    // Seed after navigation, so pagehide cannot overwrite the older tilted
+    // state. This exercises Sigma's real camera, not a permissive test mock.
+    await page.addInitScript(({ key, camera }) => {
+      const cached = JSON.parse(sessionStorage.getItem(key)!);
+      cached.view.camera = camera;
+      sessionStorage.setItem(key, JSON.stringify(cached));
+    }, { key: originalLayout.key.replace("graph-motion:", "graph-view:"), camera: savedCamera });
+    await page.reload();
+    await expect(graph).toHaveAttribute("data-visible-nodes");
+    const restored = await geometry(graph);
+    const camera = restored.camera!.split(":").map(Number);
+    expect(camera.slice(0, 4)).toEqual([savedCamera.x, savedCamera.y, 0, savedCamera.ratio]);
+    expect(camera.slice(4)).toEqual(before.camera!.split(":").map(Number).slice(4));
+    expect(restored.positions).toBe(before.positions);
+    expect(await savedLayout(page, scope)).toEqual(originalLayout);
+    await expect(graph).not.toHaveAttribute("data-settle-requests");
+    await expect(graph).not.toHaveAttribute("data-fit-requests");
+  });
+}
+
 test("Brain-focused sessions with related Brains off and on cannot overwrite the workspace neighborhood", async ({ page }) => {
   const { a } = await twoNoteGraph(page, true);
   await page.goto(`${workspace}${a.route}/graph`);

@@ -45,6 +45,8 @@ Node dragging starts only from a single-contact `touchstart`. When a second cont
 
 Drag completion distinguishes a normal release from a pinch handoff. A resize deferred during dragging updates viewport presentation at handoff without starting automatic layout beneath the fingers; any legitimate pre-pinch drag is still saved. Normal release keeps its existing resize-settle behavior.
 
+Sigma's camera starts at angle zero and disables rotation before session restoration. Its `validateState` ignores supplied angles when rotation is disabled, including older saved camera angles. Keep the existing view cache and verify this through the real browser renderer; no migration or cache invalidation is needed to preserve upright restoration with the reader's pan, zoom, and layout intact.
+
 ### Centre labels below the node
 
 A right-hand label needs its full length in horizontal room on one side. A centred label needs half its longest line on each side. Combined with wrapping to three lines, a 537 pixel title needs roughly 90 pixels of clearance either side instead of 537 to the right.

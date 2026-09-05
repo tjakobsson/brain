@@ -234,6 +234,10 @@ A two-contact gesture on a graph canvas SHALL change only how far the camera is 
 - **WHEN** a reader keeps spreading two contacts after the camera has reached the closest scale the graph allows
 - **THEN** the graph stops zooming and does not drift away from the contacts
 
+#### Scenario: Restore a view saved when rotation was enabled
+- **WHEN** a reader opens an unfocused graph with a valid saved view containing a nonzero camera angle
+- **THEN** the graph restores upright while preserving the saved positions, bounding box, pan, and supported zoom ratio, without invalidating the cache or requiring Fit view
+
 
 ### Requirement: Canvas label text scales with the camera
 Canvas label text SHALL scale with the camera by the same law that governs node marker size, on every viewport, so that zooming in enlarges titles rather than only separating nodes. Scaled text MUST stay within a minimum and maximum rendered size so that labels neither become illegibly small when zoomed out nor dominate the canvas when zoomed far in. Label layout, hit testing, and label-aware camera fitting MUST all use the same rendered size at any given camera state.
