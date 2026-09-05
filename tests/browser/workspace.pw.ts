@@ -1704,6 +1704,11 @@ async function expectGraphShellScope(page: Page, brainId?: string) {
   const graphLink = page.locator(".graph-trigger");
   await expect(graphLink).toHaveJSProperty("href", `${workspace}${scopePath || "/"}`);
   expect(await graphLink.evaluate((anchor) => (anchor as HTMLAnchorElement).hidden)).toBe(!brainId);
+  const home = page.locator(".graph-home-action");
+  await expect(home).toHaveJSProperty("href", `${workspace}/`);
+  if (brainId) await expect(home).toBeVisible();
+  else await expect(home).toBeHidden();
+  await expect(page.locator("#graph-filter-toggle")).toHaveCSS("border-inline-start-width", brainId ? "1px" : "0px");
   await page.keyboard.press("Control+k");
   const scope = page.getByLabel("Quick switcher scope");
   await expect(scope).toHaveValue(brainId ? "active" : "all");
@@ -1772,8 +1777,9 @@ test("neighborhood pages keep query-free URLs and move focus in place", async ({
   await expectGraphShellScope(page);
 });
 
-for (const brainId of [undefined, "engineering"]) {
-  test(`graph shell follows pin and clear from ${brainId ?? "workspace"}`, async ({ page }) => {
+for (const width of [390, 1280]) for (const brainId of [undefined, "engineering"]) {
+  test(`graph shell follows pin and clear from ${brainId ?? "workspace"} at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
     const graphPath = brainId ? `/brains/${brainId}` : "/";
     await page.goto(`${workspace}${graphPath}`);
     const graph = page.locator("#global-graph");
@@ -1790,6 +1796,9 @@ for (const brainId of [undefined, "engineering"]) {
     await expect(page).toHaveURL(`${workspace}${graphPath}`);
     await expectGraphShellScope(page, brainId);
     await expect(graph).toHaveAttribute("data-scope-test", "same-page");
+    await page.reload();
+    await expect(graph).toHaveAttribute("data-visible-nodes");
+    await expectGraphShellScope(page, brainId);
   });
 }
 

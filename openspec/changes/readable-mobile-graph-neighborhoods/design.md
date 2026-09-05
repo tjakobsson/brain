@@ -108,6 +108,8 @@ Rows come from the same neighborhood set the reducers use at the selected reach 
 
 After replacing a focus URL, refresh navigation and site-search owner Brain scope from the current pathname, as the existing site-search contract requires. Cover pinning from the root graph, moving across Brains, and clearing to the context graph path. No new site-search delta is needed.
 
+Render the workspace graph's Home control even when initially hidden. Show it on Brain and neighborhood paths and hide it at the workspace root on every focus transition, matching a fresh load. Touch help describes the existing gestures: tapping an eligible note opens it; long-pressing pins it or moves focus to it.
+
 The layout session key follows the current neighborhood identity, or the unfocused context graph after clearing. Changing that key must not restore another session's node positions during the transition; retain the live layout and use the new key for subsequent persistence.
 
 Keep shipped full workspace `neighborhood:<id>` keys unchanged. For focus originating in a Brain graph, append `:brain:<activeBrainId>:<showRelatedBrains>` using the graph's original context, not the focused note's owner. Related-Brains off, related-Brains on, and the full workspace must not overwrite each other's neighborhood layouts or cameras.

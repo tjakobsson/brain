@@ -662,6 +662,10 @@ test("help on a phone shows gestures, not keys", async ({ page }) => {
   await expect(panel).toBeVisible();
   await expect(panel.locator("[data-graph-help-touch]")).toBeVisible();
   await expect(panel.locator("[data-graph-help-touch]")).toContainText("Long press");
+  const gestures = panel.locator("[data-graph-help-touch] li");
+  await expect(gestures.filter({ hasText: "Opens a note" })).toHaveText("TapOpens a note");
+  await expect(gestures.filter({ hasText: "Long press" })).toHaveText("Long pressPins a note or moves the pin to it");
+  await expect(gestures.filter({ hasText: "Tap a lit note" })).toHaveCount(0);
   await expect(panel.locator("[data-graph-help-keys]")).toBeHidden();
   // And the panel stays on screen.
   const box = (await panel.boundingBox())!;

@@ -1429,7 +1429,11 @@ div[data-callout] [data-callout-body] > :last-child {
   text-decoration: none;
 }
 
-.graph-controls > :not(:first-child) {
+.graph-controls > .graph-control[hidden] {
+  display: none;
+}
+
+.graph-controls > :not([hidden]) ~ :not([hidden]) {
   border-inline-start: 1px solid var(--border);
 }
 

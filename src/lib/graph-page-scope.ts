@@ -15,6 +15,8 @@ export function syncGraphPageScope(base: string, activeBrainId?: string): void {
     graph.href = joinBase(base, activeBrainId ? contextualRoutes.graph : routes.home);
     graph.hidden = !activeBrainId;
   }
+  const home = document.querySelector<HTMLAnchorElement>(".graph-home-action");
+  if (home) home.hidden = !activeBrainId;
 
   const input = document.querySelector<HTMLInputElement>("#quick-switcher input");
   const select = document.querySelector<HTMLSelectElement>("[data-switcher-scope]");

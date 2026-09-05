@@ -15,6 +15,10 @@ A touch reader SHALL be able to long press a node to activate the same neighborh
 - **WHEN** a touch reader taps a node while a long-press neighborhood is active
 - **THEN** the browser navigates to the tapped note using the existing touch target behavior
 
+#### Scenario: Learn the touch gestures
+- **WHEN** a reader opens graph Help on a touch layout
+- **THEN** the guide explains that tapping an eligible note opens it and long-pressing pins it or moves the pin to it, without claiming that tapping a canvas neighbor moves focus
+
 #### Scenario: Drag instead of holding
 - **WHEN** touch movement exceeds the node-drag tolerance before long-press activation
 - **THEN** pending long-press activation is canceled and the node drag continues without accidental navigation

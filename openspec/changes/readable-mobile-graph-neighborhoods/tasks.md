@@ -85,7 +85,7 @@ Existing checks record earlier implementation and verification. Section 11 track
 - [x] 9.2 Run `npm run test:browser`, review every changed screenshot baseline, and confirm each diff is intended rather than a regression. Expect broad churn from the marker sizing change.
 - [x] 9.3 Run `npm run test:stress-graph` against the recalibrated fixture and confirm both correctness and the re-baselined budgets.
 - [x] 9.4 Re-take all five shots in `screenshots/` under the recorded conditions, save them alongside the baselines as `after-*.png`, and update `screenshots/README.md` with the new measurements next to the old ones.
-- [ ] 9.5 Walk the reported flow by hand at 390x844 on the 400-note fixture: open the overview, zoom in and read a title, long-press a hub, pinch to zoom without losing the pin, expand the bar, read the neighbor list, move focus from a row, and toggle the owner preference. Confirm each step matches the scenarios in the delta specs.
+- [x] 9.5 Walk the reported flow by hand at 390x844 on the 400-note fixture: open the overview, zoom in and read a title, long-press a hub, pinch to zoom without losing the pin, expand the bar, read the neighbor list, move focus from a row, and toggle the owner preference. Confirm each step matches the scenarios in the delta specs.
 
 ## 11. PR review regressions
 
@@ -99,4 +99,9 @@ Existing checks record earlier implementation and verification. Section 11 track
 - [x] 11.8 Verify desktop Fit view contains labels selected at the candidate camera and the focused title's actual plate, including after offscreen panning. Cover bounded candidate-camera remeasurement and corrections without fixed-point oscillation, and retain narrow focused-title fit coverage.
 - [x] 11.9 After final edits, run `openspec validate readable-mobile-graph-neighborhoods --strict`, `npm test`, `npm run test:browser`, and `npm run test:stress-graph`; review the final results before checking off this section. Keep manual task 9.5 pending until the walkthrough is performed.
 
-PR-review verification: strict change validation passed, 675 unit tests passed, 157 browser tests passed, and both stress tests passed without changing the performance budgets. The 2,000-note stress run measured a 365.9 ms maximum frame gap and a 335 ms maximum long task, below the 500 ms limits. Task 9.5 remains the only incomplete task.
+PR-review verification: strict change validation passed, 675 unit tests passed, 157 browser tests passed, and both stress tests passed without changing the performance budgets. The 2,000-note stress run measured a 365.9 ms maximum frame gap and a 335 ms maximum long task, below the 500 ms limits. The reader confirmed the manual walkthrough in task 9.5 is complete.
+
+## 12. Follow-up review
+
+- [x] 12.1 Keep Home visibility synchronized with in-place focus paths, matching fresh loads on desktop and phone without leaving a divider before the first visible control. Verify root pinning, cross-Brain focus moves, clearing, and reloads in the browser tests.
+- [x] 12.2 Correct touch Help to distinguish tap navigation from long-press focus changes and verify the guide in the phone browser test. Keep the existing tap behavior unchanged.

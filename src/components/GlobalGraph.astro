@@ -60,8 +60,8 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
 <div class="graph-page">
   <div class:list={["graph-shell", "filters-closed", { "has-related-brains": activeBrainId && boundaryBrainIds.size > 0 }]}>
     <div class="graph-controls">
-      {isWorkspace && !workspaceRoot && (
-        <a class="graph-control graph-home-action" href={url(routes.home)} aria-label="Home" title="Home">
+      {isWorkspace && (
+        <a class="graph-control graph-home-action" href={url(routes.home)} aria-label="Home" title="Home" hidden={workspaceRoot}>
           <svg class="graph-control-icon" viewBox="0 0 24 24" aria-hidden="true">
             <path d="m4 10 8-6 8 6v9a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1Z"></path>
           </svg>

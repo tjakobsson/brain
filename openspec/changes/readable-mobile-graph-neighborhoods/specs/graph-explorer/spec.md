@@ -346,6 +346,10 @@ Secondary-button and context-menu gestures MUST NOT begin or continue node dragg
 - **WHEN** a reader pins a note from the root workspace graph without loading another page
 - **THEN** navigation and site search use the owner Brain derived from the new neighborhood pathname rather than retaining root scope
 
+#### Scenario: Keep Home consistent with the current graph path
+- **WHEN** a reader pins, moves, or clears focus in place on a workspace graph
+- **THEN** the Home control is visible on Brain and neighborhood paths and hidden at the workspace root, matching a fresh load of the resulting URL on desktop and phone
+
 #### Scenario: Move focus across Brains
 - **WHEN** a reader moves focus in place from a note in one Brain to a note in another
 - **THEN** the address, navigation scope, and site-search owner scope all follow the new neighborhood pathname
