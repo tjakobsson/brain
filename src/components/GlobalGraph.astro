@@ -5,25 +5,28 @@ import { joinBase, routes, routesFor } from "../lib/routes";
 import { getWorkspaceSnapshot } from "../lib/vault-state";
 import BrainMark from "./BrainMark.astro";
 import GraphLegend from "./GraphLegend.astro";
+import GraphHelp from "./GraphHelp.astro";
 
 interface Props {
   activeBrainId?: string;
   /**
-   * Composite note ID that a note-owned neighborhood page mounts with. The
-   * page's URL is the destination itself: focus never becomes query state
-   * there, and moving focus navigates to that note's neighborhood page.
+   * Composite note ID to open focused on. A note's neighborhood path is this
+   * same graph page generated with the note focused, because a static site
+   * needs a file at every shareable address; nothing else about the page
+   * differs, and focus moves and clears in place there as anywhere.
    */
   initialFocus?: string;
 }
 const { activeBrainId, initialFocus } = Astro.props;
-const neighborhoodPage = Boolean(initialFocus);
 const index = getLinkIndex();
 const snapshot = getWorkspaceSnapshot();
 const isWorkspace = snapshot.mode === "workspace";
 // The workspace root is the full workspace graph: every configured Brain at
 // full emphasis unless the reader's own lens dims it.
 const fullWorkspace = isWorkspace && !activeBrainId;
-const workspaceRoot = fullWorkspace && !neighborhoodPage;
+// The site's home is the workspace graph itself, so only pages that live
+// elsewhere, a Brain's graph or a note's path, carry a Home action.
+const workspaceRoot = fullWorkspace && !initialFocus;
 const allTags = [...new Set(index.notes.flatMap((note) => note.meta.tags))].sort();
 const typeCounts = new Map<string, number>();
 for (const note of index.notes) {
@@ -32,6 +35,13 @@ for (const note of index.notes) {
 const activeBrain = activeBrainId
   ? snapshot.registry.brains.find((brain) => brain.id === activeBrainId)
   : undefined;
+// The document title the page has when nothing is focused, so a focus that
+// arrives, moves or clears can keep the title truthful without a page load.
+const graphTitle = activeBrain
+  ? `${activeBrain.title} graph`
+  : isWorkspace
+    ? snapshot.registry.title
+    : "Graph";
 const boundaryBrainIds = new Set<string>();
 if (activeBrainId) {
   for (const edge of index.edges) {
@@ -72,7 +82,21 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
         </svg>
         <span class="graph-control-label" data-control-label>Filters</span>
       </button>
-      <button id="graph-fit-view" class="graph-control" type="button" aria-label="Fit view" title="Fit view">
+      <button
+        id="graph-hover-preview"
+        class="graph-control graph-hover-preview-toggle"
+        type="button"
+        aria-pressed="false"
+        aria-label="Preview neighborhood on hover (D)"
+        title="Preview neighborhood on hover (D)"
+      >
+        <svg class="graph-control-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.2 2.2M16.2 16.2l2.2 2.2M5.6 18.4l2.2-2.2M16.2 7.8l2.2-2.2"></path>
+        </svg>
+        <span class="graph-control-label">Hover preview</span>
+      </button>
+      <button id="graph-fit-view" class="graph-control" type="button" aria-label="Fit view (Z)" title="Fit view (Z)">
         <svg class="graph-control-icon" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M9 4H4v5M15 4h5v5M20 15v5h-5M4 15v5h5"></path>
         </svg>
@@ -104,6 +128,7 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
         lens={isWorkspace}
         globalControl
       />
+      <GraphHelp id="global-graph-help" />
       {isWorkspace && (
         <details class="brain-lens" data-graph-lens>
           <summary role="button" aria-label="Brains" aria-expanded="false" title="Brains">
@@ -118,6 +143,12 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
               <button type="button" class="brain-lens__reset" data-lens-reset>Show all</button>
             </div>
             <p class="brain-lens__hint">Unchecked Brains are dimmed, not hidden: their notes stay in place and still open on click. A focused neighborhood always shows fully.</p>
+            {fullWorkspace && (
+              <label class="brain-lens__labels">
+                <input type="checkbox" data-owner-labels-toggle />
+                <span>Show the owning Brain in canvas labels</span>
+              </label>
+            )}
             {hierarchy.map((section) => (
               <div class="brain-lens__group" style={`--group-depth: ${section.depth}`}>
                 <h3>{section.title}</h3>
@@ -221,6 +252,12 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
         <div class="graph-focus-summary" data-graph-focus-summary>
           <span>Focused: <strong data-graph-focus-title></strong></span>
           <a data-graph-focus-open aria-label="Open focused note">Open</a>
+          <button type="button" class="graph-focus-clear" data-graph-focus-clear aria-label="Clear graph focus">
+            <svg class="graph-focus-clear-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 6l12 12M18 6 6 18"></path>
+            </svg>
+            <span class="graph-focus-clear-label">Clear focus</span>
+          </button>
           <button
             type="button"
             class="graph-focus-disclosure"
@@ -229,16 +266,17 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
             aria-expanded="false"
             aria-label="Show focus details"
           >
-            <span aria-hidden="true">•••</span>
+            <svg class="graph-focus-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M6 14.5 12 8.5l6 6" />
+            </svg>
           </button>
         </div>
         <div id="graph-focus-details" class="graph-focus-details" data-graph-focus-details hidden>
           <p class="graph-focus-full-title">Focused: <strong data-graph-focus-title-full></strong></p>
           <div class="graph-focus-actions">
             <button type="button" data-graph-focus-copy>Copy link</button>
-            <button type="button" data-graph-focus-clear hidden={neighborhoodPage}>Clear</button>
           </div>
-          {fullWorkspace && neighborhoodPage && (
+          {fullWorkspace && (
             <div class="graph-domains" data-graph-domains hidden>
               <span class="graph-domains__label" id="graph-domains-label">Connected domains</span>
               <ul aria-labelledby="graph-domains-label">
@@ -254,6 +292,7 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
                       <BrainMark />
                       <span class="graph-domain__title">{brain.title}</span>
                       <span class="graph-domain__count" data-domain-count></span>
+                      <span class="graph-domain__owner" data-domain-owner hidden>· this note</span>
                       <span class="graph-domain__state" data-domain-state hidden>· dimmed</span>
                     </button>
                   </li>
@@ -261,12 +300,25 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
               </ul>
             </div>
           )}
+          <div class="graph-neighbors" data-graph-neighbors hidden>
+            <span class="graph-neighbors__label" id="graph-neighbors-label">Connected notes</span>
+            <ul aria-labelledby="graph-neighbors-label" data-graph-neighbors-list></ul>
+          </div>
         </div>
       </section>
       <div class="graph-context-menu" data-graph-context-menu role="menu" hidden>
-        <button type="button" role="menuitem" data-graph-menu-focus>Pin neighborhood</button>
-        <button type="button" role="menuitem" data-graph-menu-copy>Copy neighborhood link</button>
-        <button type="button" role="menuitem" data-graph-menu-open>Open note</button>
+        <button type="button" role="menuitem" data-graph-menu-focus>
+          <span data-graph-menu-label>Pin neighborhood</span><kbd aria-hidden="true">F</kbd>
+        </button>
+        <button type="button" role="menuitem" data-graph-menu-copy><span data-graph-menu-label>Copy neighborhood link</span></button>
+        <button type="button" role="menuitem" data-graph-menu-open><span data-graph-menu-label>Open note</span></button>
+        <hr class="graph-context-menu__divider" data-graph-menu-divider />
+        <button type="button" role="menuitem" data-graph-menu-clear hidden>
+          <span data-graph-menu-label>Clear focus</span><kbd aria-hidden="true">C</kbd>
+        </button>
+        <button type="button" role="menuitem" data-graph-menu-fit>
+          <span data-graph-menu-label>Fit view</span><kbd aria-hidden="true">Z</kbd>
+        </button>
       </div>
       <div
         id="global-graph"
@@ -274,7 +326,7 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
         data-graph-mode={activeBrainId ? "brain" : "all"}
         data-active-brain-id={activeBrainId}
         data-initial-focus={initialFocus}
-        data-neighborhood-page={neighborhoodPage ? "true" : undefined}
+        data-graph-title={graphTitle}
         aria-label={activeBrain ? `${activeBrain.title} graph` : fullWorkspace ? "Workspace graph" : "Brain graph"}
       ></div>
     </div>
@@ -421,6 +473,7 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
     count: q("#graph-count"),
     fitViewButton: q<HTMLButtonElement>("#graph-fit-view"),
     relatedBrainsToggle: document.querySelector<HTMLButtonElement>("#graph-related-toggle"),
+    hoverPreviewToggle: document.querySelector<HTMLButtonElement>("#graph-hover-preview"),
     focusStatus: q("[data-graph-focus-status]"),
     focusTitle: q("[data-graph-focus-title]"),
     focusTitleFull: q("[data-graph-focus-title-full]"),
@@ -429,12 +482,20 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
     focusCopy: q<HTMLButtonElement>("[data-graph-focus-copy]"),
     focusOpen: q<HTMLAnchorElement>("[data-graph-focus-open]"),
     focusClear: q<HTMLButtonElement>("[data-graph-focus-clear]"),
+    neighbors: {
+      list: q("[data-graph-neighbors]"),
+      items: q("[data-graph-neighbors-list]"),
+    },
     contextMenu: q("[data-graph-context-menu]"),
     contextFocus: q<HTMLButtonElement>("[data-graph-menu-focus]"),
     contextCopy: q<HTMLButtonElement>("[data-graph-menu-copy]"),
     contextOpen: q<HTMLButtonElement>("[data-graph-menu-open]"),
+    contextClear: q<HTMLButtonElement>("[data-graph-menu-clear]"),
+    contextFit: q<HTMLButtonElement>("[data-graph-menu-fit]"),
+    contextDivider: q("[data-graph-menu-divider]"),
     lens: lens && lensSummary
       ? {
+          ownerLabels: lens.querySelector<HTMLInputElement>("[data-owner-labels-toggle]"),
           control: lens,
           summary: lensSummary,
           checkboxes: [...lens.querySelectorAll<HTMLInputElement>('input[name="brain-lens"]')],
@@ -451,6 +512,7 @@ const url = (route: import("../lib/routes").LogicalRoute) => joinBase(import.met
             toggle: item.querySelector<HTMLButtonElement>("[data-domain-toggle]")!,
             count: item.querySelector<HTMLElement>("[data-domain-count]")!,
             state: item.querySelector<HTMLElement>("[data-domain-state]")!,
+            owner: item.querySelector<HTMLElement>("[data-domain-owner]")!,
           })),
         }
       : null,

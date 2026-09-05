@@ -80,27 +80,84 @@ export function graphSessionScope(options: GraphSessionScopeOptions): string {
 }
 
 export interface FocusUrlSyncOptions {
-  readonly neighborhoodPage: boolean;
   readonly base: string;
   readonly graphRoute: LogicalRoute;
   readonly knownCompositeIds: readonly string[];
+  /** The neighborhood page path for a focused note, or null if unknown. */
+  readonly neighborhoodRouteFor: (compositeId: string) => LogicalRoute | null;
   readonly location: { readonly pathname: string; readonly search: string };
   readonly history: {
     replaceState(data: unknown, unused: string, url?: string | URL | null): void;
   };
 }
 
+export interface NeighborRow {
+  node: string;
+  title: string;
+  /** The owning Brain when it is not the focused note's own, else null. */
+  foreignBrainTitle: string | null;
+  /** Links away from the focused note; one for a direct neighbor. */
+  distance: number;
+}
+
+export interface NeighborRowSource {
+  node: string;
+  title: string;
+  brainId: string;
+  brainTitle: string;
+  distance?: number;
+}
+
 /**
- * Mirrors the pinned focus into a graph page's URL as in-session state. On a
- * neighborhood page the URL is the destination itself and is never rewritten.
+ * The focused note's visible directly connected neighbors, as readable rows.
+ *
+ * Alphabetical because scanning for a half-remembered title is what a list is
+ * for; exploring is what the canvas is for. Uncapped because a hub with thirty
+ * neighbors is exactly when a reader most needs to see them all, and the bar
+ * scrolls. Foreignness is decided per row against the focused note's own Brain,
+ * so it holds whatever the canvas is currently doing about owner prefixes.
+ */
+export function neighborRows(
+  focusedBrainId: string,
+  neighbors: readonly NeighborRowSource[],
+): NeighborRow[] {
+  // Nearer rings first, then alphabetical within a ring.
+  return [...neighbors]
+    .sort((a, b) =>
+      (a.distance ?? 1) - (b.distance ?? 1) ||
+      a.title.localeCompare(b.title) ||
+      a.node.localeCompare(b.node)
+    )
+    .map((neighbor) => ({
+      node: neighbor.node,
+      title: neighbor.title,
+      foreignBrainTitle: neighbor.brainId === focusedBrainId ? null : neighbor.brainTitle,
+      distance: neighbor.distance ?? 1,
+    }));
+}
+
+/**
+ * Keeps a graph page's address describing what the reader is looking at.
+ *
+ * A focused neighborhood's shareable identity is the focused note's
+ * neighborhood page path, and the address bar carries that same path rather
+ * than a `focus` query value. Readers copy from the address bar far more often
+ * than they use a copy action, and the query form was the weaker link: it
+ * depends on a query string surviving, which an authenticating proxy that
+ * returns only the pathname does not guarantee. A query string is still the
+ * right place for state that only enriches a view, such as filters, where
+ * losing it changes nothing about which note opens.
+ *
+ * This holds on a neighborhood page too. Its pathname is its focus, and when
+ * focus moves in place the pathname moves with it, so the address is always
+ * the page a reload would open.
  */
 export function createFocusUrlSync(options: FocusUrlSyncOptions): (focus: string | null) => void {
   return (focus) => {
-    if (options.neighborhoodPage) return;
-    const href = joinBase(
-      options.base,
-      withGraphFocus(options.graphRoute, options.knownCompositeIds, focus),
-    );
+    const route = focus && options.knownCompositeIds.includes(focus)
+      ? options.neighborhoodRouteFor(focus)
+      : null;
+    const href = joinBase(options.base, route ?? options.graphRoute);
     if (`${options.location.pathname}${options.location.search}` !== href) {
       options.history.replaceState(null, "", href);
     }

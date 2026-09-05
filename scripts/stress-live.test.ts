@@ -4,6 +4,8 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { slugify } from "../src/lib/slugify";
+import { brainId, noteTitle } from "./stress-vault-content.mjs";
 
 const children: ReturnType<typeof spawn>[] = [];
 const generator = path.resolve("scripts/generator.mjs");
@@ -49,7 +51,7 @@ describe("stress workspace live serving", () => {
     );
     expect(generated.status, generated.stderr).toBe(0);
     const workspace = path.join(fixture, "workspace.json");
-    const note = path.join(fixture, "brains", "brain-01", "cluster-01", "Generated note 0001.md");
+    const note = path.join(fixture, "brains", brainId(0), "cluster-01", `${noteTitle(0)}.md`);
     const original = fs.readFileSync(note, "utf8");
     const port = await availablePort();
     const child = spawn(
@@ -76,7 +78,7 @@ describe("stress workspace live serving", () => {
 
     try {
       await waitFor(() => logs.includes("Live server:"), `stress server did not start:\n${logs}`);
-      const url = `http://127.0.0.1:${port}/brains/brain-01/notes/generated-note-0001/`;
+      const url = `http://127.0.0.1:${port}/brains/${brainId(0)}/notes/${slugify(noteTitle(0))}/`;
       expect((await fetch(url)).status).toBe(200);
       await new Promise((resolve) => setTimeout(resolve, 1_000));
       expect(logs).not.toContain("Live site updated.");

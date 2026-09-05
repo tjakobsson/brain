@@ -75,7 +75,7 @@ async function renderedLabelTarget(page: Page, graph: Locator, excludeNode?: str
     if (
       canvasTarget &&
       (await graph.evaluate((host) => host.style.cursor)) === "pointer" &&
-      await graph.getAttribute("data-transient-inspection") !== excludeNode
+      await graph.getAttribute("data-pointer-node") !== excludeNode
     ) {
       return { x, y: label.y };
     }
@@ -90,7 +90,7 @@ async function renderedLabelTarget(page: Page, graph: Locator, excludeNode?: str
           clientY: bounds.top + y,
           pointerType: "mouse",
         }));
-        if (host.dataset.transientInspection && host.dataset.transientInspection !== excluded) {
+        if (host.dataset.pointerNode && host.dataset.pointerNode !== excluded) {
           return { x: bounds.left + x, y: bounds.top + y };
         }
       }
@@ -118,7 +118,7 @@ async function pointerTargetFor(graph: Locator, node: string) {
         pointerType: "mouse",
       }));
       return (
-        host.dataset.transientInspection === wanted &&
+        host.dataset.pointerNode === wanted &&
         document.elementFromPoint(bounds.left + x, bounds.top + y) instanceof HTMLCanvasElement
       );
     };
@@ -363,7 +363,9 @@ test("fresh visitors open shared neighborhoods and return to them from notes", a
   }
   await expect(page.locator("[data-graph-focus-status]")).toBeVisible();
   await expect(page.locator("[data-graph-focus-status]")).toContainText("Principles");
-  await expect(page.locator("[data-graph-focus-clear]")).toBeHidden();
+  // A note's path is the graph page with that note focused, so focus clears
+  // in place here exactly as it does anywhere else.
+  await expect(page.locator("[data-graph-focus-clear]")).toHaveText("Clear focus");
   await expect.poll(async () => Number(await graph.getAttribute("data-fit-requests"))).toBeGreaterThan(0);
   await expect(page).toHaveURL(neighborhood);
 
@@ -400,7 +402,7 @@ test("fresh visitors open shared neighborhoods and return to them from notes", a
   await page.goto(`${workspace}/brains/engineering?focus=engineering%2Fprinciples`);
   await expect(graph).toHaveAttribute("data-focused-node", "engineering/principles");
   await page.getByRole("button", { name: "Navigation" }).click();
-  await page.getByRole("button", { name: "Search" }).click();
+  await page.locator(".site-header").getByRole("button", { name: "Search" }).click();
   await page.getByLabel("Search notes and tags").fill("Delivery loops");
   await page.locator("#switcher-results li", { hasText: "Delivery loops" }).click();
   await expect(page).toHaveURL(
@@ -470,8 +472,20 @@ test("every note-navigation surface carries in-session return focus", async ({ p
   const localGraph = page.locator(".local-graph");
   await expect(localGraph.locator("canvas.sigma-labels")).toBeVisible();
   await localGraph.scrollIntoViewIfNeeded();
+  // Measure the labels only once the connection map has settled: a fit still
+  // in flight moves them between finding a target and clicking it.
+  await expect.poll(async () => Number(await localGraph.getAttribute("data-fit-completions")))
+    .toBeGreaterThan(0);
   await page.waitForTimeout(500);
-  target = await renderedLabelTarget(page, localGraph, await localGraph.getAttribute("data-slug"));
+  const slug = await localGraph.getAttribute("data-slug");
+  target = await renderedLabelTarget(page, localGraph, slug);
+  // The target is found with synthetic pointer events; confirm the real
+  // pointer lands on the same node before clicking, because whatever the
+  // pointer is over is also what forces its title into the rendered set.
+  await page.mouse.move(target.x, target.y);
+  await expect
+    .poll(async () => await localGraph.getAttribute("data-pointer-node"))
+    .not.toBe(slug);
   await page.mouse.click(target.x, target.y);
   await expect.poll(() => new URL(page.url()).pathname).not.toBe(new URL(note).pathname);
   await expectRetainedFocus();
@@ -485,8 +499,18 @@ test("every note-navigation surface carries in-session return focus", async ({ p
   await expect(localGraph.locator("canvas.sigma-labels")).toBeVisible();
   await localGraph.scrollIntoViewIfNeeded();
   await page.waitForTimeout(500);
-  target = await renderedLabelTarget(page, localGraph, await localGraph.getAttribute("data-slug"));
-  await page.mouse.click(target.x, target.y);
+  const ownSlug = await localGraph.getAttribute("data-slug");
+  // A connection map keeps settling, so a target found and then waited on can
+  // have moved out from under the pointer. Re-derive it and click at once.
+  const startingNotePath = new URL(note).pathname;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    target = await renderedLabelTarget(page, localGraph, ownSlug);
+    await page.mouse.move(target.x, target.y);
+    if (await localGraph.getAttribute("data-pointer-node") === ownSlug) continue;
+    await page.mouse.click(target.x, target.y);
+    await page.waitForTimeout(400);
+    if (new URL(page.url()).pathname !== startingNotePath) break;
+  }
   await expect.poll(() => new URL(page.url()).pathname).not.toBe(new URL(invalidFocusNote).pathname);
   expect(new URL(page.url()).searchParams.has("focus")).toBe(false);
 });
@@ -780,6 +804,9 @@ test("dimmed Brain notes stay hoverable and open on click", async ({ page }) => 
   await page.keyboard.press("Escape");
   await expect(legend).toBeHidden();
 
+  // Hover preview is a reader preference, off until asked for.
+  await page.locator("#graph-hover-preview").click();
+  await expect(page.locator("#graph-hover-preview")).toHaveAttribute("aria-pressed", "true");
   const point = await pointerTargetFor(graph, target.id);
   await page.mouse.move(point.x, point.y);
   await expect(graph).toHaveAttribute("data-transient-inspection", target.id);
@@ -823,9 +850,9 @@ test("graph search reaches dimmed Brains and focuses their notes at full emphasi
   await expect(graph).toHaveAttribute("data-lens", "research");
   await expect(graph).toHaveAttribute("data-dimmed-nodes", "0");
   await expect(graph).toHaveAttribute("data-visible-nodes", String(payload.nodes.length));
-  await expect(page).toHaveURL(`${workspace}/?focus=research%2Fevidence`);
-  expect(page.url()).not.toContain("brains=");
-  expect(page.url()).not.toContain("lens");
+  await expect(page).toHaveURL(`${workspace}/brains/research/notes/evidence/graph`);
+  // Focus is the pathname now, and nothing else rides along in a query.
+  expect(new URL(page.url()).search).toBe("");
 });
 
 test("neighborhood pages list connected domains as lens chips that never remove nodes", async ({ page }) => {
@@ -962,7 +989,9 @@ test("neighborhood pages list connected domains as lens chips that never remove 
   await expect(page.locator("[data-graph-focus-title-full]")).toHaveText(focusedTitle);
   await expect(domains).toBeVisible();
   await expect(page.getByRole("button", { name: "Copy link" })).toBeVisible();
-  await expect(page.locator("[data-graph-focus-clear]")).toBeHidden();
+  // A note's path is the graph page with that note focused, so focus clears
+  // in place here exactly as it does anywhere else.
+  await expect(page.locator("[data-graph-focus-clear]")).toHaveText("Clear focus");
   await expect(graph).toHaveAttribute("data-focused-node", "engineering/principles");
   await expect.poll(async () => Number(await graph.getAttribute("data-fit-requests"))).toBeGreaterThan(fitRequests);
   await expect(graph).not.toHaveAttribute("data-geometry-check-pending");
@@ -979,7 +1008,12 @@ test("neighborhood pages list connected domains as lens chips that never remove 
     return {
       markersClear: markers.length === 4 && markers.every((marker) => marker.y + marker.radius <= bar.top - host.top - 10),
       bounded: bar.top >= 0 && bar.bottom <= innerHeight,
-      scrollable: status.scrollHeight > status.clientHeight,
+      // The bar is one row with the details as an overlay above it, so what
+      // scrolls within the height limit is the title segment or the panel
+      // rather than the bar as a whole.
+      scrollable: [status, ...status.querySelectorAll<HTMLElement>(
+        "[data-graph-focus-details], .graph-focus-summary > span",
+      )].some((element) => element.scrollHeight > element.clientHeight),
       touchTargets: controls.every((control) => control.width >= 44 && control.height >= 44),
       noOverflow: document.documentElement.scrollWidth <= innerWidth,
     };
@@ -999,17 +1033,30 @@ test("neighborhood pages list connected domains as lens chips that never remove 
     (JSON.parse(value ?? "[]") as { id: string; label: string }[])
       .find(({ id }) => id === "engineering/delivery-loops")?.label
   );
-  expect(overviewNeighborLabel).toBe("");
+  // Whatever the overview does with a long neighbour title, it never truncates
+  // it silently: the label is omitted, drawn complete because wrapping made it
+  // fit, or shortened with an ellipsis. Zooming reveals it in full below.
+  expect(
+    overviewNeighborLabel === "" ||
+    overviewNeighborLabel.includes(neighborTitle) ||
+    overviewNeighborLabel.endsWith("…"),
+  ).toBe(true);
 
-  const canvas = graph.locator("canvas.sigma-mouse");
-  await canvas.hover({ position: { x: 100, y: 300 } });
-  for (let index = 0; index < 8; index += 1) {
-    await page.mouse.wheel(0, -300);
-    await page.waitForTimeout(50);
+  // Zoom towards the neighbour itself. A label is only placed for a node that
+  // is on screen, so zooming towards a fixed point can push the very node
+  // being revealed out of frame.
+  const neighborAt = async () => {
     const value = await graph.getAttribute("data-focused-marker-geometry");
-    const label = (JSON.parse(value ?? "[]") as { id: string; label: string }[])
-      .find(({ id }) => id === "engineering/delivery-loops")?.label;
-    if (label?.includes(neighborTitle)) break;
+    return (JSON.parse(value ?? "[]") as { id: string; label: string; x: number; y: number }[])
+      .find(({ id }) => id === "engineering/delivery-loops");
+  };
+  const host = (await graph.boundingBox())!;
+  for (let index = 0; index < 10; index += 1) {
+    const neighbor = await neighborAt();
+    if (neighbor?.label.includes(neighborTitle)) break;
+    if (neighbor) await page.mouse.move(host.x + neighbor.x, host.y + neighbor.y);
+    await page.mouse.wheel(0, -300);
+    await page.waitForTimeout(120);
   }
   await expect.poll(async () => {
     const value = await graph.getAttribute("data-focused-marker-geometry");
@@ -1049,8 +1096,13 @@ test("neighborhood pages list connected domains as lens chips that never remove 
     .toHaveText("Research Archive");
   await expect(domains.locator("li:not([hidden]) [data-domain-count]")).toHaveText(["1"]);
 
+  // Connected domains are no longer confined to a note's own neighborhood page:
+  // which Brains a neighborhood reaches into is the same question on the
+  // workspace graph, where the markup is present but empty until focus exists.
   await page.goto(`${workspace}/`);
-  await expect(page.locator("[data-graph-domains]")).toHaveCount(0);
+  await expect(page.locator("[data-graph-domains]")).toHaveCount(1);
+  await expect(page.locator("[data-graph-domains]")).toBeHidden();
+  // A per-Brain graph is not the full workspace, so it has no domain list.
   await page.goto(`${workspace}/brains/engineering`);
   await expect(page.locator("[data-graph-domains]")).toHaveCount(0);
 });
@@ -1081,7 +1133,9 @@ test("mobile root graph and Brain lens remain usable without horizontal overflow
   ).evaluateAll((elements) => elements.map((element) => {
     const { width, height } = element.getBoundingClientRect();
     return { width, height };
-  }));
+    // A control hidden at this width, such as the hover-preview toggle, is
+    // not an action a phone reader can reach.
+  }).filter(({ width }) => width > 0));
   expect(actions.length).toBeGreaterThan(0);
   expect(actions.every(({ width, height }) => width >= 44 && height >= 44)).toBe(true);
 
@@ -1418,7 +1472,7 @@ test("graph payload and scoped views keep ownership boundaries and canonical bra
   const relatedBrains = page.locator("#graph-related-toggle");
   await expect(relatedBrains).toHaveAttribute("aria-pressed", "false");
   await page.waitForFunction(() =>
-    sessionStorage.getItem(`graph-related-brains:${location.pathname}`) === "false"
+    sessionStorage.getItem("graph-related-brains:/workspace-demo/brains/engineering") === "false"
   );
   await relatedBrains.click();
   await page.reload();
@@ -1455,7 +1509,7 @@ test("graph payload and scoped views keep ownership boundaries and canonical bra
     document.querySelector<HTMLButtonElement>("#graph-search-results button")!.click();
   });
   await page.waitForFunction(() =>
-    sessionStorage.getItem(`graph-related-brains:${location.pathname}`) === "false"
+    sessionStorage.getItem("graph-related-brains:/workspace-demo/brains/engineering") === "false"
   );
   await expect(graph).not.toHaveAttribute("data-filter-settle-pending");
   await page.waitForTimeout(300);
@@ -1465,10 +1519,25 @@ test("graph payload and scoped views keep ownership boundaries and canonical bra
       /graph-(motion|view):/.test(key) && key.includes(":brain:engineering:false:")
     ).length
   )).toBeGreaterThan(0);
+  // The address is the focused note's neighborhood path, so reloading opens
+  // that page: the same graph and the same focus, without the graph page's own
+  // controls.
   await page.reload();
-  await expect(relatedBrains).toHaveAttribute("aria-pressed", "false");
+  await expect(page).toHaveURL(`${workspace}/brains/engineering/notes/principles/graph`);
   await expect(graph).toHaveAttribute("data-focused-node", "engineering/principles");
+  // That page scopes to its own Brain, and related Brains are off, so it shows
+  // no foreign notes.
+  await expect(graph).toHaveAttribute("data-foreign-nodes", "0");
+
+  // The related-Brains preference is keyed to the graph rather than the
+  // address, so it survives a focus that rewrote the address.
+  await page.goto(`${workspace}/brains/engineering`);
+  await expect(relatedBrains).toHaveAttribute("aria-pressed", "false");
+  // And turning them back on brings the foreign neighbours with it.
+  await relatedBrains.click();
   await expect(graph).toHaveAttribute("data-foreign-nodes", "2");
+  await relatedBrains.click();
+  await expect(graph).toHaveAttribute("data-foreign-nodes", "0");
 
   await page.goto(`${workspace}/`);
   const crossEdges = String(payload.edges.filter((edge: { crossBrain: boolean }) => edge.crossBrain).length);
@@ -1511,7 +1580,9 @@ test("graph search pins in-session focus and copies the neighborhood path", asyn
   const result = page.locator("#graph-search-results button", { hasText: "@engineering" });
   await result.focus();
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(`${workspace}/brains/engineering?focus=engineering%2Fprinciples`);
+  // A pinned neighborhood's address is its neighborhood page path, the same
+  // string the copy action produces.
+  await expect(page).toHaveURL(`${workspace}/brains/engineering/notes/principles/graph`);
   await expect(graph).toHaveAttribute("data-focused-node", "engineering/principles");
   await expect(page.locator("[data-graph-focus-status]")).toContainText("Principles");
   expect(await page.locator("[data-graph-focus-status]").evaluate((status) => {
@@ -1559,7 +1630,21 @@ test("graph search pins in-session focus and copies the neighborhood path", asyn
   expect(labelBounds.right).toBeLessThan(labelBounds.width);
   expect(labelBounds.bottom).toBeLessThan(labelBounds.height);
   await recipient.close();
+
+  // Reloading follows the canonical address, which is the focused note's
+  // neighborhood page rather than the graph page carrying query state.
   await page.reload();
+  await expect(page).toHaveURL(`${workspace}/brains/engineering/notes/principles/graph`);
+  await expect(graph).toHaveAttribute("data-focused-node", "engineering/principles");
+
+  // What follows is about the graph page's own focus controls, which a
+  // neighborhood page deliberately does not have, so pin it there again.
+  await page.goto(`${workspace}/brains/engineering`);
+  await expect(graph.locator("canvas.sigma-nodes")).toBeVisible();
+  const reopenFilters = page.getByRole("button", { name: /Filters|Close filters/ });
+  if (await reopenFilters.getAttribute("aria-expanded") === "false") await reopenFilters.click();
+  await page.locator("#graph-search").fill("Principles");
+  await page.locator("#graph-search-results button", { hasText: "@engineering" }).click();
   await expect(graph).toHaveAttribute("data-focused-node", "engineering/principles");
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "Show focus details" }).click();
@@ -1609,7 +1694,7 @@ test("graph search pins in-session focus and copies the neighborhood path", asyn
   await expect(graph).not.toHaveAttribute("data-focused-node");
 });
 
-test("neighborhood pages keep query-free URLs and move focus by navigation", async ({ page }) => {
+test("neighborhood pages keep query-free URLs and move focus in place", async ({ page }) => {
   await page.addInitScript(() => {
     const calls: string[] = [];
     (window as unknown as { replaceStateCalls: string[] }).replaceStateCalls = calls;
@@ -1623,21 +1708,26 @@ test("neighborhood pages keep query-free URLs and move focus by navigation", asy
   await page.goto(neighborhood);
   const graph = page.locator("#global-graph");
   await expect(graph).toHaveAttribute("data-focused-node", "engineering/principles");
-  await expect(graph).toHaveAttribute("data-neighborhood-page", "true");
-  await expect(page.locator("[data-graph-focus-clear]")).toBeHidden();
+  // A note's path is the graph page with that note focused, so focus clears
+  // in place here exactly as it does anywhere else.
+  await expect(page.locator("[data-graph-focus-clear]")).toHaveText("Clear focus");
   await expect(page.locator("[data-graph-focus-copy]")).toBeVisible();
   await expect(page).toHaveURL(neighborhood);
 
   await page.getByRole("button", { name: "Filters" }).click();
   await page.locator("#graph-search").fill("Principles");
+  await page.evaluate(() => { (window as unknown as { samePage: boolean }).samePage = true; });
   await page.locator("#graph-search-results button", { hasText: "@design" }).click();
+  // Moving focus is not a page load: the address is replaced with the new
+  // neighborhood's own path, which is the same string Copy link produces.
   await expect(page).toHaveURL(`${workspace}/brains/design/notes/principles/graph`);
   await expect(graph).toHaveAttribute("data-focused-node", "design/principles");
   await expect(page.locator("[data-graph-focus-status]")).toContainText("Principles");
   expect(page.url()).not.toContain("?");
+  expect(await page.evaluate(() => (window as unknown as { samePage?: boolean }).samePage)).toBe(true);
   expect(await page.evaluate(() =>
     (window as unknown as { replaceStateCalls: string[] }).replaceStateCalls
-  )).toEqual([]);
+  )).toEqual([`${new URL(workspace).pathname}/brains/design/notes/principles/graph`]);
 
   const focusedType = (await page.evaluate(async () =>
     (await fetch("/workspace-demo/graph-data.json")).json()
@@ -1646,10 +1736,11 @@ test("neighborhood pages keep query-free URLs and move focus by navigation", asy
   if (await filters.getAttribute("aria-expanded") === "false") await filters.click();
   await page.locator(`[data-filter="type"][value="${focusedType}"]`).uncheck();
   await expect(graph).not.toHaveAttribute("data-focused-node");
-  await expect(page).toHaveURL(`${workspace}/brains/design/notes/principles/graph`);
-  expect(await page.evaluate(() =>
-    (window as unknown as { replaceStateCalls: string[] }).replaceStateCalls
-  )).toEqual([]);
+  // Nothing is focused now, and the address says so: it names the graph the
+  // neighborhood belonged to, still without a query string.
+  await expect(page).toHaveURL(`${workspace}/`);
+  expect(page.url()).not.toContain("?");
+  expect(await page.evaluate(() => (window as unknown as { samePage?: boolean }).samePage)).toBe(true);
 });
 
 test("a neighborhood page's focus fit never becomes the root graph's saved camera", async ({ browser }) => {
@@ -1703,8 +1794,9 @@ test("graph ownership legend remains non-color-readable on mobile", async ({ pag
   const controls = page.locator(".graph-controls");
   const filterToggle = controls.getByRole("button", { name: "Filters" });
   const actions = controls.getByRole("button");
-  await expect(actions).toHaveCount(5);
+  await expect(actions).toHaveCount(6);
   await expect(controls.getByRole("button", { name: "Filters" })).toBeVisible();
+  await expect(controls.getByRole("button", { name: "Help" })).toBeVisible();
   await expect(controls.getByRole("button", { name: "Fit view" })).toBeVisible();
   await expect(controls.getByRole("button", { name: "Show related brains" })).toBeVisible();
   await expect(controls.getByRole("button", { name: "Legend" })).toBeVisible();
@@ -1715,7 +1807,10 @@ test("graph ownership legend remains non-color-readable on mobile", async ({ pag
     const actions = [...document.querySelectorAll<HTMLElement>(
       ".graph-controls > button, .graph-controls > .graph-legend-disclosure > button, .graph-controls > .brain-lens > summary",
     )]
-      .map((button) => button.getBoundingClientRect());
+      .map((button) => button.getBoundingClientRect())
+      // Controls hidden at this width, such as the hover-preview toggle, take
+      // no space and are not actions a phone reader can reach.
+      .filter((bounds) => bounds.width > 0);
     return {
       actions: actions.map(({ x, y, width, height }) => ({ x, y, width, height })),
       oneRow: actions.every((action) => Math.abs(action.top - actions[0].top) < 1),
@@ -1823,7 +1918,9 @@ test("coarse-pointer tablet keeps graph controls clear of mobile navigation", as
     const actions = [...document.querySelectorAll<HTMLElement>(
       ".graph-controls > button, .graph-controls > .graph-legend-disclosure > button, .graph-controls > .brain-lens > summary",
     )]
-      .map((button) => button.getBoundingClientRect());
+      .map((button) => button.getBoundingClientRect())
+      // The hover-preview toggle hides itself on a coarse pointer.
+      .filter((bounds) => bounds.width > 0);
     return {
       compact: actions.every(({ width, height }) => width === 44 && height === 44),
       overlapsNavigation: !(
@@ -1890,14 +1987,19 @@ test("dense related notes use collision-selected labels in phone fits", async ({
   }));
   await page.goto(`${workspace}/brains/engineering`);
   const graph = page.locator("#global-graph");
+  await expect(graph.locator("canvas.sigma-nodes")).toBeVisible();
+  const completionsBefore = Number(await graph.getAttribute("data-motion-completions") ?? 0);
   await page.getByRole("button", { name: "Show related brains" }).click();
   await expect(graph).toHaveAttribute("data-foreign-nodes", "24");
-  await page.waitForFunction(() => {
-    const host = document.querySelector<HTMLElement>("#global-graph")!;
-    return Number(host.dataset.renderedForeignLabels) > 0;
-  });
+  // Revealing related brains settles and refits the graph; label selection
+  // runs again once the camera stops and its fades finish. Counting before
+  // that catches a transient set, which under load can be empty for a frame.
+  await expect.poll(async () => Number(await graph.getAttribute("data-motion-completions")), { timeout: 10_000 })
+    .toBeGreaterThan(completionsBefore);
+  await page.waitForTimeout(600);
+  await expect.poll(async () => Number(await graph.getAttribute("data-rendered-foreign-labels")))
+    .toBeGreaterThan(0);
   const automaticLabels = Number(await graph.getAttribute("data-rendered-foreign-labels"));
-  expect(automaticLabels).toBeGreaterThan(0);
   expect(automaticLabels).toBeLessThan(24);
 
   await page.getByRole("button", { name: "Fit view" }).click();

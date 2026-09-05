@@ -1,6 +1,6 @@
 import type Sigma from "sigma";
 import { positionBounds } from "./graph-motion-core";
-import { foreignLabelMarkWidth } from "./graph-style";
+import { GRAPH_HOVER_PLATE_PADDING, graphLabelBox } from "./graph-style";
 
 export interface ViewportBounds {
   left: number;
@@ -27,6 +27,13 @@ export interface RenderedGraphFitOptions {
   animate?: boolean;
   duration?: number;
   includeLabels?: boolean;
+  /**
+   * Nodes whose rendered title must stay inside the fit even when labels are
+   * otherwise left out of it: the focused note. A marker-only fit keeps long
+   * titles from shrinking the composition, but the one title a reader asked
+   * for is not something a fit should cut at the edge.
+   */
+  labelIds?: Iterable<string>;
   padding?: number | Partial<FitInsets>;
   trailingNodeExtent?: number;
   onAnimationStart?: () => void;
@@ -103,8 +110,11 @@ export function graphFitInsets(renderer: Sigma, base = DEFAULT_PADDING): FitInse
   if (controls && intersects(controls)) {
     insets.top = Math.max(insets.top, controls.bottom - host.top + 12);
   }
+  // A control that sits entirely inside a band already excluded costs nothing
+  // more. Charging the navigation button as a right-hand band as well as part
+  // of the top one pushed every fit 24 pixels left of centre on a phone.
   const navigation = document.querySelector<HTMLElement>(".site-header")?.getBoundingClientRect();
-  if (navigation && intersects(navigation)) {
+  if (navigation && intersects(navigation) && navigation.bottom > host.top + insets.top) {
     insets.right = Math.max(insets.right, host.right - navigation.left + 12);
   }
   const focus = renderer.getContainer().closest<HTMLElement>(".graph-container")
@@ -112,6 +122,10 @@ export function graphFitInsets(renderer: Sigma, base = DEFAULT_PADDING): FitInse
     ?.getBoundingClientRect();
   if (focus && intersects(focus)) {
     insets.bottom = Math.max(insets.bottom, host.bottom - focus.top + 12);
+  }
+  const about = document.querySelector<HTMLElement>(".graph-about")?.getBoundingClientRect();
+  if (about && about.width > 0 && intersects(about)) {
+    insets.bottom = Math.max(insets.bottom, host.bottom - about.top + 12);
   }
   return insets;
 }
@@ -142,7 +156,9 @@ function measureRenderedGraph(
   ids: Iterable<string>,
   includeLabels = true,
   trailingNodeExtent = 0,
+  labelIds: Iterable<string> = [],
 ): RenderedMeasurement {
+  const required = new Set(labelIds);
   const displayedLabels = includeLabels ? renderer.getNodeDisplayedLabels() : new Set<string>();
   const settings = renderer.getSettings();
   const labelContext = renderer.getCanvases().labels?.getContext("2d");
@@ -164,18 +180,24 @@ function measureRenderedGraph(
       bottom: center.y + radius,
     };
 
-    if (labelContext && data.label && displayedLabels.has(id)) {
-      const metrics = labelContext.measureText(data.label);
-      const baseline = center.y + settings.labelSize / 3;
-      const ascent = metrics.actualBoundingBoxAscent || settings.labelSize * 0.8;
-      const descent = metrics.actualBoundingBoxDescent || settings.labelSize * 0.2;
-      const left = center.x + radius + 3;
-      item.top = Math.min(item.top, baseline - ascent);
-      const customMarkWidth = data.foreign ? foreignLabelMarkWidth(settings.labelSize) : 0;
-      item.right = Math.max(item.right, left + metrics.width + customMarkWidth);
-      item.bottom = Math.max(item.bottom, baseline + descent);
-      fixedExtent.width = Math.max(fixedExtent.width, metrics.width + customMarkWidth + 3);
-      fixedExtent.height = Math.max(fixedExtent.height, ascent + descent);
+    // A label's extent comes from the box the shared layout produced, so
+    // fitting frames exactly what the renderer draws. It is now vertical
+    // rather than horizontal: a centred, wrapped label reaches half its widest
+    // line to each side and its full height below the marker.
+    const labelled = data as typeof data & { labelWidth?: number; labelHeight?: number };
+    if (data.label && (displayedLabels.has(id) || required.has(id)) && labelled.labelWidth) {
+      const box = graphLabelBox(
+        { lines: [data.label], width: labelled.labelWidth, height: labelled.labelHeight ?? 0, lineHeight: 0 },
+        center,
+        radius,
+      )!;
+      // A required title is the focused note's, which is drawn on its plate.
+      const plate = required.has(id) ? GRAPH_HOVER_PLATE_PADDING : 0;
+      item.left = Math.min(item.left, box.left - plate);
+      item.right = Math.max(item.right, box.right + plate);
+      item.bottom = Math.max(item.bottom, box.bottom + plate);
+      fixedExtent.width = Math.max(fixedExtent.width, labelled.labelWidth + 2 * plate);
+      fixedExtent.height = Math.max(fixedExtent.height, box.bottom - (center.y + radius));
     }
     bounds = includeBounds(bounds, item.left, item.top, item.right, item.bottom);
   }
@@ -222,13 +244,16 @@ export function fitCorrection(
     if (total <= available || fixed >= available) return proportional;
     return Math.max(proportional, (total - fixed) / (available - fixed));
   };
+  // Below 1 means the graph is smaller than the room it has, and the fit
+  // zooms in to fill it. Flooring this at 1 made a tall graph on a tall phone
+  // stop at whatever size it started, with a third of the height left empty,
+  // which read as off-centre once the insets were not symmetric.
   const scale = Math.max(
     constrainedScale(width, availableWidth, fixedExtent.width),
     constrainedScale(height, availableHeight, fixedExtent.height),
-    1,
   );
   const settled =
-    scale <= 1.001 &&
+    Math.abs(scale - 1) <= 0.001 &&
     Math.abs(center.x - viewportCenter.x) <= 0.5 &&
     Math.abs(center.y - viewportCenter.y) <= 0.5;
   return { center, viewportCenter, scale, settled };
@@ -240,7 +265,9 @@ export function planRenderedGraphFit(
   padding: number | Partial<FitInsets> = graphFitInsets(renderer),
   includeLabels = true,
   trailingNodeExtent = 0,
+  labelIds: Iterable<string> = [],
 ): RenderedGraphFitPlan {
+  const requiredLabels = [...labelIds];
   const graph = renderer.getGraph();
   const ids = [...new Set(requestedIds)].filter((id) => graph.hasNode(id)).sort();
   const positions = Object.fromEntries(
@@ -260,7 +287,7 @@ export function planRenderedGraphFit(
   const dimensions = renderer.getDimensions();
   for (let pass = 0; pass < MAX_CORRECTIONS; pass += 1) {
     renderer.refresh();
-    const measurement = measureRenderedGraph(renderer, ids, includeLabels, trailingNodeExtent);
+    const measurement = measureRenderedGraph(renderer, ids, includeLabels, trailingNodeExtent, requiredLabels);
     if (!measurement.bounds) break;
     const correction = fitCorrection(
       measurement.bounds,
@@ -270,7 +297,13 @@ export function planRenderedGraphFit(
     );
     if (correction.settled) break;
     const state = renderer.getCamera().getState();
-    const zoomScale = correction.scale > 1.001 ? correction.scale * 1.02 : 1;
+    // Zooming out overshoots by 2% so fixed-pixel labels land inside; zooming
+    // in takes the scale as measured and lets the next pass settle it.
+    const zoomScale = correction.scale > 1.001
+      ? correction.scale * 1.02
+      : correction.scale < 0.999
+        ? correction.scale
+        : 1;
     const cameraPoint = {
       x: correction.center.x + (dimensions.width / 2 - correction.viewportCenter.x) * zoomScale,
       y: correction.center.y + (dimensions.height / 2 - correction.viewportCenter.y) * zoomScale,
@@ -338,6 +371,7 @@ export function fitRenderedGraph(
     options.padding ?? graphFitInsets(renderer),
     options.includeLabels,
     options.trailingNodeExtent,
+    options.labelIds,
   );
   applyRenderedGraphFit(
     renderer,

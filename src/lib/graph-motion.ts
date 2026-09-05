@@ -54,7 +54,7 @@ export class GraphMotionController {
     private readonly fitViewportAspect = false,
     private readonly fitOptions: () => Pick<
       RenderedGraphFitOptions,
-      "includeLabels" | "trailingNodeExtent"
+      "includeLabels" | "trailingNodeExtent" | "labelIds"
     > = () => ({}),
   ) {
     this.baseline = this.capturePositions();
@@ -126,12 +126,12 @@ export class GraphMotionController {
     this.sessionScope = scope;
   }
 
-  fitView(ids: Iterable<string>): void {
+  fitView(ids: Iterable<string>, animate = true): void {
     this.cancel();
     const visibleIds = [...new Set(ids)].filter((id) => this.graph.hasNode(id)).sort();
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const generation = this.generations.next();
-    this.fitVisible(visibleIds, !reducedMotion, generation, () => this.finish(generation));
+    this.fitVisible(visibleIds, animate && !reducedMotion, generation, () => this.finish(generation));
   }
 
   settle(
@@ -270,6 +270,7 @@ export class GraphMotionController {
         undefined,
         options.includeLabels,
         options.trailingNodeExtent,
+        options.labelIds,
       );
       this.applyPositions(starts);
       cameraStart = convertCameraToBoundingBox(sourceCamera, sourceBBox, fitPlan.bbox);

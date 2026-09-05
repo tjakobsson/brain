@@ -1,0 +1,112 @@
+---
+/**
+ * A short guide to the graph's keys and gestures, as a disclosure in the graph
+ * controls. Keys nobody can find are keys nobody uses. Built like the legend
+ * and sharing its open-one-at-a-time events, so opening Help closes the
+ * legend, the lens or the filters, and any of those closes Help.
+ */
+interface Props {
+  id: string;
+}
+const { id } = Astro.props;
+---
+
+<div class="graph-legend-disclosure graph-legend-disclosure--global graph-help" data-graph-help-disclosure>
+  <button
+    class="graph-control graph-legend-trigger"
+    type="button"
+    aria-label="Help"
+    title="Help"
+    aria-controls={`${id}-panel`}
+    aria-expanded="false"
+    data-graph-help-trigger
+  >
+    <svg class="graph-control-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="8.5"></circle>
+      <path d="M9.6 9.4a2.5 2.5 0 1 1 3.6 2.3c-.8.4-1.2 1-1.2 1.8v.3"></path>
+      <circle cx="12" cy="16.9" r="0.75" class="graph-control-icon__fill"></circle>
+    </svg>
+    <span class="graph-control-label">Help</span>
+  </button>
+  <div
+    id={`${id}-panel`}
+    class="graph-legend-popover graph-help__panel"
+    role="region"
+    aria-label="Graph help"
+    tabindex="-1"
+    hidden
+    data-graph-help-panel
+  >
+    <section class="graph-help__keys" data-graph-help-keys>
+      <h3>Keys</h3>
+      <ul>
+        <li><kbd>F</kbd><span>Pin the note under the pointer, move the pin to it, or lift the pin from it</span></li>
+        <li><kbd>C</kbd><span>Clear the pin</span></li>
+        <li><kbd>Z</kbd><span>Fit the view: the pinned neighborhood, or every visible note</span></li>
+        <li><kbd>D</kbd><span>Hover preview on or off: whether pointing at a note lights up its neighborhood</span></li>
+        <li><span class="graph-help__keyrange"><kbd>1</kbd>–<kbd>5</kbd></span><span>How many links away the lit neighborhood reaches, for a hover preview and for a pin</span></li>
+        <li><kbd>Esc</kbd><span>Close a menu or panel</span></li>
+      </ul>
+      <h3>Pointer</h3>
+      <ul>
+        <li><span class="graph-help__gesture">Point</span><span>Shows a note's title</span></li>
+        <li><span class="graph-help__gesture">Click</span><span>Opens the note</span></li>
+        <li><span class="graph-help__gesture">Right-click</span><span>Pin, copy a link, open, clear, fit</span></li>
+        <li><span class="graph-help__gesture">Drag</span><span>Pans the graph; dragging a note moves it</span></li>
+        <li><span class="graph-help__gesture">Scroll</span><span>Zooms</span></li>
+      </ul>
+    </section>
+    <section class="graph-help__touch" data-graph-help-touch>
+      <h3>Touch</h3>
+      <ul>
+        <li><span class="graph-help__gesture">Tap</span><span>Opens a note</span></li>
+        <li><span class="graph-help__gesture">Long press</span><span>Pins a note and its neighborhood</span></li>
+        <li><span class="graph-help__gesture">Tap a lit note</span><span>Moves the pin to it</span></li>
+        <li><span class="graph-help__gesture">Tap empty space</span><span>Clears the pin</span></li>
+        <li><span class="graph-help__gesture">Pinch</span><span>Zooms around what is between your fingers</span></li>
+        <li><span class="graph-help__gesture">Drag</span><span>Pans the graph</span></li>
+      </ul>
+    </section>
+  </div>
+</div>
+
+<script>
+  for (const disclosure of document.querySelectorAll<HTMLElement>("[data-graph-help-disclosure]")) {
+    if (disclosure.dataset.graphHelpReady === "true") continue;
+    disclosure.dataset.graphHelpReady = "true";
+    const trigger = disclosure.querySelector<HTMLButtonElement>("[data-graph-help-trigger]")!;
+    const panel = disclosure.querySelector<HTMLElement>("[data-graph-help-panel]")!;
+
+    const setOpen = (open: boolean, restoreFocus = false) => {
+      trigger.setAttribute("aria-expanded", String(open));
+      panel.hidden = !open;
+      disclosure.toggleAttribute("data-open", open);
+      if (restoreFocus) trigger.focus();
+    };
+
+    trigger.addEventListener("click", () => {
+      const open = trigger.getAttribute("aria-expanded") !== "true";
+      document.dispatchEvent(new CustomEvent("graph-legend-open", { detail: disclosure }));
+      setOpen(open);
+    });
+    document.addEventListener("graph-legend-open", (event) => {
+      if ((event as CustomEvent).detail !== disclosure) setOpen(false);
+    });
+    document.addEventListener("graph-legend-close", () => setOpen(false));
+    document.addEventListener("pointerdown", (event) => {
+      if (
+        trigger.getAttribute("aria-expanded") === "true" &&
+        event.target instanceof Node &&
+        !disclosure.contains(event.target)
+      ) {
+        setOpen(false);
+      }
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && trigger.getAttribute("aria-expanded") === "true") {
+        event.stopImmediatePropagation();
+        setOpen(false, true);
+      }
+    });
+  }
+</script>
