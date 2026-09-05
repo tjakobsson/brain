@@ -515,17 +515,29 @@ test("global camera actions apply pending responsive state without a resize sett
     await expect(graph.locator("canvas.sigma-nodes")).toBeVisible();
     await expect.poll(async () => (await graphCounts(graph)).completions).toBeGreaterThan(0);
     if (action === "search") {
+      const beforeFilters = await graphCounts(graph);
       await page.getByRole("button", { name: "Filters" }).click();
+      // Finish the sidebar's own resize before measuring the breakpoint action.
+      await expect.poll(async () => (await graphCounts(graph)).completions).toBe(beforeFilters.completions + 1);
       await page.locator("#graph-search").fill("Neighbor");
       await expect(page.getByRole("button", { name: "Neighbor", exact: true })).toBeVisible();
     }
+    const cameraAction = action === "fit"
+      ? page.getByRole("button", { name: "Fit view" })
+      : page.getByRole("button", { name: "Neighbor", exact: true });
+    await expect(cameraAction).toBeVisible();
+    await cameraAction.evaluate((button) => {
+      // Run in the breakpoint-change task, after the graph queues its resize.
+      // A Playwright click after setViewportSize can outwait the 180ms debounce.
+      window.matchMedia("(max-width: 700px)").addEventListener("change", () => {
+        (button as HTMLButtonElement).click();
+      }, { once: true });
+    });
     const before = await graphCounts(graph);
 
     await page.setViewportSize({ width: 699, height: 760 });
-    if (action === "fit") await page.getByRole("button", { name: "Fit view" }).click();
-    else await page.getByRole("button", { name: "Neighbor", exact: true }).click();
 
-    expect((await graphCounts(graph)).responsive).toBe(before.responsive + 1);
+    await expect.poll(async () => (await graphCounts(graph)).responsive).toBe(before.responsive + 1);
     await expect(graph).toHaveAttribute("data-responsive-policy", "narrow");
     const dimensions = await graph.evaluate((host) => `${host.clientWidth}:${host.clientHeight}`);
     await expect(graph).toHaveAttribute("data-responsive-dimensions", dimensions);

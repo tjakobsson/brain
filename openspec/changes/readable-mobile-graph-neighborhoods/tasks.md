@@ -112,3 +112,4 @@ PR-review verification: strict change validation passed, 675 unit tests passed, 
 - [x] 12.7 Add a visible local Hover preview toggle with pressed state, shared persistence, and keyboard synchronization; verify desktop containment and touch hiding.
 - [x] 12.8 Wait for resize/filter settling and the chained focus fit before capturing the session-isolation test's drag baseline and marker coordinates; retain its pointer, drag, and cache assertions.
 - [x] 12.9 Recover from font-dependent wrapping overshoot with bounded fit backtracking and deterministic wrapping regressions, preserving the existing padding assertions and performance budgets.
+- [x] 12.10 Make the pending-responsive-camera test dispatch Fit/search in the breakpoint-change task before the resize debounce can expire, after waiting for any sidebar setup resize. Preserve the exact no-extra-settle and camera-completion assertions.
