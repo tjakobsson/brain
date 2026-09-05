@@ -1111,6 +1111,35 @@ test("local graphs resume interrupted motion when the page becomes visible", asy
     .toBeGreaterThan(initialCompletions);
 });
 
+test("a 320px vault keeps Help reachable at its deployment base", async ({ browser }, testInfo) => {
+  const { base } = deployment(testInfo);
+  const context = await browser.newContext({
+    baseURL: String(testInfo.project.use.baseURL), hasTouch: true,
+    viewport: { width: 320, height: 568 },
+  });
+  const page = await context.newPage();
+  for (const path of ["/", "/notes/welcome/graph"]) {
+    await page.goto(`${base}${path}`);
+    const help = page.getByRole("button", { name: "Help", exact: true });
+    await expect(help).toBeVisible();
+    const target = (await help.boundingBox())!;
+    expect(target.width).toBeGreaterThanOrEqual(44);
+    expect(target.height).toBeGreaterThanOrEqual(44);
+    await help.tap();
+    const panel = page.getByRole("region", { name: "Graph help", exact: true });
+    await expect(panel).toBeVisible();
+    await expect(panel.locator("[data-graph-help-touch]")).toBeVisible();
+    const bounds = (await panel.boundingBox())!;
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(320);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(568);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await help.tap();
+    await expect(panel).toBeHidden();
+  }
+  await context.close();
+});
+
 test("touch layouts keep the local graph interactive", async ({ browser }, testInfo) => {
   const { origin, base } = deployment(testInfo);
   const context = await browser.newContext({ hasTouch: true, viewport: { width: 900, height: 600 } });

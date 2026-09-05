@@ -116,6 +116,8 @@ After replacing a focus URL, refresh navigation and site-search owner Brain scop
 
 Render the workspace graph's Home control even when initially hidden. Show it on Brain and neighborhood paths and hide it at the workspace root on every focus transition, matching a fresh load. Touch help describes the existing gestures: tapping an eligible note opens it; long-pressing pins it or moves focus to it.
 
+At widths up to 400px, let the toolbar wrap inside the space beside navigation while retaining 44px controls. Never hide Help to make room. Anchor Help, Legend, and Brain-lens panels below the toolbar's actual height, and reserve room above filter fields for two rows when Home is present. This also handles the control added when focus changes in place.
+
 The layout session key follows the current neighborhood identity, or the unfocused context graph after clearing. Changing that key must not restore another session's node positions during the transition; retain the live layout and use the new key for subsequent persistence.
 
 Keep shipped full workspace `neighborhood:<id>` keys unchanged. For focus originating in a Brain graph, append `:brain:<activeBrainId>:<showRelatedBrains>` using the graph's original context, not the focused note's owner. Related-Brains off, related-Brains on, and the full workspace must not overwrite each other's neighborhood layouts or cameras.

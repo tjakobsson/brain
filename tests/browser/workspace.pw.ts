@@ -1255,6 +1255,58 @@ test("persistent context and graph controls stay contained across supported widt
   expect(activeBrainGeometry).toEqual({ childrenContained: true, overlap: false, noOverflow: true });
 });
 
+for (const width of [320, 359, 360, 375, 390]) {
+  test(`graph Help and controls stay usable on a ${width}px phone`, async ({ browser }) => {
+    const context = await browser.newContext({ viewport: { width, height: 568 }, hasTouch: true });
+    const page = await context.newPage();
+    for (const path of ["/", "/brains/engineering", "/brains/engineering/notes/principles/graph"]) {
+      await page.goto(`${workspace}${path}`);
+      const controls = page.locator(".graph-controls");
+      const help = controls.getByRole("button", { name: "Help", exact: true });
+      await expect(help).toBeVisible();
+      expect(await controls.evaluate((element) => {
+        const bar = element.getBoundingClientRect();
+        const navigation = document.querySelector(".site-header")!.getBoundingClientRect();
+        const buttons = [...element.querySelectorAll<HTMLElement>(":scope > .graph-control, :scope > .graph-legend-disclosure > button, :scope > .brain-lens > summary")]
+          .map((button) => button.getBoundingClientRect()).filter((box) => box.width > 0);
+        return {
+          targets: buttons.every((box) => box.width >= 44 && box.height >= 44),
+          contained: buttons.every((box) => box.left >= bar.left && box.right <= bar.right && box.bottom <= bar.bottom),
+          clearOfNavigation: bar.right <= navigation.left,
+          noOverflow: document.documentElement.scrollWidth <= innerWidth,
+        };
+      })).toEqual({ targets: true, contained: true, clearOfNavigation: true, noOverflow: true });
+      for (const name of ["Help", "Legend", "Brains"]) {
+        await controls.getByRole("button", { name, exact: true }).click();
+        const panel = name === "Brains" ? page.locator(".brain-lens__panel")
+          : page.getByRole("region", { name: name === "Help" ? "Graph help" : "Graph legend", exact: true });
+        await expect(panel).toBeVisible();
+        const box = (await panel.boundingBox())!;
+        const bar = (await controls.boundingBox())!;
+        expect(box.y).toBeGreaterThanOrEqual(bar.y + bar.height);
+        expect(box.x).toBeGreaterThanOrEqual(0);
+        expect(box.x + box.width).toBeLessThanOrEqual(width);
+        expect(box.y + box.height).toBeLessThanOrEqual(568);
+        if (name === "Help") {
+          await expect(panel.locator("[data-graph-help-touch]")).toBeVisible();
+          await expect(panel.locator("[data-graph-help-keys]")).toBeHidden();
+          await expect(panel).toContainText("Long press");
+          await expect(panel).toContainText("Pinch");
+          await expect(panel).toContainText("Tap empty space");
+        }
+        await page.keyboard.press("Escape");
+        await expect(panel).toBeHidden();
+      }
+      await controls.getByRole("button", { name: "Filters", exact: true }).click();
+      await expect(page.locator("#graph-search")).toBeVisible();
+      const search = (await page.locator("#graph-search").boundingBox())!;
+      const bar = (await controls.boundingBox())!;
+      expect(search.y).toBeGreaterThanOrEqual(bar.y + bar.height);
+    }
+    await context.close();
+  });
+}
+
 test("active-brain mobile launcher has direct actions and predictable disclosure focus", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 568 });
   await page.goto(`${workspace}/brains/engineering/notes/principles`);
@@ -1810,7 +1862,7 @@ test("neighborhood pages keep query-free URLs and move focus in place", async ({
   await expectGraphShellScope(page);
 });
 
-for (const width of [390, 1280]) for (const brainId of [undefined, "engineering"]) {
+for (const width of [320, 390, 1280]) for (const brainId of [undefined, "engineering"]) {
   test(`graph shell follows pin and clear from ${brainId ?? "workspace"} at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 });
     const graphPath = brainId ? `/brains/${brainId}` : "/";
@@ -1905,9 +1957,9 @@ test("graph ownership legend remains non-color-readable on mobile", async ({ pag
       .filter((bounds) => bounds.width > 0);
     return {
       actions: actions.map(({ x, y, width, height }) => ({ x, y, width, height })),
-      oneRow: actions.every((action) => Math.abs(action.top - actions[0].top) < 1),
+      atMostTwoRows: controls.height <= 2 * 44 + 4,
+      actionsContained: actions.every((action) => action.left >= controls.left && action.right <= controls.right && action.bottom <= controls.bottom),
       alignedWithNavigation: Math.abs(controls.top - navigation.top) < 1,
-      sameHeightAsNavigation: Math.abs(controls.height - navigation.height) < 1,
       controlsLeftInset: controls.left,
       navigationRightInset: innerWidth - navigation.right,
       inViewport: controls.left >= 0 && controls.right <= innerWidth,
@@ -1916,7 +1968,7 @@ test("graph ownership legend remains non-color-readable on mobile", async ({ pag
     };
   });
   expect(initialGeometry.actions.every(({ width, height }) => width >= 44 && height >= 44)).toBe(true);
-  expect(initialGeometry).toMatchObject({ oneRow: true, alignedWithNavigation: true, sameHeightAsNavigation: true, inViewport: true, overlapsNavigation: false, noOverflow: true });
+  expect(initialGeometry).toMatchObject({ atMostTwoRows: true, actionsContained: true, alignedWithNavigation: true, inViewport: true, overlapsNavigation: false, noOverflow: true });
   expect(Math.abs(initialGeometry.controlsLeftInset - initialGeometry.navigationRightInset)).toBeLessThan(1);
   for (const action of await actions.all()) {
     await expect(action).toHaveAttribute("title", await action.getAttribute("aria-label") ?? "");

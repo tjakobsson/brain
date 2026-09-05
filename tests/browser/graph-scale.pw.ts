@@ -651,7 +651,8 @@ test("a sparse narrow focused fit fills the available width without clipping its
   expect(plates[0]!.bottom).toBeLessThanOrEqual(bar.y - box.y - 11);
 });
 
-test("help on a phone shows gestures, not keys", async ({ page }) => {
+for (const width of [320, 390]) test(`help on a ${width}px phone shows gestures, not keys`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 568 });
   await page.goto("./");
   const graph = page.locator("#global-graph");
   await expect(graph.locator("canvas.sigma-nodes")).toBeVisible();
@@ -670,5 +671,6 @@ test("help on a phone shows gestures, not keys", async ({ page }) => {
   // And the panel stays on screen.
   const box = (await panel.boundingBox())!;
   expect(box.x).toBeGreaterThanOrEqual(0);
-  expect(box.x + box.width).toBeLessThanOrEqual(390);
+  expect(box.x + box.width).toBeLessThanOrEqual(width);
+  expect(box.y + box.height).toBeLessThanOrEqual(568);
 });

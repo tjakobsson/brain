@@ -2688,13 +2688,27 @@ div[data-callout] [data-callout-body] > :last-child {
 
 }
 
-@media (max-width: 360px) {
-  .graph-controls > .graph-control,
-  .graph-controls > .graph-legend-disclosure > .graph-control,
-  .graph-controls > .brain-lens > summary,
+@media (max-width: 400px) {
+  .graph-controls {
+    flex-wrap: wrap;
+    border-radius: 24px;
+  }
+
+  .graph-controls > .graph-legend-disclosure,
   .graph-controls > .brain-lens {
-    width: 39px;
-    min-width: 39px;
+    position: static;
+  }
+
+  .graph-controls .graph-legend-popover,
+  .graph-controls .brain-lens__panel {
+    position: absolute;
+    top: calc(100% + 0.55rem);
+    left: 0;
+    max-height: calc(100dvh - 8rem);
+  }
+
+  .graph-shell:has(.graph-home-action:not([hidden])) .graph-sidebar {
+    padding-top: 7rem;
   }
 }
 
@@ -2794,14 +2808,6 @@ div[data-callout] [data-callout-body] > :last-child {
 
 @media (hover: hover) and (pointer: fine) {
   .graph-help__touch {
-    display: none;
-  }
-}
-
-/* The narrowest phones cannot seat every control on a Brain graph page, and
-   Help is the one that can wait: the gestures it describes still work. */
-@media (max-width: 359px) {
-  .graph-controls > .graph-help {
     display: none;
   }
 }

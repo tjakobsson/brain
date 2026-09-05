@@ -159,6 +159,8 @@ On fine-pointer layouts, whether a hover begins such an inspection SHALL be a re
 
 F MUST target a visible marker under the pointer independently of its left-click navigation eligibility. Dismissing a context menu MUST release its held node target; subsequent keyboard actions MUST NOT reuse it as though the pointer still targeted that node.
 
+Help MUST remain reachable on every supported graph viewport, including 320px-wide phones. When the toolbar cannot fit beside navigation in one row, its controls MUST reflow without hiding Help or shrinking touch targets below 44 by 44 CSS pixels. Its popovers MUST remain within the viewport and clear of the toolbar.
+
 #### Scenario: Hover with preview off
 - **WHEN** a fine-pointer reader hovers a node with hover preview off
 - **THEN** the pointer changes and the node's own title shows, while every other marker, edge and title stays as it was
@@ -190,6 +192,10 @@ F MUST target a visible marker under the pointer independently of its left-click
 #### Scenario: Find the keys
 - **WHEN** a reader opens the context menu, hovers Fit view, or opens Help
 - **THEN** the menu shows F, C and Z beside Pin, Clear focus and Fit view, the Fit view tooltip names Z, and Help lists the keys on a keyboard layout and the touch gestures on a touch one
+
+#### Scenario: Discover gestures on a narrow phone
+- **WHEN** a reader opens a vault graph, workspace root, Brain graph, or focused neighborhood on a 320px-wide touch viewport
+- **THEN** Help remains visible with a 44px touch target, opens the touch-gesture guide below the toolbar without horizontal overflow, and can be dismissed without changing focus
 
 #### Scenario: Clear and fit from the keyboard
 - **WHEN** a reader presses C while a note is pinned, or Z at any time
