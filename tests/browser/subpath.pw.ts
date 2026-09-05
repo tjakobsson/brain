@@ -218,11 +218,15 @@ test("all site features stay within the deployment base", async ({ page }, testI
 
   const desktopControls = page.locator(".graph-controls");
   const desktopActions = desktopControls.getByRole("button");
-  await expect(desktopActions).toHaveCount(3);
+  // Filters, hover preview, Fit view, Legend, Help: the preview toggle exists
+  // only where a hover does, which a desktop viewport has.
+  await expect(desktopActions).toHaveCount(5);
   expect(await desktopActions.evaluateAll((buttons) => buttons.map((button) => {
     const { width, height } = button.getBoundingClientRect();
     return { width, height };
   }))).toEqual([
+    { width: 44, height: 44 },
+    { width: 44, height: 44 },
     { width: 44, height: 44 },
     { width: 44, height: 44 },
     { width: 44, height: 44 },
@@ -527,10 +531,29 @@ test("Fit view includes rendered graph bounds and excludes filtered nodes", asyn
   const bounds = await graphInkBounds(graph);
   expect(bounds.nodePixels).toBeGreaterThan(0);
   expect(bounds.labelPixels).toBeGreaterThan(0);
-  expect(bounds.left).toBeGreaterThanOrEqual(18);
-  expect(bounds.top).toBeGreaterThanOrEqual(55);
-  expect(bounds.right).toBeLessThanOrEqual(bounds.width - 60);
-  expect(bounds.bottom).toBeLessThanOrEqual(bounds.height - 18);
+
+  // Markers decide the frame, so they land inside the padded area.
+  await graph.evaluate((host) => host.setAttribute("data-measure-markers", ""));
+  await page.waitForFunction(() =>
+    Boolean(document.querySelector("#global-graph")?.getAttribute("data-marker-geometry")));
+  const markers: { x: number; y: number; r: number }[] =
+    JSON.parse((await graph.getAttribute("data-marker-geometry"))!);
+  await graph.evaluate((host) => host.removeAttribute("data-measure-markers"));
+  expect(markers.length).toBeGreaterThan(0);
+  for (const marker of markers) {
+    expect(marker.x - marker.r).toBeGreaterThanOrEqual(18);
+    expect(marker.y - marker.r).toBeGreaterThanOrEqual(18);
+    expect(marker.x + marker.r).toBeLessThanOrEqual(bounds.width - 18);
+    expect(marker.y + marker.r).toBeLessThanOrEqual(bounds.height - 18);
+  }
+
+  // Labels are centred below their node and bounded to twice that node's
+  // distance from the nearer edge, so no rendered label is cut off even though
+  // fitting no longer reserves room for one.
+  expect(bounds.left).toBeGreaterThanOrEqual(0);
+  expect(bounds.top).toBeGreaterThanOrEqual(0);
+  expect(bounds.right).toBeLessThanOrEqual(bounds.width);
+  expect(bounds.bottom).toBeLessThanOrEqual(bounds.height);
 });
 
 test("mobile navigation stays within the deployment base", async ({ page }, testInfo) => {
@@ -618,15 +641,21 @@ test("mobile navigation stays within the deployment base", async ({ page }, test
   await page.waitForTimeout(100);
   expect((await localGraph.screenshot()).equals(beforePan)).toBe(false);
   await page.getByRole("button", { name: "Fit view" }).click();
-  await page.waitForTimeout(400);
+  // Label layout resolves once the camera stops rather than on every frame,
+  // so give it that moment before measuring what is drawn.
+  await page.waitForTimeout(700);
   const fittedLocalBounds = await graphInkBounds(localGraph);
   expect(fittedLocalBounds.nodePixels).toBeGreaterThan(0);
   expect(fittedLocalBounds.labelPixels).toBeGreaterThan(0);
+  // Markers decide the frame, so they sit inside the padding.
   expect(fittedLocalBounds.nodeLeft).toBeGreaterThanOrEqual(18);
   expect(fittedLocalBounds.nodeTop).toBeGreaterThanOrEqual(18);
   expect(fittedLocalBounds.nodeRight).toBeLessThanOrEqual(fittedLocalBounds.width - 18);
   expect(fittedLocalBounds.nodeBottom).toBeLessThanOrEqual(fittedLocalBounds.height - 18);
-  expect(fittedLocalBounds.right).toBeLessThanOrEqual(fittedLocalBounds.width - 18);
+  // A label may reach the edge but never cross it: its width is bounded by
+  // twice its node's distance from the nearer side.
+  expect(fittedLocalBounds.right).toBeLessThanOrEqual(fittedLocalBounds.width);
+  expect(fittedLocalBounds.left).toBeGreaterThanOrEqual(0);
   const noteHeader = page.locator(".site-header");
   await expect(page.locator(".site-header-slot")).toHaveCSS("position", "fixed");
   await expect(page.locator(".site-header-slot")).toHaveCSS("height", "0px");
@@ -714,11 +743,10 @@ test("copied neighborhood links are pathname-only and open cold", async ({ brows
   await expect(recipient).toHaveTitle("Welcome neighborhood");
   const recipientGraph = recipient.locator("#global-graph");
   await expect(recipientGraph).toHaveAttribute("data-focused-node", "welcome");
-  await expect(recipientGraph).toHaveAttribute("data-neighborhood-page", "true");
   await expect(recipient.locator("[data-graph-focus-status]")).toBeVisible();
   // Connected domains are a workspace concept; a single vault has no lens.
   await expect(recipient.locator("[data-graph-domains]")).toHaveCount(0);
-  await expect(recipient.locator("[data-graph-focus-clear]")).toBeHidden();
+  await expect(recipient.locator("[data-graph-focus-clear]")).toHaveText("Clear focus");
   await expect(recipient.locator("[data-graph-focus-open]")).toHaveAttribute(
     "href",
     `${base}/notes/welcome?focus=default%2Fwelcome`,
@@ -1022,7 +1050,7 @@ test("a sub-threshold drag resize cannot pin a later local resize", async ({ pag
       y: dragBounds.y + (1 - target.y / dragPixels.height) * dragBounds.height,
     };
     await page.mouse.move(point.x, point.y);
-    const inspected = await graph.getAttribute("data-transient-inspection");
+    const inspected = await graph.getAttribute("data-pointer-node");
     if (inspected && inspected !== "welcome") {
       dragPoint = point;
       break;

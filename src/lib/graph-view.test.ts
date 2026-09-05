@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { GraphData } from "./graph-data";
 import {
+  composeGraphLabel,
+  defaultOwnerLabelPreference,
   forceForeignLabel,
   forceLabelsOnNarrowZoom,
   forceLocalLabelsOnNarrowZoom,
@@ -8,6 +10,7 @@ import {
   graphHoverSurface,
   graphNodeAttributes,
   narrowFocusedLabelDecision,
+  ownerLabelStorageKey,
   responsiveLabelSettings,
   shortenGraphLabel,
 } from "./graph-style";
@@ -136,7 +139,48 @@ describe("brain-aware graph rendering data", () => {
     expect(foreign.brainAccent).toBe("#b56cff");
     expect(foreign.size).toBeLessThan(local.size);
     expect(foreign.zIndex).toBe(0);
-    expect(edge).toMatchObject({ crossBrain: true, mutedForeign: true, color: "#8f8b94", size: 0.75 });
+    expect(edge).toMatchObject({ crossBrain: true, mutedForeign: true, color: "#a9a5ae", size: 0.32 });
+  });
+
+  it("offers a workspace label with and without its owner", () => {
+    const context = { mode: "all", encodeBrains: true } as const;
+    const engineering = graphNodeAttributes(data.nodes[0], context);
+
+    // Both readings are prepared up front, so the preference can be applied
+    // without rebuilding the graph.
+    expect(engineering.label).toBe("◆ @engineering · Principles");
+    expect(engineering.titleLabel).toBe("◆ Principles");
+    expect(engineering.ownerRequired).toBe(false);
+  });
+
+  it("never lets the preference strip a foreign label's brain in a per-brain graph", () => {
+    const context = { mode: "brain", brainId: "engineering" } as const;
+    const foreign = graphNodeAttributes(data.nodes[1], context);
+    const local = graphNodeAttributes(data.nodes[0], context);
+
+    expect(foreign.label).toBe("○ ↗ @design · Principles");
+    expect(foreign.ownerRequired).toBe(true);
+    // A note in its own Brain has no owner to remove either way.
+    expect(local.ownerRequired).toBe(false);
+    expect(local.label).toBe(local.titleLabel);
+  });
+
+  it("composes a label from its parts", () => {
+    expect(composeGraphLabel("◆", "@engineering", "Principles"))
+      .toBe("◆ @engineering · Principles");
+    expect(composeGraphLabel("◆", null, "Principles")).toBe("◆ Principles");
+    expect(composeGraphLabel("○", "↗ @design", "Principles"))
+      .toBe("○ ↗ @design · Principles");
+  });
+
+  it("defaults owner labels off on a phone and on elsewhere", () => {
+    expect(defaultOwnerLabelPreference(true)).toBe(false);
+    expect(defaultOwnerLabelPreference(false)).toBe(true);
+  });
+
+  it("remembers the owner preference per site base, like the Brain lens", () => {
+    expect(ownerLabelStorageKey("/")).toBe("brain-graph-owner-labels:/");
+    expect(ownerLabelStorageKey("/vault-repo/")).not.toBe(ownerLabelStorageKey("/"));
   });
 
   it("labels duplicate titles by owner and status on the full workspace graph", () => {
@@ -147,6 +191,6 @@ describe("brain-aware graph rendering data", () => {
     expect(engineering.label).toBe("◆ @engineering · Principles");
     expect(design.label).toBe("○ @design · Principles");
     expect(engineering.route).toBe("/brains/engineering/notes/principles");
-    expect(edge).toMatchObject({ crossBrain: true, mutedForeign: false, color: "#d97706", size: 2.4 });
+    expect(edge).toMatchObject({ crossBrain: true, mutedForeign: false, color: "#e0a75a", size: 0.9 });
   });
 });

@@ -1,34 +1,45 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { BRAIN_IDS, brainId, brainTitle, noteTitle } from "./stress-vault-content.mjs";
 
-const brainCount = 4;
-const notesPerBrain = 500;
-const clustersPerBrain = 5;
-const notesPerCluster = notesPerBrain / clustersPerBrain;
-const nodeCount = brainCount * notesPerBrain;
+const brainCount = BRAIN_IDS.length;
 const types = ["fleeting", "literature", "permanent"];
 const statuses = ["draft", "developing", "established"];
 const accents = ["#3366cc", "#b56cff", "#16856b", "#b85c38"];
 
-function outputArgument(argv) {
-  const index = argv.indexOf("--output");
-  if (index === -1) return null;
-  if (!argv[index + 1] || argv[index + 1].startsWith("--")) {
-    throw new Error("--output requires a path");
+const USAGE =
+  "Usage: node scripts/generate-stress-vault.mjs [--output <new-directory>] [--notes-per-brain <count>]";
+
+function parseArguments(argv) {
+  const options = { output: null, notesPerBrain: 500 };
+  for (let index = 0; index < argv.length; index += 2) {
+    const flag = argv[index];
+    const value = argv[index + 1];
+    if (value === undefined || value.startsWith("--")) throw new Error(`${flag} requires a value`);
+    if (flag === "--output") options.output = path.resolve(value);
+    else if (flag === "--notes-per-brain") {
+      const count = Number(value);
+      if (!Number.isInteger(count) || count < 5) {
+        throw new Error("--notes-per-brain requires an integer of at least 5");
+      }
+      options.notesPerBrain = count;
+    } else throw new Error(USAGE);
   }
-  if (argv.length !== 2 || index !== 0) {
-    throw new Error("Usage: node scripts/generate-stress-vault.mjs [--output <new-directory>]");
-  }
-  return path.resolve(argv[index + 1]);
+  return options;
 }
 
-const requestedOutput = outputArgument(process.argv.slice(2));
-const output = requestedOutput ?? fs.mkdtempSync(path.join(os.tmpdir(), "brain-stress-workspace-"));
-if (requestedOutput) fs.mkdirSync(output);
+const options = parseArguments(process.argv.slice(2));
+const notesPerBrain = options.notesPerBrain;
+// Five clusters keep the link topology recognizable at any size, but a small
+// fixture would end up with clusters too thin for the ten-note group hubs.
+const clustersPerBrain = notesPerBrain >= 100 ? 5 : 2;
+const notesPerCluster = Math.ceil(notesPerBrain / clustersPerBrain);
+const nodeCount = brainCount * notesPerBrain;
+const output = options.output ?? fs.mkdtempSync(path.join(os.tmpdir(), "brain-stress-workspace-"));
+if (options.output) fs.mkdirSync(output);
 
-const brainId = (index) => `brain-${String(index + 1).padStart(2, "0")}`;
-const title = (index) => `Generated note ${String(index + 1).padStart(4, "0")}`;
+const title = noteTitle;
 const wikiLink = (index, variant) => {
   const target = title(index);
   if (variant % 17 === 0) return `[[${target}#Connections]]`;
@@ -43,7 +54,7 @@ const foreignLink = (targetBrainIndex, index, variant) => {
 
 const brains = Array.from({ length: brainCount }, (_, brainIndex) => ({
   id: brainId(brainIndex),
-  title: `Stress brain ${brainIndex + 1}`,
+  title: brainTitle(brainIndex),
   path: `./brains/${brainId(brainIndex)}`,
   group: "generated",
   accent: accents[brainIndex],
@@ -72,7 +83,8 @@ for (let brainIndex = 0; brainIndex < brainCount; brainIndex += 1) {
     const cluster = Math.floor(index / notesPerCluster);
     const localIndex = index % notesPerCluster;
     const clusterStart = cluster * notesPerCluster;
-    const nextLocal = clusterStart + ((localIndex + 1) % notesPerCluster);
+    const clusterSize = Math.min(notesPerCluster, notesPerBrain - clusterStart);
+    const nextLocal = clusterStart + ((localIndex + 1) % clusterSize);
     const groupHub = clusterStart + Math.floor(localIndex / 10) * 10;
     const clusterName = `cluster-${String(cluster + 1).padStart(2, "0")}`;
     const day = String(((brainIndex * notesPerBrain + index) % 28) + 1).padStart(2, "0");
@@ -88,7 +100,7 @@ for (let brainIndex = 0; brainIndex < brainCount; brainIndex += 1) {
     const markdown = `---
 type: ${types[(index + brainIndex) % types.length]}
 status: ${statuses[(index + cluster + brainIndex) % statuses.length]}
-tags: [generated, ${brainId(brainIndex)}, ${clusterName}]
+tags: [generated, ${clusterName}]
 created: 2026-08-${day}
 updated: 2026-08-${day}
 ---

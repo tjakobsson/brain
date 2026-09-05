@@ -3,11 +3,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { slugify } from "../src/lib/slugify";
+import { brainId, noteTitle } from "./stress-vault-content.mjs";
 
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach((root) => fs.rmSync(root, { recursive: true, force: true })));
 
-const GRAPH_PAYLOAD_LIMIT = 2 * 1024 * 1024;
+const GRAPH_PAYLOAD_LIMIT = 3 * 1024 * 1024;
 
 describe("stress workspace build", () => {
   it("builds and indexes 2,000 public generated notes across four brains", () => {
@@ -51,15 +53,17 @@ describe("stress workspace build", () => {
     expect(graph.brains).toHaveLength(4);
     expect(graph.nodes).toHaveLength(2_000);
     expect(graph.edges.filter((edge: { crossBrain: boolean }) => edge.crossBrain)).toHaveLength(200);
-    // The former single-vault fixture measured 1,083,083 bytes. A 2 MiB ceiling leaves
-    // 94% for workspace ownership fields while still bounding the static graph download.
+    // Re-baselined when the fixture moved to sentence-length titles and real-length
+    // brain ids: 2,710,042 bytes, up from 1,345,085 on the former `Generated note 0001`
+    // fixture. Titles and owner ids are most of a graph node, so the ceiling rises with
+    // them. A 3 MiB ceiling keeps roughly 14% headroom and still bounds the download.
     expect(graphPayloadBytes).toBeLessThanOrEqual(GRAPH_PAYLOAD_LIMIT);
     expect(search.filter((entry: { kind: string }) => entry.kind === "note")).toHaveLength(2_000);
     expect(fs.existsSync(
-      path.join(output, "brains", "brain-01", "notes", "generated-note-0001", "index.html"),
+      path.join(output, "brains", brainId(0), "notes", slugify(noteTitle(0)), "index.html"),
     )).toBe(true);
     expect(fs.existsSync(path.join(output, "search", "index.html"))).toBe(false);
-    expect(fs.existsSync(path.join(output, "brains", "brain-01", "search", "index.html"))).toBe(false);
+    expect(fs.existsSync(path.join(output, "brains", brainId(0), "search", "index.html"))).toBe(false);
     expect(fs.existsSync(path.join(output, "pagefind"))).toBe(false);
     console.info(JSON.stringify({ buildMilliseconds, graphPayloadBytes }));
   }, 120_000);

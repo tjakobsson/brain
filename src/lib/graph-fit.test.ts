@@ -8,10 +8,21 @@ import {
   graphFitInsets,
   measureRenderedBounds,
   planRenderedGraphFit,
+  setGraphFitLabelRefresh,
   type GraphBoundingBox,
   type GraphCameraState,
   type ViewportBounds,
 } from "./graph-fit";
+import { graphHoverPlate, graphLabelBox, layoutGraphLabel, renderedLabelSize } from "./graph-style";
+
+/**
+ * What `layoutGraphLabel` would produce for a label at a 200 pixel budget in a
+ * 6-pixel-per-character font, wrapped onto at most three lines.
+ */
+function labelMeasurements(label: string) {
+  const layout = layoutGraphLabel(label, 200, 13, (value) => [...value].length * 6);
+  return { labelWidth: layout.width, labelHeight: layout.height };
+}
 
 function fakeRenderer(initialMaximumRatio = 10) {
   const graph = new Graph();
@@ -65,7 +76,7 @@ function fakeRenderer(initialMaximumRatio = 10) {
     setCustomBBox: vi.fn((next: typeof bbox) => {
       bbox = next;
     }),
-    refresh: vi.fn(),
+    refresh: vi.fn((_options?: unknown) => {}),
     getNodeDisplayedLabels: vi.fn(() => displayedLabels),
     getSettings: vi.fn(() => ({ labelWeight: "500", labelSize: 13, labelFont: "sans-serif" })),
     getSetting: vi.fn(() => maximumRatio),
@@ -89,6 +100,9 @@ function fakeRenderer(initialMaximumRatio = 10) {
       size: graph.getNodeAttribute(id, "size") as number,
       label: graph.getNodeAttribute(id, "label") as string,
       foreign: graph.getNodeAttribute(id, "foreign") as boolean | undefined,
+      // The reducer attaches the shared label layout's measurements; fitting
+      // reads them rather than measuring text again.
+      ...labelMeasurements(graph.getNodeAttribute(id, "label") as string),
       hidden: false,
     })),
     framedGraphToViewport: vi.fn((point: { x: number; y: number }) => {
@@ -189,28 +203,82 @@ describe("rendered graph fitting", () => {
     expect(renderer.refresh.mock.calls.length).toBeLessThanOrEqual(10);
   });
 
-  it("keeps narrow marker fitting independent of fixed-pixel label width", () => {
+  it("cannot oscillate between label size and camera", () => {
+    // Rendered label size follows the camera, and label-aware fitting reads
+    // labels to choose the camera, which is a loop. It is broken on the fit
+    // side: the graph fits its markers, so however large the labels measure,
+    // the camera it settles on is the same one.
     const { graph, renderer } = fakeRenderer();
-    graph.setNodeAttribute("right", "label", "A".repeat(200));
-
-    const markerPlan = planRenderedGraphFit(renderer as never, ["left", "right"], 20, false);
-    const renderedPlan = planRenderedGraphFit(renderer as never, ["left", "right"], 20, true);
-
-    expect(markerPlan.camera.ratio).toBeLessThan(2);
-    expect(renderedPlan.camera.ratio).toBeGreaterThan(markerPlan.camera.ratio * 10);
+    graph.setNodeAttribute("right", "label", "Short");
+    const withShortLabels = planRenderedGraphFit(renderer as never, ["left", "right"], 20, false);
+    graph.setNodeAttribute(
+      "right",
+      "label",
+      "A deliberately enormous rendered title that dwarfs every marker on the graph",
+    );
+    const withLongLabels = planRenderedGraphFit(renderer as never, ["left", "right"], 20, false);
+    expect(withLongLabels.camera).toEqual(withShortLabels.camera);
   });
 
-  it("reserves a constant trailing extent without fitting the full label", () => {
+  it("settles a fit in one pass", () => {
+    const { renderer, dimensions } = fakeRenderer();
+    const plan = planRenderedGraphFit(renderer as never, ["left", "right"], 20, false);
+    renderer.getCamera().setState(plan.camera);
+    // Planning again from the settled camera changes nothing, so a fit does not
+    // chase itself across repeated passes.
+    const again = planRenderedGraphFit(renderer as never, ["left", "right"], 20, false);
+    expect(again.camera).toEqual(plan.camera);
+    const bounds = measureRenderedBounds(renderer as never, ["left", "right"], false)!;
+    expect(bounds.left).toBeGreaterThanOrEqual(0);
+    expect(bounds.right).toBeLessThanOrEqual(dimensions.width);
+  });
+
+  it("keeps marker-only fitting independent of label extent", () => {
     const { graph, renderer } = fakeRenderer();
-    graph.setNodeAttribute("right", "label", "A".repeat(200));
+    graph.setNodeAttribute("right", "label", "A very long rendered node title ".repeat(6));
 
-    const markerPlan = planRenderedGraphFit(renderer as never, ["left", "right"], 20, false, 51);
-    const renderedPlan = planRenderedGraphFit(renderer as never, ["left", "right"], 20, true);
-
-    expect(markerPlan.camera.ratio).toBeLessThan(renderedPlan.camera.ratio);
-    renderer.getCamera().setState(markerPlan.camera);
     const markerBounds = measureRenderedBounds(renderer as never, ["left", "right"], false)!;
-    expect(markerBounds.right).toBeLessThanOrEqual(250);
+    const labelBounds = measureRenderedBounds(renderer as never, ["left", "right"], true)!;
+
+    // Excluding labels can only ever measure a smaller box.
+    expect(labelBounds.bottom).toBeGreaterThan(markerBounds.bottom);
+    expect(labelBounds.top).toBe(markerBounds.top);
+  });
+
+  it("accounts for a wrapped label's height rather than its length", () => {
+    const { graph, renderer, setDisplayedLabels } = fakeRenderer();
+    setDisplayedLabels(["right"]);
+    // One line, then the same node wrapped onto three.
+    graph.setNodeAttribute("right", "label", "Short");
+    const oneLine = measureRenderedBounds(renderer as never, ["right"])!;
+    const wrappedLabel = "Retrieval practice beats rereading the original source material";
+    graph.setNodeAttribute("right", "label", wrappedLabel);
+    const wrapped = measureRenderedBounds(renderer as never, ["right"])!;
+
+    const layout = layoutGraphLabel(wrappedLabel, 200, 13, (value) => [...value].length * 6);
+    const oneLineLayout = layoutGraphLabel("Short", 200, 13, (value) => [...value].length * 6);
+    expect(layout.lines).toHaveLength(3);
+    // A wrapped label grows the measured bounds downward. Its width is bounded
+    // by centring, so extra text becomes height, not reach to one side.
+    expect(wrapped.bottom - oneLine.bottom).toBeCloseTo(layout.height - oneLineLayout.height, 6);
+    expect(wrapped.right - wrapped.left).toBeCloseTo(layout.width, 6);
+  });
+
+  it("frames a centred label symmetrically about its node", () => {
+    const { graph, renderer, setDisplayedLabels } = fakeRenderer();
+    setDisplayedLabels(["right"]);
+    graph.setNodeAttribute("right", "label", "A centred title");
+    const bounds = measureRenderedBounds(renderer as never, ["right"])!;
+    const data = renderer.getNodeDisplayData("right");
+    const center = renderer.framedGraphToViewport(data);
+    const box = graphLabelBox(
+      { lines: ["x"], width: data.labelWidth!, height: data.labelHeight!, lineHeight: 0 },
+      center,
+      renderer.scaleSize(data.size),
+    )!;
+    expect(bounds.left).toBeCloseTo(box.left, 6);
+    expect(bounds.right).toBeCloseTo(box.right, 6);
+    expect(center.x - bounds.left).toBeCloseTo(bounds.right - center.x, 6);
   });
 
   it("preserves wide rendered-label fitting while narrow marker bounds stay contained", () => {
@@ -242,18 +310,219 @@ describe("rendered graph fitting", () => {
     vi.unstubAllGlobals();
   });
 
-  it("measures only selected rendered labels and includes the foreign brain mark", () => {
-    const { graph, renderer, setDisplayedLabels } = fakeRenderer();
-    setDisplayedLabels(["left"]);
-    const withoutForeignLabel = measureRenderedBounds(renderer as never, ["left", "right"])!;
+  it("does not charge a corner control twice, and counts About at the bottom", () => {
+    const { renderer } = fakeRenderer();
+    // Host is 320x180. The toolbar takes the top band; the navigation button
+    // sits inside that band at the right; About sits in the bottom right.
+    const rects: Record<string, Partial<DOMRect>> = {
+      ".graph-controls": { left: 8, top: 8, right: 150, bottom: 40, width: 142, height: 32 },
+      ".site-header": { left: 260, top: 8, right: 308, bottom: 40, width: 48, height: 32 },
+      ".graph-about": { left: 220, top: 150, right: 310, bottom: 175, width: 90, height: 25 },
+    };
+    vi.stubGlobal("document", {
+      querySelector: vi.fn((selector: string) =>
+        rects[selector] ? { getBoundingClientRect: () => rects[selector] } : null
+      ),
+    });
 
-    setDisplayedLabels(["left", "right"]);
-    const withForeignLabel = measureRenderedBounds(renderer as never, ["left", "right"])!;
-    graph.setNodeAttribute("right", "foreign", false);
-    const withoutBrainMark = measureRenderedBounds(renderer as never, ["left", "right"])!;
+    let insets = graphFitInsets(renderer as never, 20);
+    expect(insets.top).toBe(52);
+    // The button is inside the top band already: no right-hand band for it,
+    // which is what kept every phone fit 24 pixels left of centre.
+    expect(insets.right).toBe(20);
+    expect(insets.bottom).toBe(42);
+    expect(insets.left).toBe(20);
 
-    expect(withForeignLabel.right).toBeGreaterThan(withoutForeignLabel.right);
-    expect(withForeignLabel.right - withoutBrainMark.right).toBe(17);
+    // A header that reaches below the top band does need room on the right.
+    rects[".site-header"] = { left: 260, top: 8, right: 308, bottom: 70, width: 48, height: 62 };
+    insets = graphFitInsets(renderer as never, 20);
+    expect(insets.right).toBe(72);
+
+    // About hidden: no bottom band for it.
+    rects[".graph-about"] = { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 };
+    expect(graphFitInsets(renderer as never, 20).bottom).toBe(20);
+
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps a required title inside a marker-only fit", () => {
+    // The focused note on a phone: labels are left out of the fit so long
+    // titles cannot shrink the composition, but the focused note's own title,
+    // on its plate, must not be cut at the edge.
+    const { renderer, dimensions, setDisplayedLabels } = fakeRenderer();
+    setDisplayedLabels(["right"]);
+    fitRenderedGraph(renderer as never, ["left", "right"], {
+      includeLabels: false,
+      padding: 10,
+      labelIds: ["right"],
+    });
+    const withTitle = measureRenderedBounds(renderer as never, ["left", "right"], true)!;
+    expect(withTitle.right).toBeLessThanOrEqual(dimensions.width - 9);
+    expect(withTitle.bottom).toBeLessThanOrEqual(dimensions.height - 9);
+
+    // Without the requirement the same fit lets that title run past the edge.
+    fitRenderedGraph(renderer as never, ["left", "right"], { includeLabels: false, padding: 10 });
+    const markersOnly = measureRenderedBounds(renderer as never, ["left", "right"], true)!;
+    expect(markersOnly.right).toBeGreaterThan(dimensions.width - 9);
+  });
+
+  it("measures only the labels that are actually rendered", () => {
+    const { renderer, setDisplayedLabels } = fakeRenderer();
+    setDisplayedLabels([]);
+    const unlabelled = measureRenderedBounds(renderer as never, ["right"])!;
+
+    setDisplayedLabels(["right"]);
+    const labelled = measureRenderedBounds(renderer as never, ["right"])!;
+
+    expect(labelled.bottom).toBeGreaterThan(unlabelled.bottom);
+    expect(labelled.right - labelled.left).toBeGreaterThan(unlabelled.right - unlabelled.left);
+  });
+
+  it("fits a suppressed required title using its preserved layout and the complete plate", () => {
+    const { renderer, dimensions, setDisplayedLabels } = fakeRenderer();
+    setDisplayedLabels([]);
+    const readDisplay = renderer.getNodeDisplayData.getMockImplementation()!;
+    const layout = layoutGraphLabel("A long focused title wrapped across several lines", 140, 13, (text) => text.length * 6);
+    renderer.getNodeDisplayData.mockImplementation((id) => ({
+      ...readDisplay(id),
+      label: "",
+      labelWidth: 0,
+      labelHeight: 0,
+      fitLabelLayout: layout,
+    }));
+
+    fitRenderedGraph(renderer as never, ["left", "right"], {
+      includeLabels: false,
+      labelIds: ["right"],
+      padding: { left: 20, right: 30, top: 25, bottom: 20 },
+    });
+
+    const data = renderer.getNodeDisplayData("right");
+    const plate = graphHoverPlate(renderer.framedGraphToViewport(data), renderer.scaleSize(data.size), layout);
+    expect(plate.left).toBeGreaterThanOrEqual(19);
+    expect(plate.right).toBeLessThanOrEqual(dimensions.width - 29);
+    expect(plate.top).toBeGreaterThanOrEqual(24);
+    expect(plate.bottom).toBeLessThanOrEqual(dimensions.height - 19);
+  });
+
+  it("reserves the plate above the marker as well as its curved sides", () => {
+    const { graph, renderer, dimensions } = fakeRenderer();
+    dimensions.height = 140;
+    graph.setNodeAttribute("right", "size", 40);
+    fitRenderedGraph(renderer as never, ["left", "right"], { padding: 20, labelIds: ["right"] });
+
+    const data = renderer.getNodeDisplayData("right");
+    const layout = layoutGraphLabel(data.label, 200, 13, (text) => text.length * 6);
+    const plate = graphHoverPlate(renderer.framedGraphToViewport(data), renderer.scaleSize(data.size), layout);
+    expect(plate.left).toBeGreaterThanOrEqual(19);
+    expect(plate.top).toBeGreaterThanOrEqual(19);
+    expect(plate.right).toBeLessThanOrEqual(dimensions.width - 19);
+    expect(plate.bottom).toBeLessThanOrEqual(dimensions.height - 19);
+  });
+
+  it("remeasures camera-scaled labels and selection while planning a fit from an offscreen view", () => {
+    const { renderer, camera, dimensions, setDisplayedLabels } = fakeRenderer();
+    camera.setState({ x: 10, ratio: 10 });
+    setDisplayedLabels([]);
+    const readDisplay = renderer.getNodeDisplayData.getMockImplementation()!;
+    let size = 9;
+    const layout = (label: string) => layoutGraphLabel(label, 160, size, (text) => text.length * size / 2);
+    renderer.getNodeDisplayData.mockImplementation((id) => {
+      const data = readDisplay(id);
+      const measured = layout(data.label);
+      return { ...data, labelWidth: measured.width, labelHeight: measured.height, fitLabelLayout: measured };
+    });
+    const refreshLabels = vi.fn(() => {
+      size = renderedLabelSize(11, camera.getState().ratio);
+      setDisplayedLabels(["left", "right"]);
+    });
+    setGraphFitLabelRefresh(renderer as never, refreshLabels);
+
+    fitRenderedGraph(renderer as never, ["left", "right"], { padding: 20, labelIds: ["right"] });
+
+    expect(refreshLabels).toHaveBeenCalled();
+    expect(refreshLabels.mock.calls.length).toBeLessThanOrEqual(9);
+    expect(size).toBe(renderedLabelSize(11, camera.getState().ratio));
+    expect(size).toBeGreaterThan(9);
+    const data = renderer.getNodeDisplayData("right");
+    const plate = graphHoverPlate(renderer.framedGraphToViewport(data), renderer.scaleSize(data.size), layout(data.label));
+    const bounds = measureRenderedBounds(renderer as never, ["left", "right"])!;
+    for (const measured of [plate, bounds]) {
+      expect(measured.left).toBeGreaterThanOrEqual(19);
+      expect(measured.right).toBeLessThanOrEqual(dimensions.width - 19);
+      expect(measured.top).toBeGreaterThanOrEqual(19);
+      expect(measured.bottom).toBeLessThanOrEqual(dimensions.height - 19);
+    }
+  });
+
+  it("does not zoom back into labels that selection just suppressed", () => {
+    const { renderer, camera, setDisplayedLabels } = fakeRenderer();
+    const ratios: number[] = [];
+    setGraphFitLabelRefresh(renderer as never, () => {
+      const ratio = camera.getState().ratio;
+      ratios.push(ratio);
+      setDisplayedLabels(ratio < 1.5 ? ["left", "right"] : []);
+    });
+    fitRenderedGraph(renderer as never, ["left", "right"], { padding: { left: 80, right: 80, top: 20, bottom: 20 } });
+
+    expect(ratios.length).toBeLessThan(9);
+    for (let pass = 2; pass < ratios.length; pass += 1) {
+      expect(ratios[pass]).toBeGreaterThanOrEqual(ratios[pass - 1]);
+    }
+    const bounds = measureRenderedBounds(renderer as never, ["left", "right"])!;
+    expect(bounds.left).toBeGreaterThanOrEqual(79);
+    expect(bounds.right).toBeLessThanOrEqual(241);
+  });
+
+  it("zooms back in when a required-only title shrinks after an oversized correction", () => {
+    const { graph, renderer, camera, dimensions } = fakeRenderer();
+    dimensions.width = 390;
+    dimensions.height = 844;
+    graph.setNodeAttribute("left", "label", "Documentation as a product is worth more than the first draft");
+    graph.setNodeAttribute("left", "x", 0);
+    graph.setNodeAttribute("right", "x", 100);
+    graph.setNodeAttribute("left", "size", 2);
+    graph.setNodeAttribute("right", "size", 2);
+    const readDisplay = renderer.getNodeDisplayData.getMockImplementation()!;
+    let size = 12;
+    const layout = (title: string) => layoutGraphLabel(title, 320, size, (text) => text.length * size * 0.55);
+    renderer.getNodeDisplayData.mockImplementation((id) => {
+      const data = readDisplay(id);
+      return { ...data, fitLabelLayout: layout(data.label) };
+    });
+    const ratios: number[] = [];
+    setGraphFitLabelRefresh(renderer as never, () => {
+      ratios.push(camera.getState().ratio);
+      size = renderedLabelSize(11, camera.getState().ratio);
+    });
+
+    fitRenderedGraph(renderer as never, ["left", "right"], { padding: 24, includeLabels: false, labelIds: ["left"] });
+
+    expect(Math.max(...ratios)).toBeGreaterThan(camera.getState().ratio + 0.01);
+    expect(ratios.length).toBeLessThanOrEqual(9);
+    const left = renderer.getNodeDisplayData("left");
+    const right = renderer.getNodeDisplayData("right");
+    const center = renderer.framedGraphToViewport(left);
+    const far = renderer.framedGraphToViewport(right);
+    expect(far.x - center.x).toBeGreaterThan(100);
+    const plate = graphHoverPlate(center, renderer.scaleSize(left.size), layout(left.label));
+    expect(plate.left).toBeGreaterThanOrEqual(23);
+    expect(plate.right).toBeLessThanOrEqual(dimensions.width - 23);
+    expect(plate.top).toBeGreaterThanOrEqual(23);
+    expect(plate.bottom).toBeLessThanOrEqual(dimensions.height - 23);
+    expect(far.x + renderer.scaleSize(right.size)).toBeLessThanOrEqual(dimensions.width - 23);
+  });
+
+  it("does not repeat label indexing after a fit already settled", () => {
+    const { renderer, camera } = fakeRenderer();
+    const ratios: number[] = [];
+    setGraphFitLabelRefresh(renderer as never, () => { ratios.push(camera.getState().ratio); });
+    planRenderedGraphFit(renderer as never, ["left", "right"], 20);
+    expect(ratios.length).toBeGreaterThan(1);
+    expect(ratios.at(-1)).not.toBe(ratios.at(-2));
+    // One full index for the new bounding box. Candidate-camera refreshes use
+    // the supplied label refresher's index instead of repeating that work.
+    expect(renderer.refresh.mock.calls.filter(([options]) => !options)).toHaveLength(1);
   });
 
   it("derives a reusable bounding-box and camera plan", () => {
@@ -276,7 +545,7 @@ describe("rendered graph fitting", () => {
     expect(onAnimationComplete).toHaveBeenCalledOnce();
   });
 
-  it("fits inside asymmetric insets and expands a restrictive camera limit", () => {
+  it("fits inside asymmetric insets, zooming in to fill them, within a restrictive camera limit", () => {
     const { renderer, dimensions, getMaximumRatio } = fakeRenderer(1);
     fitRenderedGraph(renderer as never, ["left", "right"], {
       padding: { top: 40, right: 40, bottom: 20, left: 20 },
@@ -288,6 +557,27 @@ describe("rendered graph fitting", () => {
     expect(bounds!.top).toBeGreaterThanOrEqual(39);
     expect(bounds!.right).toBeLessThanOrEqual(dimensions.width - 39);
     expect(bounds!.bottom).toBeLessThanOrEqual(dimensions.height - 19);
+    // This graph is smaller than its room at the starting camera, so the fit
+    // zooms in to fill the width rather than stopping where it began, and the
+    // camera it lands on is inside the limit it was given.
+    expect(bounds!.right - bounds!.left).toBeGreaterThan(dimensions.width - 60 - 8);
+    expect(renderer.getCamera().getState().ratio).toBeLessThan(1);
+    expect(renderer.getCamera().getState().ratio).toBeLessThanOrEqual(getMaximumRatio());
+  });
+
+  it("expands a restrictive camera limit only when a fit has to zoom out past it", () => {
+    const { renderer, dimensions, getMaximumRatio } = fakeRenderer(1);
+    // Insets that leave sixty pixels of width: the labels alone are wider.
+    fitRenderedGraph(renderer as never, ["left", "right"], {
+      padding: { top: 20, right: 130, bottom: 20, left: 130 },
+    });
+
+    const bounds = measureRenderedBounds(renderer as never, ["left", "right"]);
+    expect(bounds).not.toBeNull();
+    expect(bounds!.top).toBeGreaterThanOrEqual(19);
+    expect(bounds!.bottom).toBeLessThanOrEqual(dimensions.height - 19);
     expect(getMaximumRatio()).toBeGreaterThan(1);
+    expect(renderer.getCamera().getState().ratio).toBeGreaterThan(1);
+    expect(renderer.getCamera().getState().ratio).toBeLessThanOrEqual(getMaximumRatio());
   });
 });
