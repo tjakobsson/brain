@@ -134,6 +134,11 @@ PR-review verification: strict change validation passed, 675 unit tests passed, 
 - [x] 12.25 Keep a title cleared by inspection or search styling drawn from the moment it is cleared until the next selection pass marks it leaving, on both graphs. Verify in the browser that every title the global inspection removes is seen translucent.
 - [x] 12.26 After final edits, run strict OpenSpec validation, `npm test`, `npm run test:browser`, and `npm run test:stress-graph`; review the results before checking off 12.24 and 12.25.
 
+- [x] 12.27 Name the Z key on the connection map's Fit view control, in its tooltip and accessible name, as the global control does. Verify in the browser test for the local controls.
+- [x] 12.28 After final edits, run strict OpenSpec validation, `npm test`, `npm run test:browser`, and `npm run test:stress-graph`; review the results before checking off 12.27.
+
+Eighth-review verification: strict change validation passed; 692 unit tests passed; 190 browser tests passed; both stress tests passed with unchanged budgets, the 2,000-note run measuring a 379.3 ms maximum frame gap and a 357 ms maximum long task.
+
 Seventh-review verification: strict change validation passed; 692 unit tests passed; 190 browser tests passed; both stress tests passed with unchanged budgets, the 2,000-note run measuring a 384.1 ms maximum frame gap and a 361 ms maximum long task. In-page frame recording on the 400-note fixture showed the inspection fade-out drawn in twelve translucent frames at roughly 18 ms spacing, against two frames before, with every title still drawn in the first frame after D.
 
 Sixth-review verification: strict change validation passed; 690 unit tests passed; 190 browser tests passed; both stress tests passed with unchanged budgets, the 2,000-note run measuring a 384.8 ms maximum frame gap and a 359 ms maximum long task. The global fade stage that failed on the Linux runner now checks that every title inspection removes was seen translucent, rather than assuming a title outside the neighborhood is rendered under that runner's fonts.

@@ -102,7 +102,13 @@ const neighborhoodRoute = contextualRoutes.neighborhood(note.slug);
           <p>Notes up to two links away from this note.</p>
         </div>
         <div class="local-graph-panel__actions">
-          <button class="graph-control" type="button" data-fit-local-graph>Fit view</button>
+          <button
+            class="graph-control"
+            type="button"
+            aria-label="Fit view (Z)"
+            title="Fit view (Z)"
+            data-fit-local-graph
+          >Fit view</button>
           <button
             class="graph-control graph-hover-preview-toggle"
             type="button"

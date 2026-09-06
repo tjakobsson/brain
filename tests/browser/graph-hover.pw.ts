@@ -1534,6 +1534,12 @@ test("local hover preview has a visible control synchronized with keys and the g
   const toggle = page.getByRole("button", { name: "Preview neighborhood on hover (D)", exact: true });
   await expect(toggle).toBeVisible();
   await expect(toggle).toHaveText("Hover preview");
+  // Every key is discoverable where its action is: Fit view names Z, as on
+  // the global graph, and pressing Z does what the control does.
+  const fit = page.getByRole("button", { name: "Fit view (Z)", exact: true });
+  await expect(fit).toBeVisible();
+  await expect(fit).toHaveAttribute("title", "Fit view (Z)");
+  await expect(fit).toHaveText("Fit view");
   await expect(toggle).toHaveAttribute("title", "Preview neighborhood on hover (D)");
   await expect(toggle).toHaveAttribute("aria-pressed", "false");
   await nodeAboveLabel(page, graph, await renderedLabelAnchor(graph.locator("canvas.sigma-labels")));

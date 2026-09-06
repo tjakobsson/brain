@@ -199,7 +199,7 @@ Help MUST remain reachable on every supported graph viewport, including 320px-wi
 
 #### Scenario: Control hover preview on a note page
 - **WHEN** a fine-pointer reader opens a desktop note-page connection map
-- **THEN** its actions include a visible Hover preview toggle with an accessible pressed state and D key hint, synchronized with the shortcut and the preference shared with the global graph
+- **THEN** its actions include a visible Hover preview toggle with an accessible pressed state and D key hint, synchronized with the shortcut and the preference shared with the global graph, and its Fit view control names the Z key in its tooltip and accessible name as the global control does
 
 #### Scenario: Keep the control in a narrow fine-pointer window
 - **WHEN** a reader with a mouse narrows either graph's window below the phone breakpoint

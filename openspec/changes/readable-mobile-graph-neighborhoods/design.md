@@ -136,7 +136,7 @@ Font metrics can make a wrapped title wider after a zoom-out step. Before findin
 
 ### Expose local hover preview
 
-Local connection maps expose Hover preview beside Fit view. The button and D shortcut use one toggle handler, update the pressed state together, and persist through the same preference as the global graph. Hide the button only where hover is unavailable, `(hover: none)` or `(pointer: coarse)`, never by width alone: a mouse in a 600px window still hovers and still needs the control, and the toolbar already wraps below 400px.
+Local connection maps expose Hover preview beside Fit view, and Fit view names its Z key in its tooltip and accessible name as the global control does; the map has no Help surface, so the control is where the key is discovered. The button and D shortcut use one toggle handler, update the pressed state together, and persist through the same preference as the global graph. Hide the button only where hover is unavailable, `(hover: none)` or `(pointer: coarse)`, never by width alone: a mouse in a 600px window still hovers and still needs the control, and the toolbar already wraps below 400px.
 
 Toggling the preference on either graph recomputes label selection at once. Re-applying the pointer updates the transient inspection, but does not report a pointer-node change when the target is unchanged, so the toggle handler schedules the label refresh itself rather than relying on that callback.
 
