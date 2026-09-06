@@ -190,29 +190,19 @@ test("clearing focus before the neighborhood settles keeps the graph's own view 
   // flight when focus is cleared. Without cancelling it, that settle would
   // finish with the neighborhood's camera and commit it under the graph's
   // own scope, and a reload would restore the close-up as the overview.
-  let workerRequests = 0;
-  let workerReleases = 0;
-  await page.route("**/graph-layout.worker*", async (route) => {
-    workerRequests += 1;
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    workerReleases += 1;
-    await route.continue();
-  });
+  const worker = await heldWorker(page);
   // With motion allowed, the settle also animates, so it is in flight even
   // if the worker's timeout fallback runs before the held script arrives.
   await page.emulateMedia({ reducedMotion: "no-preference" });
-  const response = await page.request.get(`${workspace}/graph-data.json`);
-  const data = await response.json() as GraphData;
-  const edge = data.edges.find((edge) => edge.source !== edge.target)!;
-  const a = data.nodes.find(({ id }) => id === edge.source)!;
+  const { data, a } = await focusedNoteOfFixture(page);
   await page.goto(`${workspace}${a.route}/graph`);
   const graph = page.locator("#global-graph");
   await expect(graph).toHaveAttribute("data-focused-node", a.id);
   await expect(graph).toHaveAttribute("data-settle-requests", "1");
   // The neighborhood's settle has asked for its layout and is waiting on the
   // held script: it is in flight when focus is cleared.
-  await expect.poll(() => workerRequests).toBe(1);
-  expect(workerReleases).toBe(0);
+  await expect.poll(() => worker.requests).toBe(1);
+  expect(worker.releases).toBe(0);
   const completionsAtClear = Number(await graph.getAttribute("data-motion-completions") ?? 0);
 
   await page.locator("[data-graph-focus-clear]").click();
@@ -241,7 +231,7 @@ test("clearing focus before the neighborhood settles keeps the graph's own view 
   // The whole graph is in view, not the cleared neighborhood, and it got
   // there by a settle of its own rather than the neighborhood's.
   expect(await everyMarkerInView()).toBe(true);
-  expect(workerRequests).toBe(2);
+  expect(worker.requests).toBe(2);
   await expect.poll(() => savedLayout(page, "all")).not.toBeNull();
   const beforeReload = await geometry(graph);
 
@@ -251,6 +241,95 @@ test("clearing focus before the neighborhood settles keeps the graph's own view 
   await expect(graph).not.toHaveAttribute("data-settle-requests");
   expect(await geometry(graph)).toEqual(beforeReload);
   expect(await everyMarkerInView()).toBe(true);
+});
+
+async function heldWorker(page: Page) {
+  const counts = { requests: 0, releases: 0 };
+  await page.route("**/graph-layout.worker*", async (route) => {
+    counts.requests += 1;
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    counts.releases += 1;
+    await route.continue();
+  });
+  return counts;
+}
+
+async function focusedNoteOfFixture(page: Page) {
+  const response = await page.request.get(`${workspace}/graph-data.json`);
+  const data = await response.json() as GraphData;
+  const edge = data.edges.find((edge) => edge.source !== edge.target)!;
+  return {
+    data,
+    a: data.nodes.find(({ id }) => id === edge.source)!,
+    b: data.nodes.find(({ id }) => id === edge.target)!,
+  };
+}
+
+test("leaving before the graph's own settle finishes does not keep the neighborhood's close-up", async ({ page }) => {
+  const worker = await heldWorker(page);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  const { data, a } = await focusedNoteOfFixture(page);
+  await page.goto(`${workspace}${a.route}/graph`);
+  const graph = page.locator("#global-graph");
+  await expect(graph).toHaveAttribute("data-focused-node", a.id);
+  await expect.poll(() => worker.requests).toBe(1);
+  await page.locator("[data-graph-focus-clear]").click();
+  await expect(page).toHaveURL(`${workspace}/`);
+  // The graph's own settle has been asked for and is still waiting on the
+  // held script when the page is left.
+  await expect.poll(() => worker.requests).toBe(2);
+  expect(worker.releases).toBe(0);
+
+  await page.reload();
+  await expect(graph).toHaveAttribute("data-visible-nodes", String(data.nodes.length));
+  await expect(graph).not.toHaveAttribute("data-focused-node");
+  // Nothing half-settled was saved under the graph's scope: it settles afresh.
+  await expect(graph).toHaveAttribute("data-settle-requests", "1");
+  await expect.poll(async () => Number(await graph.getAttribute("data-motion-completions")), { timeout: 10_000 })
+    .toBeGreaterThan(0);
+  await graph.evaluate((host) => {
+    host.setAttribute("data-geometry-check-pending", "");
+    host.setAttribute("data-measure-markers", "");
+  });
+  await expect(graph).not.toHaveAttribute("data-geometry-check-pending");
+  expect(await graph.evaluate((host) => {
+    const element = host as HTMLElement;
+    const markers = JSON.parse(element.dataset.markerGeometry!) as { x: number; y: number }[];
+    return markers.length > 0 && markers.every((marker) =>
+      marker.x >= 0 && marker.x <= element.clientWidth && marker.y >= 0 && marker.y <= element.clientHeight);
+  })).toBe(true);
+});
+
+test("a focus move that interrupts the settle does not leave a later clear re-settling the graph", async ({ page }) => {
+  const worker = await heldWorker(page);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  const { a, b } = await focusedNoteOfFixture(page);
+  await page.goto(`${workspace}${a.route}/graph`);
+  const graph = page.locator("#global-graph");
+  await expect(graph).toHaveAttribute("data-focused-node", a.id);
+  await expect.poll(() => worker.requests).toBe(1);
+  await graph.evaluate((host) => { host.dataset.focusStateTest = "same-page"; });
+
+  // Moving focus mid-settle fits the new neighborhood; that fit is the motion
+  // that replaces the cancelled one.
+  await page.locator(`[data-neighbor-node="${b.id}"]`).click();
+  await expect(graph).toHaveAttribute("data-focused-node", b.id);
+  await expect(graph).toHaveAttribute("data-focus-state-test", "same-page");
+  await expect(graph).toHaveAttribute("data-settle-requests", "1");
+  const completions = async () => Number(await graph.getAttribute("data-motion-completions") ?? 0);
+  await expect.poll(completions, { timeout: 10_000 }).toBeGreaterThanOrEqual(2);
+  const settled = await completions();
+  const before = await geometry(graph);
+
+  // Clearing focus afterwards is an ordinary clear: no motion was interrupted
+  // by it, so nothing re-lays out the graph or moves the camera.
+  await page.keyboard.press("c");
+  await expect(graph).not.toHaveAttribute("data-focused-node");
+  await expect(page).toHaveURL(`${workspace}/`);
+  await page.waitForTimeout(400);
+  await expect(graph).toHaveAttribute("data-settle-requests", "1");
+  expect(await completions()).toBe(settled);
+  expect(await geometry(graph)).toEqual(before);
 });
 
 for (const brainScoped of [false, true]) {

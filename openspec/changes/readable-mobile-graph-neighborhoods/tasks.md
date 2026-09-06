@@ -140,6 +140,12 @@ PR-review verification: strict change validation passed, 675 unit tests passed, 
 - [x] 12.29 Cancel a layout, animation, or camera fit still in flight when the session scope changes, report it, and settle the new scope when focus is cleared. Verify with unit tests over the controller and in the browser that clearing focus before a neighborhood's initial settle finishes leaves and restores an overview rather than the neighborhood's close-up.
 - [x] 12.30 After final edits, run strict OpenSpec validation, `npm test`, `npm run test:browser`, and `npm run test:stress-graph`; review the results before checking off 12.29.
 
+- [x] 12.31 Consume the scope-change interruption flag on every focus change, so a focus move that interrupted motion does not leave a later clear re-settling the graph. Verify in the browser that a mid-settle focus move followed by a clear adds no settle request and moves nothing.
+- [x] 12.32 Suppress debounced and page-leave commits while the replacement settle is pending, and invalidate the new scope's stored session on leaving the page instead. Verify in the browser that reloading before the graph's own settle finishes settles the graph afresh as an overview.
+- [x] 12.33 After final edits, run strict OpenSpec validation, `npm test`, `npm run test:browser`, and `npm run test:stress-graph`; review the results before checking off 12.31 and 12.32.
+
+Tenth-review verification: strict change validation passed; 693 unit tests passed; 193 browser tests passed; both stress tests passed with unchanged budgets, the 2,000-note run measuring a 399.8 ms maximum frame gap and a 365 ms maximum long task. Both new browser regressions were run once with the production change stashed and failed, then passed with it restored.
+
 Ninth-review verification: strict change validation passed; 693 unit tests passed; 191 browser tests passed; both stress tests passed with unchanged budgets, the 2,000-note run measuring a 401.7 ms maximum frame gap and a 361 ms maximum long task. The new browser regression was run once with the production fix stashed and failed, then passed with it restored.
 
 Eighth-review verification: strict change validation passed; 692 unit tests passed; 190 browser tests passed; both stress tests passed with unchanged budgets, the 2,000-note run measuring a 379.3 ms maximum frame gap and a 357 ms maximum long task.

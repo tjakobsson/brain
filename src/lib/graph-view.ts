@@ -1145,6 +1145,8 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   const motion = new GraphMotionController(renderer, graph, data, () => {
     incrementGraphCounter(ui.host, "motionCompletions");
     relatedBrainsSessionInvalid = false;
+    // Whatever finished was planned for the current scope and has committed.
+    scopeSettlePending = false;
     if (relatedBrainsStatePending) saveRelatedBrainsState();
     if (narrowGraphQuery.matches && state.focused) applyReducers();
     const afterMotion = focusAfterMotion;
@@ -1172,8 +1174,14 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       // Session storage can be unavailable in restricted browsing contexts.
     }
   }
+  /**
+   * A scope change cancelled a motion, and the scope's own settle has not
+   * finished yet. Until it has, there is nothing worth saving under the new
+   * scope: what is on screen is the old scope's half-settled layout.
+   */
+  let scopeSettlePending = false;
   const commitSession = () => {
-    if (relatedBrainsStatePending || relatedBrainsSessionInvalid) return;
+    if (relatedBrainsStatePending || relatedBrainsSessionInvalid || scopeSettlePending) return;
     if (motion.commitSession()) saveRelatedBrainsState();
   };
   const resolveCanceledRelatedBrainsState = () => {
@@ -1196,6 +1204,15 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     if (relatedBrainsStatePending) {
       motion.cancel();
       resolveCanceledRelatedBrainsState();
+      return;
+    }
+    if (scopeSettlePending) {
+      // Leaving mid-settle: rather than keep the old scope's layout and
+      // close-up under this scope, forget this scope's session so the next
+      // visit settles afresh.
+      motion.cancel();
+      motion.invalidateSession();
+      scopeSettlePending = false;
       return;
     }
     commitSession();
@@ -1441,7 +1458,10 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     const focus = focusedCompositeId();
     syncFocusUrlState(focus);
     neighborhoodFocus = focus;
-    if (motion.setSessionScope(motionScope())) scopeChangeInterruptedMotion = true;
+    if (motion.setSessionScope(motionScope())) {
+      scopeChangeInterruptedMotion = true;
+      scopeSettlePending = true;
+    }
     if (data.mode === "workspace") {
       const owner = state.focused
         ? graph.getNodeAttribute(state.focused, "brainId") as string
@@ -1523,12 +1543,16 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     syncFocusUrl();
     recomputeHidden();
     applyReducers();
+    // Whichever motion follows replaces the one the scope change cancelled;
+    // the flag must not outlive this call and start a settle on a later,
+    // unrelated focus change.
+    const interrupted = scopeChangeInterruptedMotion;
+    scopeChangeInterruptedMotion = false;
     if (fit && next) fitFocus();
-    else if (scopeChangeInterruptedMotion) {
+    else if (interrupted) {
       // Clearing focus while the neighborhood was still settling: that settle
       // was cancelled so it could not commit its close-up under the graph's
       // own scope. Settle the graph itself instead.
-      scopeChangeInterruptedMotion = false;
       requestSettle("filter", visibleIds());
     }
   };
