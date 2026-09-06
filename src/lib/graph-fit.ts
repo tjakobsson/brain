@@ -303,8 +303,8 @@ export function planRenderedGraphFit(
   const inset = fitInsets(padding);
   let bestFit: GraphCameraState | null = null;
   let previous: { ratio: number; width: number } | null = null;
-  /** The fixed extent and camera before the last plateau step, if any. */
-  let plateau: { fixed: { width: number; height: number }; camera: GraphCameraState } | null = null;
+  /** The fixed extent before the last plateau step, if any. */
+  let plateau: { fixed: { width: number; height: number } } | null = null;
   const rememberFit = (bounds: ViewportBounds) => {
     const camera = renderer.getCamera().getState();
     if (
@@ -358,16 +358,16 @@ export function planRenderedGraphFit(
         measurement.fixedExtent.height >= plateau.fixed.height - 0.5
       ) {
         // The last plateau step did not shrink the plate: its text is at the
-        // minimum legible size, and no zoom can make it fit. Stepping on would
-        // only collapse the graph around it. Take the step back and stop.
-        renderer.getCamera().setState(plateau.camera);
-        labelsCurrent = false;
-        break;
+        // minimum legible size, and no zoom can make it fit. Zooming on would
+        // only collapse the graph around it. Keep the geometry and go on
+        // centring: the markers still fit, and the plate overflows evenly.
+        zoomScale = 1;
+      } else {
+        // At the text-size ceiling, tiny proportional steps cannot shrink an
+        // oversized plate. Leave that plateau within the bounded fit budget.
+        zoomScale = Math.max(zoomScale, 1.5);
+        plateau = { fixed: { ...measurement.fixedExtent } };
       }
-      // At the text-size ceiling, tiny proportional steps cannot shrink an
-      // oversized plate. Leave that plateau within the bounded fit budget.
-      zoomScale = Math.max(zoomScale, 1.5);
-      plateau = { fixed: { ...measurement.fixedExtent }, camera: state };
     } else {
       plateau = null;
     }

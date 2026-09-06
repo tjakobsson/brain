@@ -545,11 +545,27 @@ describe("rendered graph fitting", () => {
     // The premise: even at the floor, this plate is wider than the inset viewport.
     expect(size).toBeCloseTo(9, 5);
     expect(plate.right - plate.left).toBeGreaterThan(dimensions.width - 48);
-    // Eight plateau steps of 1.5x would have collapsed the graph 25x; the fit
-    // stops as soon as a step gains nothing, and takes that step back.
-    expect(camera.getState().ratio).toBeLessThan(3);
-    expect(Math.max(...ratios)).toBeLessThan(4);
-    expect(ratios.length).toBeLessThanOrEqual(5);
+    // Eight plateau steps of 1.5x would have collapsed the graph 25x. Two run
+    // here: one brings the text down to its floor, the next shows the plate
+    // no longer shrinks, and the fit stops zooming there.
+    expect(camera.getState().ratio).toBeLessThan(3.5);
+    expect(Math.max(...ratios)).toBeLessThan(3.5);
+    expect(ratios.length).toBeLessThanOrEqual(9);
+    // What can be contained is, and what cannot overflows evenly: the markers
+    // sit inside the insets and the whole extent is centred on the viewport.
+    const markers = measureRenderedBounds(renderer as never, ["left", "right"], false)!;
+    expect(markers.left).toBeGreaterThanOrEqual(24);
+    expect(markers.right).toBeLessThanOrEqual(dimensions.width - 24);
+    expect(markers.top).toBeGreaterThanOrEqual(24);
+    expect(markers.bottom).toBeLessThanOrEqual(dimensions.height - 24);
+    const extent = {
+      left: Math.min(plate.left, markers.left),
+      right: Math.max(plate.right, markers.right),
+      top: Math.min(plate.top, markers.top),
+      bottom: Math.max(plate.bottom, markers.bottom),
+    };
+    expect((extent.left + extent.right) / 2).toBeCloseTo(dimensions.width / 2, 0);
+    expect((extent.top + extent.bottom) / 2).toBeCloseTo(dimensions.height / 2, 0);
   });
 
   it.each([
