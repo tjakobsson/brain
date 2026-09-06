@@ -84,6 +84,72 @@ for (const exit of ["pointer leave", "preview toggle"] as const) {
   });
 }
 
+test("global preview toggle refreshes labels under a stationary pointer", async ({ page }) => {
+  const under = "product-strategy-and-planning-notes/a-design-review-ritual-trades-away-every-clever-abstraction";
+  const neighbor = "product-strategy-and-planning-notes/feature-flag-hygiene-predicts-the-shared-context-of-a-team";
+  const data = await (await page.request.get("./graph-data.json")).json() as { nodes: { id: string }[] };
+  await page.goto("./");
+  const graph = page.locator("#global-graph");
+  await expect(graph).toHaveAttribute("data-visible-nodes", String(data.nodes.length));
+  await expect(graph).toHaveAttribute("data-motion-completions", /[1-9]/u);
+  await expect(graph).toHaveAttribute("data-hover-preview", "false");
+  await graph.evaluate((host) => host.setAttribute("data-measure-markers", ""));
+  await expect(graph).toHaveAttribute("data-marker-geometry", /\d/u);
+  // The overview starts below the minimum legible label size. Zoom before
+  // choosing a pointer target, then leave the camera alone for both toggles.
+  for (let step = 0; step < 2; step += 1) {
+    await graph.locator("canvas.sigma-mouse").dispatchEvent("wheel", {
+      clientX: 640, clientY: 450, deltaY: -120, bubbles: true,
+    });
+    await page.waitForTimeout(700);
+  }
+  const target = await graph.evaluate((host, index) => {
+    const markers: { x: number; y: number }[] = JSON.parse((host as HTMLElement).dataset.markerGeometry!);
+    const marker = markers[index];
+    const bounds = host.getBoundingClientRect();
+    return { x: bounds.x + marker.x, y: bounds.y + marker.y };
+  }, data.nodes.findIndex(({ id }) => id === under));
+  await page.mouse.move(target.x, target.y);
+  await expect(graph).toHaveAttribute("data-pointer-node", under);
+  await page.waitForTimeout(500);
+  const normal = (await graph.getAttribute("data-rendered-label-ids"))!;
+  expect(normal.split(",")).not.toContain(neighbor);
+  const normalLines = await graph.locator("canvas.sigma-labels").evaluate((canvas) =>
+    (canvas as HTMLCanvasElement).graphTestLines!.map(({ text }) => text).sort());
+  // Measure the camera afresh after each toggle, rather than comparing a stale
+  // diagnostic attribute. Nothing below moves the pointer or the camera.
+  const geometry = async () => {
+    await graph.evaluate((host) => {
+      host.setAttribute("data-geometry-check-pending", "");
+      host.setAttribute("data-measure-markers", "");
+    });
+    await expect(graph).not.toHaveAttribute("data-geometry-check-pending");
+    return {
+      camera: await graph.getAttribute("data-camera-geometry"),
+      graph: await graph.getAttribute("data-graph-geometry"),
+    };
+  };
+  const before = await geometry();
+
+  await page.keyboard.press("d");
+  await expect(graph).toHaveAttribute("data-transient-inspection", under);
+  await expect.poll(async () => (await graph.getAttribute("data-rendered-label-ids"))!.split(","))
+    .toContain(neighbor);
+  await expect.poll(async () => graph.locator("canvas.sigma-labels").evaluate((canvas, normalLines) =>
+    (canvas as HTMLCanvasElement).graphTestLines!.some(({ text, alpha }) =>
+      alpha === 1 && !normalLines.includes(text)), normalLines)).toBe(true);
+  expect(await geometry()).toEqual(before);
+  await expect(graph).toHaveAttribute("data-pointer-node", under);
+
+  await page.keyboard.press("d");
+  await expect(graph).not.toHaveAttribute("data-transient-inspection");
+  await expect(graph).toHaveAttribute("data-rendered-label-ids", normal);
+  await expect.poll(async () => graph.locator("canvas.sigma-labels").evaluate((canvas) =>
+    (canvas as HTMLCanvasElement).graphTestLines!.map(({ text }) => text).sort())).toEqual(normalLines);
+  expect(await geometry()).toEqual(before);
+  await expect(graph).toHaveAttribute("data-pointer-node", under);
+});
+
 test("zoom-out label selection avoids the final rendered marker radii", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto("./");

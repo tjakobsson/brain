@@ -280,21 +280,77 @@ test("the owner-labels preference is the reader's, remembered and never in the U
   await expect(graph).toHaveAttribute("data-owner-labels", "true");
   expect(new URL(page.url()).search).toBe("");
 
+  for (const width of [701, 700]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect(graph).toHaveAttribute("data-responsive-policy", width > 700 ? "wide" : "narrow");
+    await expect(graph).toHaveAttribute("data-owner-labels", "true");
+    await expect(toggle).toBeChecked();
+  }
+
   await page.locator("[data-graph-lens] > summary").click();
   await page.locator("[data-owner-labels-toggle]").uncheck();
+  await expect(graph).toHaveAttribute("data-owner-labels", "false");
+  await page.setViewportSize({ width: 701, height: 844 });
+  await expect(graph).toHaveAttribute("data-responsive-policy", "wide");
   await expect(graph).toHaveAttribute("data-owner-labels", "false");
   await page.reload();
   await expect(graph.locator("canvas.sigma-nodes")).toBeVisible();
   await expect(graph).toHaveAttribute("data-owner-labels", "false");
+  for (const width of [700, 701]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect(graph).toHaveAttribute("data-responsive-policy", width > 700 ? "wide" : "narrow");
+    await expect(graph).toHaveAttribute("data-owner-labels", "false");
+    await expect(toggle).not.toBeChecked();
+  }
 });
 
-test("owner labels default on for a wide viewport", async ({ page }) => {
+for (const storageUnavailable of [false, true]) test(`owner labels follow the viewport default with storage ${storageUnavailable ? "unavailable" : "available"}`, async ({ page }) => {
+  if (storageUnavailable) await page.addInitScript(() => {
+    Object.defineProperty(window, "localStorage", { get() { throw new Error("Storage unavailable"); } });
+  });
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("./");
   const graph = page.locator("#global-graph");
   await expect(graph.locator("canvas.sigma-nodes")).toBeVisible();
   // Nothing stored, so the default applies: on where there is room for it.
   await expect(graph).toHaveAttribute("data-owner-labels", "true");
+  const toggle = page.locator("[data-owner-labels-toggle]");
+  await expect(toggle).toBeChecked();
+  for (const width of [700, 701]) {
+    await page.setViewportSize({ width, height: 800 });
+    await expect(graph).toHaveAttribute("data-responsive-policy", width > 700 ? "wide" : "narrow");
+    await expect(graph).toHaveAttribute("data-owner-labels", String(width > 700));
+    await expect(toggle).toBeChecked({ checked: width > 700 });
+  }
+  if (!storageUnavailable) {
+    expect(await page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith("brain-graph-owner-labels:"))))
+      .toEqual([]);
+  }
+});
+
+for (const storageUnavailable of [false, true]) test(`owner labels retain explicit choices when storage ${storageUnavailable ? "is unavailable" : "writes fail"}`, async ({ page }) => {
+  await page.addInitScript((unavailable) => {
+    if (unavailable) {
+      Object.defineProperty(window, "localStorage", { get() { throw new Error("Storage unavailable"); } });
+    } else {
+      Storage.prototype.setItem = () => { throw new Error("Storage write failed"); };
+    }
+  }, storageUnavailable);
+  await page.goto("./");
+  const graph = page.locator("#global-graph");
+  await expect(graph).toHaveAttribute("data-owner-labels", "false");
+  await page.locator("[data-graph-lens] > summary").click();
+  const toggle = page.locator("[data-owner-labels-toggle]");
+  for (const choice of [true, false]) {
+    await toggle.setChecked(choice);
+    await expect(graph).toHaveAttribute("data-owner-labels", String(choice));
+    for (const width of [701, 700]) {
+      await page.setViewportSize({ width, height: 844 });
+      await expect(graph).toHaveAttribute("data-responsive-policy", width > 700 ? "wide" : "narrow");
+      await expect(graph).toHaveAttribute("data-owner-labels", String(choice));
+      await expect(toggle).toBeChecked({ checked: choice });
+    }
+  }
 });
 
 test("connected neighbors are readable as text and move focus", async ({ page }) => {

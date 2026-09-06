@@ -1545,14 +1545,76 @@ test("local hover preview has a visible control synchronized with keys and the g
   await page.goto(note);
   await expect(toggle).toHaveAttribute("aria-pressed", "false");
   await expect(graph).toHaveAttribute("data-hover-preview", "false");
-  for (const width of [701, 800, 1280]) {
+  // A mouse can hover at any width; the control stays wherever hover does.
+  for (const width of [1280, 800, 701, 600, 390]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(toggle).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   }
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect(toggle).toBeHidden();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test("hover preview controls follow hover availability, not viewport width", async ({ page, browser }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium-root", "Fine-pointer and touch contexts run once in Chromium.");
+  const { base } = deployment(testInfo);
+  const surfaces = [
+    { path: `${base}/`, graph: "#global-graph", toggle: "#graph-hover-preview" },
+    { path: `${base}/notes/welcome`, graph: ".local-graph", toggle: ".local-graph-panel__actions .graph-hover-preview-toggle" },
+  ] as const;
+  const contained = (toggle: Locator) => toggle.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return bounds.width > 0 && bounds.left >= 0 && bounds.right <= innerWidth
+      && document.documentElement.scrollWidth <= innerWidth;
+  });
+
+  // A mouse in a narrow desktop window can still hover, so the only visible
+  // way to discover and read the preference stays, and keeps working.
+  for (const surface of surfaces) {
+    await page.goto(surface.path);
+    const graph = page.locator(surface.graph);
+    const toggle = page.locator(surface.toggle);
+    await expect(graph.locator("canvas.sigma-nodes")).toBeVisible();
+    for (const width of [1280, 700, 600, 390, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      await expect(toggle).toBeVisible();
+      // The canvas follows the viewport after a debounced resize; what must
+      // hold is that the control ends up inside the layout, not that it is
+      // there before the resize lands.
+      await expect.poll(() => contained(toggle), { message: `${surface.graph} at ${width}px` }).toBe(true);
+    }
+    await page.setViewportSize({ width: 600, height: 844 });
+    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-pressed", "true");
+    await expect(graph).toHaveAttribute("data-hover-preview", "true");
+    await page.keyboard.press("d");
+    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await expect(graph).toHaveAttribute("data-hover-preview", "false");
+  }
+
+  // Where there is no hover there is nothing to toggle, however wide the
+  // screen: a tablet hides it just as a phone does.
+  const touch = await browser.newContext({
+    baseURL: String(testInfo.project.use.baseURL),
+    hasTouch: true,
+    isMobile: true,
+    viewport: { width: 1024, height: 768 },
+  });
+  try {
+    const touchPage = await touch.newPage();
+    for (const surface of surfaces) {
+      await touchPage.goto(surface.path);
+      const graph = touchPage.locator(surface.graph);
+      const toggle = touchPage.locator(surface.toggle);
+      await expect(graph.locator("canvas.sigma-nodes")).toBeVisible();
+      for (const width of [1024, 600, 390]) {
+        await touchPage.setViewportSize({ width, height: 844 });
+        await expect(toggle).toBeHidden();
+        await expect.poll(() => touchPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      }
+    }
+  } finally {
+    await touch.close();
+  }
 });
 
 test("F pins, moves and lifts the pin for the node under the pointer", async ({ page }, testInfo) => {

@@ -100,6 +100,8 @@ Measured, `@capability-backed-product-engineering · ` plus the status marker is
 
 Making it a preference rather than a fixed choice follows the Brain lens: a reader-owned display setting, stored in the reader's own browser per site base, never in a URL. It defaults to off on narrow and on elsewhere, which preserves today's desktop appearance and fixes the phone.
 
+The default is a function of the current layout, not a snapshot taken at mount. Until the reader has chosen, crossing the 700px breakpoint re-evaluates it alongside the renderer's responsive policy, so a graph opened wide and then narrowed drops the prefixes as a narrow load would. Once the reader has chosen, that choice holds for the session even when storage cannot persist it; a failed write must not hand the setting back to the breakpoint.
+
 The preference must not reach the per-brain graph, where a rendered foreign label always keeps its identity.
 
 ### The neighbor list is a control that moves focus
@@ -134,7 +136,9 @@ Font metrics can make a wrapped title wider after a zoom-out step. Before findin
 
 ### Expose local hover preview
 
-Local connection maps expose Hover preview beside Fit view. The button and D shortcut use one toggle handler, update the pressed state together, and persist through the same preference as the global graph. Hide the button on touch layouts where hover is unavailable.
+Local connection maps expose Hover preview beside Fit view. The button and D shortcut use one toggle handler, update the pressed state together, and persist through the same preference as the global graph. Hide the button only where hover is unavailable, `(hover: none)` or `(pointer: coarse)`, never by width alone: a mouse in a 600px window still hovers and still needs the control, and the toolbar already wraps below 400px.
+
+Toggling the preference on either graph recomputes label selection at once. Re-applying the pointer updates the transient inspection, but does not report a pointer-node change when the target is unchanged, so the toggle handler schedules the label refresh itself rather than relying on that callback.
 
 ### Fixtures that can fail
 

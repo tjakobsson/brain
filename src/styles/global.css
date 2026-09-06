@@ -2750,10 +2750,10 @@ div[data-callout] [data-callout-body] > :last-child {
 }
 
 /* Hover is a fine-pointer idea; where there is no hover there is nothing to
-   toggle, and the compact pill has no room for a control that does nothing.
-   Last, and as specific as the pill's own control rules, so nothing above
-   turns it back on. */
-@media (hover: none), (pointer: coarse), (max-width: 700px) {
+   toggle. Width alone is no reason to hide it: a mouse in a 600px window can
+   still hover, and the pill already wraps below 400px. Last, and as specific
+   as the pill's own control rules, so nothing above turns it back on. */
+@media (hover: none), (pointer: coarse) {
   .graph-controls > .graph-hover-preview-toggle,
   .local-graph-panel__actions > .graph-hover-preview-toggle {
     display: none;

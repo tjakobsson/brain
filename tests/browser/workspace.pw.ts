@@ -1938,9 +1938,12 @@ test("graph ownership legend remains non-color-readable on mobile", async ({ pag
   const controls = page.locator(".graph-controls");
   const filterToggle = controls.getByRole("button", { name: "Filters" });
   const actions = controls.getByRole("button");
-  await expect(actions).toHaveCount(6);
+  // A narrow window with a fine pointer keeps every control, Hover preview
+  // included: width alone does not take hover away.
+  await expect(actions).toHaveCount(7);
   await expect(controls.getByRole("button", { name: "Filters" })).toBeVisible();
   await expect(controls.getByRole("button", { name: "Help" })).toBeVisible();
+  await expect(controls.getByRole("button", { name: "Preview neighborhood on hover (D)" })).toBeVisible();
   await expect(controls.getByRole("button", { name: "Fit view" })).toBeVisible();
   await expect(controls.getByRole("button", { name: "Show related brains" })).toBeVisible();
   await expect(controls.getByRole("button", { name: "Legend" })).toBeVisible();
@@ -1952,8 +1955,8 @@ test("graph ownership legend remains non-color-readable on mobile", async ({ pag
       ".graph-controls > button, .graph-controls > .graph-legend-disclosure > button, .graph-controls > .brain-lens > summary",
     )]
       .map((button) => button.getBoundingClientRect())
-      // Controls hidden at this width, such as the hover-preview toggle, take
-      // no space and are not actions a phone reader can reach.
+      // Only controls that take space are actions a reader can reach; the
+      // hover-preview toggle is hidden where hover is unavailable, not here.
       .filter((bounds) => bounds.width > 0);
     return {
       actions: actions.map(({ x, y, width, height }) => ({ x, y, width, height })),

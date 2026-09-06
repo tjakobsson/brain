@@ -1235,10 +1235,14 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   // A reader-owned display setting, remembered in the reader's own browser per
   // site base like the Brain lens, and never in a URL.
   const ownerLabelKey = ownerLabelStorageKey(import.meta.env.BASE_URL);
+  let ownerLabelPreferenceRecorded = false;
   const readOwnerLabelPreference = (): boolean => {
     try {
       const stored = window.localStorage.getItem(ownerLabelKey);
-      if (stored === "true" || stored === "false") return stored === "true";
+      if (stored === "true" || stored === "false") {
+        ownerLabelPreferenceRecorded = true;
+        return stored === "true";
+      }
     } catch {
       // Local storage can be unavailable in restricted browsing contexts.
     }
@@ -1246,6 +1250,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   };
   let showOwnerLabels = readOwnerLabelPreference();
   const writeOwnerLabelPreference = (value: boolean) => {
+    ownerLabelPreferenceRecorded = true;
     try {
       window.localStorage.setItem(ownerLabelKey, String(value));
     } catch {
@@ -1917,6 +1922,10 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     ui.host.dataset.responsivePolicy = policy ? "narrow" : "wide";
     renderer.resize();
     applyResponsiveLabelThreshold(policy);
+    if (!ownerLabelPreferenceRecorded) {
+      showOwnerLabels = defaultOwnerLabelPreference(policy);
+      syncOwnerLabelsControl();
+    }
     applyReducers();
   };
   const responsiveScheduler = new ResponsiveGraphScheduler(
@@ -2197,6 +2206,8 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     syncHoverPreviewToggle();
     // Whatever the pointer is over right now follows the new setting at once.
     pointer.reapplyPointer();
+    // An unchanged pointer target skips onPointerNode, but selection changed.
+    scheduleLabelRefresh();
   };
   ui.hoverPreviewToggle?.addEventListener("click", toggleHoverPreview);
   const onGraphEscape = (event: KeyboardEvent) => {
