@@ -209,10 +209,15 @@ test("global preview toggle refreshes labels under a stationary pointer", async 
 
   await page.keyboard.press("d");
   await expect(graph).toHaveAttribute("data-transient-inspection", under);
-  // Titles the inspection takes away leave through translucent frames.
-  await expect.poll(async () => graph.locator("canvas.sigma-labels").evaluate((canvas) =>
-    (canvas as HTMLCanvasElement).graphTestLines!.some(({ alpha }) => alpha > 0 && alpha < 1)),
-  { intervals: [5], timeout: 3000 }).toBe(true);
+  // Whatever is drawn translucent while the inspection settles. Which titles
+  // it takes away depends on the font, so the check below is on those.
+  const translucent = new Set<string>();
+  for (const started = Date.now(); Date.now() - started < 700;) {
+    for (const text of await graph.locator("canvas.sigma-labels").evaluate((canvas) =>
+      (canvas as HTMLCanvasElement).graphTestLines!.filter(({ alpha }) => alpha > 0 && alpha < 1).map(({ text }) => text),
+    )) translucent.add(text);
+    await page.waitForTimeout(5);
+  }
   await expect.poll(async () => (await graph.getAttribute("data-rendered-label-ids"))!.split(","))
     .toContain(neighbor);
   await expect.poll(async () => graph.locator("canvas.sigma-labels").evaluate((canvas, normalLines) =>
@@ -220,6 +225,15 @@ test("global preview toggle refreshes labels under a stationary pointer", async 
       alpha === 1 && !normalLines.includes(text)), normalLines)).toBe(true);
   expect(await geometry()).toEqual(before);
   await expect(graph).toHaveAttribute("data-pointer-node", under);
+  // Titles the inspection took away left through translucent frames rather
+  // than in one: each one missing now was seen partway through its fade.
+  await expect.poll(async () => graph.locator("canvas.sigma-labels").evaluate((canvas) =>
+    (canvas as HTMLCanvasElement).graphTestLines!.every(({ alpha }) => alpha === 1))).toBe(true);
+  const inspectedLines = await graph.locator("canvas.sigma-labels").evaluate((canvas) =>
+    (canvas as HTMLCanvasElement).graphTestLines!.map(({ text }) => text));
+  for (const text of normalLines.filter((line) => !inspectedLines.includes(line))) {
+    expect([...translucent]).toContain(text);
+  }
 
   await page.keyboard.press("d");
   await expect(graph).not.toHaveAttribute("data-transient-inspection");

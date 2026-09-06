@@ -515,8 +515,13 @@ export function beginLabelFades(
   }
   for (const [nodes, out] of [[appearing, false], [leaving, true]] as const) {
     for (const node of nodes) {
-      if (fades.get(node)?.out === out) continue;
-      fades.set(node, { startedAt: now, out });
+      const current = fades.get(node);
+      if (current?.out === out) continue;
+      // Reversing a fade in progress continues from the opacity it has now:
+      // the other direction's progress is the complement, so the label
+      // neither vanishes nor snaps to full before heading back.
+      const startedAt = current ? now - (1 - labelFadeProgress(current)) * LABEL_FADE_MS : now;
+      fades.set(node, { startedAt, out });
       started = true;
     }
   }

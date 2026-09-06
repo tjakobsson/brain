@@ -909,15 +909,34 @@ describe("labels fade rather than flicker", () => {
     expect(labelFadesRunning(context)).toBe(false);
   });
 
-  it("reverses a label that starts leaving while it is still arriving", () => {
+  it("reverses a label that starts leaving while it is still arriving, from where it is", () => {
     const context = owner();
     at(0);
     beginLabelFades(context, ["a"], []);
-    at(60);
+    at(66);
+    expect(labelFadeAlpha(context, "a")).toBeCloseTo(0.3, 5);
     expect(beginLabelFades(context, [], ["a"])).toBe(true);
-    expect(labelFadeAlpha(context, "a")).toBe(1);
-    at(280);
+    // No snap to full opacity: it turns back from three tenths.
+    expect(labelFadeAlpha(context, "a")).toBeCloseTo(0.3, 5);
+    at(99);
+    expect(labelFadeAlpha(context, "a")).toBeCloseTo(0.15, 5);
+    at(132);
     expect(labelFadeAlpha(context, "a")).toBe(0);
+  });
+
+  it("takes back a label that is half gone without it vanishing first", () => {
+    const context = owner();
+    at(0);
+    beginLabelFades(context, [], ["a"]);
+    at(110);
+    expect(labelFadeAlpha(context, "a")).toBeCloseTo(0.5, 5);
+    expect(beginLabelFades(context, ["a"], [])).toBe(true);
+    expect(labelFadeAlpha(context, "a")).toBeCloseTo(0.5, 5);
+    at(165);
+    expect(labelFadeAlpha(context, "a")).toBeCloseTo(0.75, 5);
+    at(220);
+    expect(labelFadeAlpha(context, "a")).toBe(1);
+    expect(finishedLabelFadeOuts(context)).toEqual([]);
   });
 
   it("does not restart a fade that is already going the same way", () => {
