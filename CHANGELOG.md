@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.8.0 - 2026-09-06
+
+- Make graph neighborhoods readable on phones: a pinch no longer clears the pinned note or tilts the graph, labels wrap and scale with the camera and are drawn only where they stay legible, and markers keep their spacing as a vault grows.
+- Move and clear focus in place on note neighborhood pages with the address following, list connected notes and domains in the compact focus bar, and open the context menu on empty canvas with Clear focus and Fit view.
+- Fill and centre the usable viewport on Fit view and keep the focused note's title on screen.
+- Add a remembered hover preview preference, off by default, with keyboard shortcuts (D, F, C, Z, 1-5) and a Help guide covering keys and touch gestures.
+- Add a reader preference for owning-Brain identity in workspace graph labels, off by default on phones.
+
 ## 1.7.0 - 2026-09-03
 
 - Keep focused graph neighborhoods readable on phones by fitting node markers around visible controls before selecting or shortening labels, and replace the tall focus card with a compact expandable bar that retains the full title and actions.
