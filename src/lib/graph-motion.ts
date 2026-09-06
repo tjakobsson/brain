@@ -54,7 +54,7 @@ export class GraphMotionController {
     private readonly fitViewportAspect = false,
     private readonly fitOptions: () => Pick<
       RenderedGraphFitOptions,
-      "includeLabels" | "trailingNodeExtent"
+      "includeLabels" | "trailingNodeExtent" | "labelIds"
     > = () => ({}),
   ) {
     this.baseline = this.capturePositions();
@@ -122,16 +122,32 @@ export class GraphMotionController {
     }
   }
 
-  setSessionScope(scope: string): void {
-    this.sessionScope = scope;
+  /** Whether a layout, animation, or camera fit is still under way. */
+  isActive(): boolean {
+    return this.worker !== null || this.workerTimer !== null
+      || this.animationFrame !== null || this.cameraAnimating;
   }
 
-  fitView(ids: Iterable<string>): void {
+  /**
+   * Changes the scope sessions are saved under. A motion still in flight was
+   * planned for the old scope: its positions, bounding box, and camera would
+   * be committed under the new one when it finished, so it is cancelled.
+   * Returns whether that happened, so the caller can settle the new scope.
+   */
+  setSessionScope(scope: string): boolean {
+    if (scope === this.sessionScope) return false;
+    const interrupted = this.isActive();
+    if (interrupted) this.cancel();
+    this.sessionScope = scope;
+    return interrupted;
+  }
+
+  fitView(ids: Iterable<string>, animate = true): void {
     this.cancel();
     const visibleIds = [...new Set(ids)].filter((id) => this.graph.hasNode(id)).sort();
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const generation = this.generations.next();
-    this.fitVisible(visibleIds, !reducedMotion, generation, () => this.finish(generation));
+    this.fitVisible(visibleIds, animate && !reducedMotion, generation, () => this.finish(generation));
   }
 
   settle(
@@ -270,6 +286,7 @@ export class GraphMotionController {
         undefined,
         options.includeLabels,
         options.trailingNodeExtent,
+        options.labelIds,
       );
       this.applyPositions(starts);
       cameraStart = convertCameraToBoundingBox(sourceCamera, sourceBBox, fitPlan.bbox);

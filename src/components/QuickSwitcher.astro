@@ -71,7 +71,7 @@ const activeBrain = brainRegistry.find(({ id }) => id === activeBrainId);
   const empty = overlay.querySelector<HTMLElement>(".switcher-empty")!;
   const scope = overlay.querySelector<HTMLSelectElement>("[data-switcher-scope]")!;
   const workspace = input.dataset.workspace === "true";
-  const context = { workspace, activeBrainId: input.dataset.activeBrainId } as const;
+  const context = () => ({ workspace, activeBrainId: input.dataset.activeBrainId });
 
   let entries: Entry[] | null = null;
   let fuse: Fuse<Entry> | null = null;
@@ -106,7 +106,7 @@ const activeBrain = brainRegistry.find(({ id }) => id === activeBrainId);
     document.body.style.overflow = "hidden";
     for (const region of pageRegions) region.inert = true;
     input.value = "";
-    scope.value = defaultQuickSwitcherScope(context);
+    scope.value = defaultQuickSwitcherScope(context());
     input.focus();
     void search();
   }
@@ -176,7 +176,8 @@ const activeBrain = brainRegistry.find(({ id }) => id === activeBrainId);
     await ensureIndex();
     const q = input.value.trim();
     const current = scope.value as QuickSwitcherScope;
-    const scoped = entries!.filter((entry) => inQuickSwitcherScope(entry, current, context));
+    const pageContext = context();
+    const scoped = entries!.filter((entry) => inQuickSwitcherScope(entry, current, pageContext));
     if (!q) {
       renderResults(scoped);
       return;
@@ -184,6 +185,10 @@ const activeBrain = brainRegistry.find(({ id }) => id === activeBrainId);
     const allowed = new Set(scoped);
     renderResults(fuse!.search(q).map((result) => result.item).filter((entry) => allowed.has(entry)));
   }
+
+  input.addEventListener("brain:scope-change", () => {
+    if (!overlay.hidden) void search();
+  });
 
   document.addEventListener("keydown", (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {

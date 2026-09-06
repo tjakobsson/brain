@@ -134,6 +134,29 @@ describe("GraphMotionController", () => {
     vi.unstubAllGlobals();
   });
 
+  it("cancels a settle in flight when the session scope changes, and reports it", () => {
+    const { renderer, graph, data } = fixture();
+    const controller = new GraphMotionController(renderer as never, graph, data, () => {}, "neighborhood:a");
+    expect(controller.isActive()).toBe(false);
+    expect(controller.setSessionScope("neighborhood:a")).toBe(false);
+
+    controller.settle("initial", graph.nodes(), undefined, ["a", "b"]);
+    const worker = FakeWorker.instances[0];
+    expect(controller.isActive()).toBe(true);
+    // The old scope's layout would commit under the new one when it landed.
+    expect(controller.setSessionScope("all")).toBe(true);
+    expect(worker.terminated).toBe(true);
+    expect(controller.isActive()).toBe(false);
+    worker.emit("message", {
+      generation: (worker.request as { generation: number }).generation,
+      positions: { a: { x: 100, y: 100 }, b: { x: 100, y: 100 }, c: { x: 100, y: 100 } },
+    });
+    expect(graph.getNodeAttribute("a", "x")).toBe(-1);
+    // Nothing in flight: a further change is only a rename.
+    expect(controller.setSessionScope("neighborhood:b")).toBe(false);
+    controller.destroy();
+  });
+
   it("ignores stale worker results and applies only the latest generation", () => {
     const { camera, renderer, graph, data } = fixture();
     const controller = new GraphMotionController(renderer as never, graph, data);

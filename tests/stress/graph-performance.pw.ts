@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { BRAIN_IDS, noteTitle } from "../../scripts/stress-vault-content.mjs";
 
 interface GraphPerformance {
   frameGaps: number[];
@@ -30,8 +31,10 @@ const fixtures: WorkspaceFixture[] = [
     name: "a 2,000-note workspace",
     baseURL: "http://127.0.0.1:4332/stress/",
     nodeCount: 2000,
-    brainIds: "brain-01,brain-02,brain-03,brain-04",
-    search: "Generated note 0001",
+    brainIds: BRAIN_IDS.join(","),
+    // A title fragment the recalibrated fixture composes in exactly one note
+    // per brain, matching the former `Generated note 0001` probe.
+    search: noteTitle(0),
     searchResults: 3,
   },
 ];
