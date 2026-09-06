@@ -14,6 +14,8 @@ interface LabelLine {
 declare global {
   interface HTMLCanvasElement {
     graphTestLines?: LabelLine[];
+    /** The last few hundred completed label frames, oldest first. */
+    graphTestFrames?: LabelLine[][];
   }
 }
 
@@ -31,7 +33,17 @@ test.beforeEach(async ({ page }, testInfo) => {
     const clear = CanvasRenderingContext2D.prototype.clearRect;
     const fill = CanvasRenderingContext2D.prototype.fillText;
     CanvasRenderingContext2D.prototype.clearRect = function (...args) {
-      if (this.canvas.classList.contains("sigma-labels")) this.canvas.graphTestLines = [];
+      if (this.canvas.classList.contains("sigma-labels")) {
+        // Keep completed frames in the page: polling from the test can be
+        // starved while the page renders and miss a whole fade.
+        const finished = this.canvas.graphTestLines;
+        if (finished) {
+          const frames = this.canvas.graphTestFrames ??= [];
+          frames.push(finished);
+          if (frames.length > 400) frames.shift();
+        }
+        this.canvas.graphTestLines = [];
+      }
       return clear.apply(this, args);
     };
     CanvasRenderingContext2D.prototype.fillText = function (...args) {
@@ -207,17 +219,11 @@ test("global preview toggle refreshes labels under a stationary pointer", async 
   };
   const before = await geometry();
 
+  await graph.locator("canvas.sigma-labels").evaluate((canvas) => {
+    (canvas as HTMLCanvasElement).graphTestFrames = [];
+  });
   await page.keyboard.press("d");
   await expect(graph).toHaveAttribute("data-transient-inspection", under);
-  // Whatever is drawn translucent while the inspection settles. Which titles
-  // it takes away depends on the font, so the check below is on those.
-  const translucent = new Set<string>();
-  for (const started = Date.now(); Date.now() - started < 700;) {
-    for (const text of await graph.locator("canvas.sigma-labels").evaluate((canvas) =>
-      (canvas as HTMLCanvasElement).graphTestLines!.filter(({ alpha }) => alpha > 0 && alpha < 1).map(({ text }) => text),
-    )) translucent.add(text);
-    await page.waitForTimeout(5);
-  }
   await expect.poll(async () => (await graph.getAttribute("data-rendered-label-ids"))!.split(","))
     .toContain(neighbor);
   await expect.poll(async () => graph.locator("canvas.sigma-labels").evaluate((canvas, normalLines) =>
@@ -226,13 +232,20 @@ test("global preview toggle refreshes labels under a stationary pointer", async 
   expect(await geometry()).toEqual(before);
   await expect(graph).toHaveAttribute("data-pointer-node", under);
   // Titles the inspection took away left through translucent frames rather
-  // than in one: each one missing now was seen partway through its fade.
+  // than in one: each one missing now was drawn partway through its fade in
+  // some frame since D was pressed. Which titles go depends on the font.
   await expect.poll(async () => graph.locator("canvas.sigma-labels").evaluate((canvas) =>
     (canvas as HTMLCanvasElement).graphTestLines!.every(({ alpha }) => alpha === 1))).toBe(true);
-  const inspectedLines = await graph.locator("canvas.sigma-labels").evaluate((canvas) =>
-    (canvas as HTMLCanvasElement).graphTestLines!.map(({ text }) => text));
+  const { inspectedLines, translucent } = await graph.locator("canvas.sigma-labels").evaluate((canvas) => {
+    const element = canvas as HTMLCanvasElement;
+    const translucent = new Set<string>();
+    for (const frame of element.graphTestFrames ?? []) {
+      for (const { text, alpha } of frame) if (alpha > 0 && alpha < 1) translucent.add(text);
+    }
+    return { inspectedLines: element.graphTestLines!.map(({ text }) => text), translucent: [...translucent] };
+  });
   for (const text of normalLines.filter((line) => !inspectedLines.includes(line))) {
-    expect([...translucent]).toContain(text);
+    expect(translucent).toContain(text);
   }
 
   await page.keyboard.press("d");

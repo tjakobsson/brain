@@ -487,7 +487,13 @@ const LABEL_FADE_MS = 220;
  * handle the draw callback receives, and two graphs must not share fades.
  */
 interface LabelFade {
-  startedAt: number;
+  /**
+   * When the fade's clock started, or null until its first rendered frame.
+   * A selection pass on a large graph can take longer than the fade itself
+   * before anything is drawn; counting from the first frame makes the fade
+   * a fade wherever it runs, instead of a jump on a slow machine.
+   */
+  startedAt: number | null;
   /** Fading out rather than in, so the label leaves instead of arriving. */
   out: boolean;
 }
@@ -520,7 +526,7 @@ export function beginLabelFades(
       // Reversing a fade in progress continues from the opacity it has now:
       // the other direction's progress is the complement, so the label
       // neither vanishes nor snaps to full before heading back.
-      const startedAt = current ? now - (1 - labelFadeProgress(current)) * LABEL_FADE_MS : now;
+      const startedAt = current ? now - (1 - labelFadeProgress(current)) * LABEL_FADE_MS : null;
       fades.set(node, { startedAt, out });
       started = true;
     }
@@ -528,9 +534,22 @@ export function beginLabelFades(
   return started;
 }
 
-/** How far through its fade a label is, 0 to 1. */
+/** How far through its fade a label is, 0 to 1; 0 until its clock starts. */
 function labelFadeProgress(fade: LabelFade): number {
+  if (fade.startedAt === null) return 0;
   return Math.min(1, Math.max(0, (performance.now() - fade.startedAt) / LABEL_FADE_MS));
+}
+
+/**
+ * Starts the clock of every fade that has not started. Called once a frame
+ * has been rendered with the fade's labels in place, so the fade runs from
+ * what the reader has seen rather than from when it was decided.
+ */
+export function startLabelFades(context: object): void {
+  const fades = labelFadeStarts.get(context);
+  if (!fades) return;
+  const now = performance.now();
+  for (const fade of fades.values()) if (fade.startedAt === null) fade.startedAt = now;
 }
 
 /** How opaque a label should be drawn right now, 1 unless it is fading. */

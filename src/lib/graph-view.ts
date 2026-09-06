@@ -46,6 +46,7 @@ import {
   labelFadeAlpha,
   labelFadesRunning,
   labelSelectionChange,
+  startLabelFades,
   forceForeignLabel,
   GRAPH_LABEL_GAP,
   graphLabelAvailableWidth,
@@ -1578,6 +1579,8 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     if (!context || fadeFrame !== null || !labelFadesRunning(context)) return;
     const step = () => {
       fadeFrame = null;
+      // The previous frame drew these labels in place; their clocks start now.
+      startLabelFades(context);
       const retired = finishedLabelFadeOuts(context);
       if (retired.length > 0) {
         // A label that has finished leaving stops being drawn at all, which
@@ -1585,7 +1588,10 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
         for (const node of retired) retiringLabels.delete(node);
         repaintNodes(retired);
       } else {
-        renderer.refresh({ skipIndexation: true });
+        // Only the opacity changed. A render redraws the labels from the
+        // data already reduced; a refresh would run the reducer over every
+        // node again, which on a large graph costs more than a frame.
+        renderer.scheduleRender();
       }
       if (labelFadesRunning(context)) fadeFrame = window.requestAnimationFrame(step);
     };
@@ -1601,7 +1607,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   const repaintNodes = (nodes: readonly string[]) => {
     const visible = nodes.filter((node) => graph.hasNode(node) && !renderer.getNodeDisplayData(node)?.hidden);
     if (visible.length) renderer.refresh({ partialGraph: { nodes: visible }, skipIndexation: true });
-    else renderer.refresh({ skipIndexation: true });
+    else renderer.scheduleRender();
   };
   const baseLabelSize = renderer.getSetting("labelSize");
   /** Labels collision selection has kept; `null` during the layout pass. */
@@ -1705,9 +1711,11 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       // hit-tests the box they occupy, and label-aware fitting measures the
       // same box. Nothing downstream recomputes where a label sits.
       // A title that inspection or search styling has just cleared may still
-      // be on its way out. Draw what was drawn until its fade finishes; the
-      // provisional pass skips this so it never becomes a candidate again.
-      if (!displayLabel && selectedLabels && !fitting && retiringLabels.has(node)) {
+      // be on its way out, or not yet know it: a pointer-driven repaint runs
+      // this before the next selection pass has marked it leaving. Draw what
+      // was drawn until its fade finishes; the provisional pass skips this so
+      // it never becomes a candidate again.
+      if (!displayLabel && selectedLabels && !fitting && (retiringLabels.has(node) || drawnLabels.has(node))) {
         const previous = drawnLayouts.get(node);
         if (previous) {
           styled.label = previous.label;
@@ -2465,18 +2473,19 @@ export async function mountLocalGraphs(): Promise<void> {
     const repaintLocalNodes = (nodes: readonly string[]) => {
       const visible = nodes.filter((node) => graph.hasNode(node) && !renderer.getNodeDisplayData(node)?.hidden);
       if (visible.length) renderer.refresh({ partialGraph: { nodes: visible }, skipIndexation: true });
-      else renderer.refresh({ skipIndexation: true });
+      else renderer.scheduleRender();
     };
     const runLocalLabelFades = (context: CanvasRenderingContext2D | null | undefined) => {
       if (!context || localFadeFrame !== null || !labelFadesRunning(context)) return;
       const step = () => {
         localFadeFrame = null;
+        startLabelFades(context);
         const retired = finishedLabelFadeOuts(context);
         if (retired.length > 0) {
           for (const node of retired) localRetiringLabels.delete(node);
           repaintLocalNodes(retired);
         } else {
-          renderer.refresh({ skipIndexation: true });
+          renderer.scheduleRender();
         }
         if (labelFadesRunning(context)) localFadeFrame = window.requestAnimationFrame(step);
       };
@@ -2539,7 +2548,8 @@ export async function mountLocalGraphs(): Promise<void> {
 
           const label = typeof styled.label === "string" ? styled.label : "";
           const center = centers.get(node);
-          if (!label && center && localSelectedLabels && !fitting && localRetiringLabels.has(node)) {
+          if (!label && center && localSelectedLabels && !fitting
+            && (localRetiringLabels.has(node) || localDrawnLabels.has(node))) {
             // Cleared by inspection styling while still fading out: keep
             // drawing what was drawn, as the global graph does.
             const previous = localDrawnLayouts.get(node);

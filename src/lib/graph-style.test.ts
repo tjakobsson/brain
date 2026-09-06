@@ -26,6 +26,7 @@ import {
   beginLabelFades,
   createLabelLayoutCache,
   labelSelectionChange,
+  startLabelFades,
   LABEL_LAYOUT_CACHE_SIZES,
   finishedLabelFadeOuts,
   graphEdgeAttributes,
@@ -874,6 +875,7 @@ describe("labels fade rather than flicker", () => {
     const context = owner();
     at(0);
     expect(beginLabelFades(context, ["a"], [])).toBe(true);
+    startLabelFades(context);
     expect(labelFadeAlpha(context, "a")).toBe(0);
     at(110);
     expect(labelFadeAlpha(context, "a")).toBeCloseTo(0.5, 1);
@@ -885,11 +887,43 @@ describe("labels fade rather than flicker", () => {
     const context = owner();
     at(0);
     beginLabelFades(context, [], ["a"]);
+    startLabelFades(context);
     expect(labelFadeAlpha(context, "a")).toBe(1);
     at(110);
     expect(labelFadeAlpha(context, "a")).toBeCloseTo(0.5, 1);
     at(220);
     expect(labelFadeAlpha(context, "a")).toBe(0);
+  });
+
+  it("holds at its starting opacity until its first frame starts the clock", () => {
+    const context = owner();
+    at(0);
+    beginLabelFades(context, ["in"], ["out"]);
+    // Deciding the fade is not drawing it: however long the selection pass
+    // and its re-index take, nothing has moved yet.
+    at(300);
+    expect(labelFadeAlpha(context, "in")).toBe(0);
+    expect(labelFadeAlpha(context, "out")).toBe(1);
+    expect(labelFadesRunning(context)).toBe(true);
+    expect(finishedLabelFadeOuts(context)).toEqual([]);
+    startLabelFades(context);
+    at(410);
+    expect(labelFadeAlpha(context, "in")).toBeCloseTo(0.5, 5);
+    expect(labelFadeAlpha(context, "out")).toBeCloseTo(0.5, 5);
+    at(520);
+    expect(labelFadeAlpha(context, "in")).toBe(1);
+    expect(finishedLabelFadeOuts(context)).toEqual(["out"]);
+  });
+
+  it("finishes a reversed fade at once when it never started", () => {
+    const context = owner();
+    at(0);
+    beginLabelFades(context, ["a"], []);
+    at(50);
+    // Never drawn arriving, so there is nothing to fade back out.
+    expect(beginLabelFades(context, [], ["a"])).toBe(true);
+    expect(labelFadeAlpha(context, "a")).toBe(0);
+    expect(finishedLabelFadeOuts(context)).toEqual(["a"]);
   });
 
   it("draws a label that is not fading at full opacity", () => {
@@ -900,6 +934,7 @@ describe("labels fade rather than flicker", () => {
     const context = owner();
     at(0);
     beginLabelFades(context, ["in"], ["out"]);
+    startLabelFades(context);
     at(300);
     labelFadeAlpha(context, "in");
     // The arriving one is done and needs no more frames; the leaving one still
@@ -913,6 +948,7 @@ describe("labels fade rather than flicker", () => {
     const context = owner();
     at(0);
     beginLabelFades(context, ["a"], []);
+    startLabelFades(context);
     at(66);
     expect(labelFadeAlpha(context, "a")).toBeCloseTo(0.3, 5);
     expect(beginLabelFades(context, [], ["a"])).toBe(true);
@@ -928,6 +964,7 @@ describe("labels fade rather than flicker", () => {
     const context = owner();
     at(0);
     beginLabelFades(context, [], ["a"]);
+    startLabelFades(context);
     at(110);
     expect(labelFadeAlpha(context, "a")).toBeCloseTo(0.5, 5);
     expect(beginLabelFades(context, ["a"], [])).toBe(true);
@@ -943,6 +980,7 @@ describe("labels fade rather than flicker", () => {
     const context = owner();
     at(0);
     beginLabelFades(context, ["a"], []);
+    startLabelFades(context);
     at(110);
     expect(beginLabelFades(context, ["a"], [])).toBe(false);
     expect(labelFadeAlpha(context, "a")).toBeCloseTo(0.5, 1);
