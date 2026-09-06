@@ -338,6 +338,60 @@ test("a page kept for Back that was hidden mid-settle settles its scope when sho
   await expect.poll(() => savedLayout(page, "all")).not.toBeNull();
 });
 
+test("a page kept for Back while a moved pin was still settling comes back framing that pin", async ({ page }) => {
+  // Fits animate, so a second move can land while the first is under way.
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  const { data } = await focusedNoteOfFixture(page);
+  // A chain a - b - c: open on a, move to b, then on to c.
+  const neighborsOf = (id: string) => [...new Set(data.edges
+    .filter((edge) => edge.source !== edge.target && (edge.source === id || edge.target === id))
+    .map((edge) => edge.source === id ? edge.target : edge.source))];
+  const b = data.nodes.find((node) => neighborsOf(node.id).length >= 2)!;
+  expect(b).toBeDefined();
+  const [aId, cId] = neighborsOf(b.id);
+  const a = data.nodes.find(({ id }) => id === aId)!;
+  const c = data.nodes.find(({ id }) => id === cId)!;
+  await page.goto(`${workspace}${a.route}/graph`);
+  const graph = page.locator("#global-graph");
+  await expect(graph).toHaveAttribute("data-focused-node", a.id);
+  const completions = async () => Number(await graph.getAttribute("data-motion-completions") ?? 0);
+  // Let the page settle completely first, so no fit is still owed from opening.
+  await expect.poll(completions, { timeout: 10_000 }).toBeGreaterThanOrEqual(2);
+  await page.waitForTimeout(300);
+  const settledAt = await completions();
+  await graph.evaluate((host) => { host.dataset.focusStateTest = "same-page"; });
+
+  // Move the pin twice in quick succession: the second move interrupts the
+  // first move's fit, so the new neighborhood's scope owes a settle.
+  await page.locator(`[data-neighbor-node="${b.id}"]`).click();
+  await expect(graph).toHaveAttribute("data-focused-node", b.id);
+  await page.locator(`[data-neighbor-node="${c.id}"]`).click();
+  await expect(graph).toHaveAttribute("data-focused-node", c.id);
+  await expect(graph).toHaveAttribute("data-focus-state-test", "same-page");
+  expect(await completions()).toBe(settledAt);
+  const fitsBefore = Number(await graph.getAttribute("data-fit-requests") ?? 0);
+  const settlesBefore = Number(await graph.getAttribute("data-settle-requests") ?? 0);
+
+  // Hidden for Back before that fit finishes, then shown again as it was.
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true })));
+  await page.waitForTimeout(200);
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true })));
+  await expect(graph).toHaveAttribute("data-settle-requests", String(settlesBefore + 1));
+  await expect.poll(completions, { timeout: 10_000 }).toBeGreaterThan(settledAt);
+  // Still pinned, and the pin was fitted again after the settle rather than
+  // the camera being left framing the whole graph.
+  await expect(graph).toHaveAttribute("data-focused-node", c.id);
+  await expect.poll(async () => Number(await graph.getAttribute("data-fit-requests") ?? 0), { timeout: 10_000 })
+    .toBeGreaterThan(fitsBefore);
+  await expect.poll(async () => {
+    const markers = JSON.parse((await graph.getAttribute("data-focused-marker-geometry")) ?? "[]") as
+      { id: string; x: number; y: number }[];
+    const box = (await graph.boundingBox())!;
+    const marker = markers.find((marker) => marker.id === c.id);
+    return Boolean(marker && marker.x > 0 && marker.x < box.width && marker.y > 0 && marker.y < box.height);
+  }).toBe(true);
+});
+
 test("a focus move that interrupts the settle does not leave a later clear re-settling the graph", async ({ page }) => {
   const worker = await heldWorker(page);
   await page.emulateMedia({ reducedMotion: "no-preference" });

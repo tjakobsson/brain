@@ -151,6 +151,12 @@ PR-review verification: strict change validation passed, 675 unit tests passed, 
 - [x] 12.37 When a plateau step has not shrunk a required plate, stop zooming but keep correcting the centre rather than reverting the step, so the markers stay inside the insets and the extent is centred. Verify with the unit test over the unfittable plate.
 - [x] 12.38 After final edits, run strict OpenSpec validation, `npm test`, `npm run test:browser`, and `npm run test:stress-graph`; review the results before checking off 12.37.
 
+- [x] 12.39 When a page kept for Back resumes owing a neighborhood scope, settle under the neighborhood's camera ids and refit the pin, as a focused page opening does. Verify in the browser with a mid-settle focus move followed by persisted pagehide and pageshow.
+- [x] 12.40 Include the visible connected-notes panel's top edge in the fit's bottom inset on narrow and coarse-pointer layouts. Verify with a unit test over the insets and in the phone browser test that opening the disclosure leaves no neighborhood marker behind the panel.
+- [x] 12.41 After final edits, run strict OpenSpec validation, `npm test`, `npm run test:browser`, and `npm run test:stress-graph`; review the results before checking off 12.39 and 12.40.
+
+Thirteenth-review verification: strict change validation passed; 694 unit tests passed; 195 browser tests passed; both stress tests passed with unchanged budgets, the 2,000-note run measuring a 392.7 ms maximum frame gap and a 361 ms maximum long task. The back-forward-cache refit test, the insets unit test, and the phone panel assertion were each run once with their production change stashed and failed, then passed with it restored.
+
 Twelfth-review verification: strict change validation passed; 694 unit tests passed; 194 browser tests passed; both stress tests passed with unchanged budgets, the 2,000-note run measuring a 392.9 ms maximum frame gap and a 362 ms maximum long task. The unfittable-plate unit test, now also asserting marker containment and a centred extent, was run once against the previous revert-and-stop planner and failed, then passed with the centring change.
 
 Eleventh-review verification: strict change validation passed; 694 unit tests passed; 194 browser tests passed; both stress tests passed with unchanged budgets, the 2,000-note run measuring a 388.4 ms maximum frame gap and a 360 ms maximum long task. The new fit unit test and the new back-forward-cache browser test were each run once with their production change stashed and failed, then passed with it restored.

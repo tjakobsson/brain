@@ -130,6 +130,14 @@ export function graphFitInsets(renderer: Sigma, base = DEFAULT_PADDING): FitInse
   if (focus && intersects(focus)) {
     insets.bottom = Math.max(insets.bottom, host.bottom - focus.top + 12);
   }
+  // On a phone the connected-notes panel opens above the bar as an absolutely
+  // positioned child, so the bar's own rectangle does not include it.
+  const details = renderer.getContainer().closest<HTMLElement>(".graph-container")
+    ?.querySelector<HTMLElement>("[data-graph-focus-details]:not([hidden])")
+    ?.getBoundingClientRect();
+  if (details && details.height > 0 && intersects(details)) {
+    insets.bottom = Math.max(insets.bottom, host.bottom - details.top + 12);
+  }
   const about = document.querySelector<HTMLElement>(".graph-about")?.getBoundingClientRect();
   if (about && about.width > 0 && intersects(about)) {
     insets.bottom = Math.max(insets.bottom, host.bottom - about.top + 12);

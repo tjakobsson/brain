@@ -1035,11 +1035,14 @@ test("neighborhood pages list connected domains as lens chips that never remove 
     const host = graph.getBoundingClientRect();
     const bar = status.getBoundingClientRect();
     const markers = JSON.parse(graph.dataset.focusedMarkerGeometry ?? "[]") as { y: number; radius: number }[];
+    const panel = document.querySelector<HTMLElement>("[data-graph-focus-details]")!.getBoundingClientRect();
     const controls = [...status.querySelectorAll<HTMLElement>("a, button")]
       .filter((control) => control.offsetParent !== null)
       .map((control) => control.getBoundingClientRect());
     return {
       markersClear: markers.length === 4 && markers.every((marker) => marker.y + marker.radius <= bar.top - host.top - 10),
+      // The panel opens above the bar; the refit keeps the markers above it too.
+      markersClearPanel: panel.height > 0 && markers.every((marker) => marker.y + marker.radius <= panel.top - host.top - 10),
       bounded: bar.top >= 0 && bar.bottom <= innerHeight,
       // The bar is one row with the details as an overlay above it, so what
       // scrolls within the height limit is the title segment or the panel
@@ -1050,7 +1053,7 @@ test("neighborhood pages list connected domains as lens chips that never remove 
       touchTargets: controls.every((control) => control.width >= 44 && control.height >= 44),
       noOverflow: document.documentElement.scrollWidth <= innerWidth,
     };
-  })).toEqual({ markersClear: true, bounded: true, scrollable: true, touchTargets: true, noOverflow: true });
+  })).toEqual({ markersClear: true, markersClearPanel: true, bounded: true, scrollable: true, touchTargets: true, noOverflow: true });
   const collapseCompletions = Number(await graph.getAttribute("data-motion-completions"));
   await page.keyboard.press("Escape");
   await expect(disclosure).toBeFocused();

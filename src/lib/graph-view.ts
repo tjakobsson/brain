@@ -1221,8 +1221,15 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   const resumeSession = (event: PageTransitionEvent) => {
     if (!event.persisted || !scopeSettlePending) return;
     // Back to a page that was hidden mid-settle: the layout on screen is the
-    // old scope's, half settled. Settle this scope now that it is visible.
-    requestSettle("filter", visibleIds());
+    // old scope's, half settled. Settle this scope now that it is visible. A
+    // neighborhood scope settles under its own camera and refits its pin, as
+    // it does when a page opens focused.
+    if (state.focused) {
+      focusAfterMotion = fitFocus;
+      requestSettle("filter", visibleIds(), undefined, focusIds());
+    } else {
+      requestSettle("filter", visibleIds());
+    }
   };
   renderer.getCamera().on("updated", saveSession);
   window.addEventListener("pagehide", flushSession);

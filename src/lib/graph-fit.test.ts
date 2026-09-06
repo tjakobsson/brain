@@ -41,9 +41,13 @@ function fakeRenderer(initialMaximumRatio = 10) {
   let maximumRatio = initialMaximumRatio;
   let displayedLabels = new Set(graph.nodes());
   let focusBounds: DOMRect | null = null;
+  let detailsBounds: DOMRect | null = null;
   const hostBounds = { left: 0, top: 0, right: 320, bottom: 180 } as DOMRect;
   const focusScope = {
-    querySelector: vi.fn(() => focusBounds ? { getBoundingClientRect: () => focusBounds } : null),
+    querySelector: vi.fn((selector: string) => {
+      const bounds = selector.includes("focus-details") ? detailsBounds : focusBounds;
+      return bounds ? { getBoundingClientRect: () => bounds } : null;
+    }),
   };
   const camera = {
     getState: vi.fn(() => ({ ...cameraState })),
@@ -133,6 +137,9 @@ function fakeRenderer(initialMaximumRatio = 10) {
     },
     setFocusBounds: (bounds: Partial<DOMRect> | null) => {
       focusBounds = bounds as DOMRect | null;
+    },
+    setDetailsBounds: (bounds: Partial<DOMRect> | null) => {
+      detailsBounds = bounds as DOMRect | null;
     },
   };
 }
@@ -297,7 +304,7 @@ describe("rendered graph fitting", () => {
   });
 
   it("derives collapsed and expanded bottom insets from the visible focus bar", () => {
-    const { renderer, setFocusBounds } = fakeRenderer();
+    const { renderer, setFocusBounds, setDetailsBounds } = fakeRenderer();
     vi.stubGlobal("document", {
       querySelector: vi.fn(() => null),
     });
@@ -306,6 +313,14 @@ describe("rendered graph fitting", () => {
     expect(graphFitInsets(renderer as never, 20).bottom).toBe(84);
     setFocusBounds({ left: 16, top: 58, right: 304, bottom: 164 });
     expect(graphFitInsets(renderer as never, 20).bottom).toBe(134);
+
+    // On a phone the connected-notes panel opens above the bar as an overlay
+    // outside the bar's own rectangle; the inset reaches the panel's top.
+    setFocusBounds({ left: 16, top: 108, right: 304, bottom: 164 });
+    setDetailsBounds({ left: 16, top: 30, right: 304, bottom: 108, height: 78 });
+    expect(graphFitInsets(renderer as never, 20).bottom).toBe(162);
+    setDetailsBounds({ left: 16, top: 30, right: 304, bottom: 30, height: 0 });
+    expect(graphFitInsets(renderer as never, 20).bottom).toBe(84);
 
     vi.unstubAllGlobals();
   });
