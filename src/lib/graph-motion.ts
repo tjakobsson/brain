@@ -122,8 +122,24 @@ export class GraphMotionController {
     }
   }
 
-  setSessionScope(scope: string): void {
+  /** Whether a layout, animation, or camera fit is still under way. */
+  isActive(): boolean {
+    return this.worker !== null || this.workerTimer !== null
+      || this.animationFrame !== null || this.cameraAnimating;
+  }
+
+  /**
+   * Changes the scope sessions are saved under. A motion still in flight was
+   * planned for the old scope: its positions, bounding box, and camera would
+   * be committed under the new one when it finished, so it is cancelled.
+   * Returns whether that happened, so the caller can settle the new scope.
+   */
+  setSessionScope(scope: string): boolean {
+    if (scope === this.sessionScope) return false;
+    const interrupted = this.isActive();
+    if (interrupted) this.cancel();
     this.sessionScope = scope;
+    return interrupted;
   }
 
   fitView(ids: Iterable<string>, animate = true): void {

@@ -124,6 +124,8 @@ At widths up to 400px, let the toolbar wrap inside the space beside navigation w
 
 The layout session key follows the current neighborhood identity, or the unfocused context graph after clearing. Changing that key must not restore another session's node positions during the transition; retain the live layout and use the new key for subsequent persistence.
 
+Changing the session key while a motion is in flight cancels that motion. It was planned for the old key, with the old neighborhood's camera ids, and its `finish` would commit those positions, bounding box, and camera under whatever key is current by then. `setSessionScope` reports the cancellation, and clearing focus then requests a settle for the graph itself; a focus move fits the new neighborhood as before. Filter-driven settles reset the flag, since they settle the current key either way.
+
 Keep shipped full workspace `neighborhood:<id>` keys unchanged. For focus originating in a Brain graph, append `:brain:<activeBrainId>:<showRelatedBrains>` using the graph's original context, not the focused note's owner. Related-Brains off, related-Brains on, and the full workspace must not overwrite each other's neighborhood layouts or cameras.
 
 ### Fit rendered bounds at the candidate camera

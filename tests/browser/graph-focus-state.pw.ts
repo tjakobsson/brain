@@ -185,6 +185,74 @@ test("clearing focus saves rearrangement under the root scope and restores it on
   await expect(graph).not.toHaveAttribute("data-settle-requests");
 });
 
+test("clearing focus before the neighborhood settles keeps the graph's own view an overview", async ({ page }) => {
+  // Hold the layout worker so the neighborhood's initial settle is still in
+  // flight when focus is cleared. Without cancelling it, that settle would
+  // finish with the neighborhood's camera and commit it under the graph's
+  // own scope, and a reload would restore the close-up as the overview.
+  let workerRequests = 0;
+  let workerReleases = 0;
+  await page.route("**/graph-layout.worker*", async (route) => {
+    workerRequests += 1;
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    workerReleases += 1;
+    await route.continue();
+  });
+  // With motion allowed, the settle also animates, so it is in flight even
+  // if the worker's timeout fallback runs before the held script arrives.
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  const response = await page.request.get(`${workspace}/graph-data.json`);
+  const data = await response.json() as GraphData;
+  const edge = data.edges.find((edge) => edge.source !== edge.target)!;
+  const a = data.nodes.find(({ id }) => id === edge.source)!;
+  await page.goto(`${workspace}${a.route}/graph`);
+  const graph = page.locator("#global-graph");
+  await expect(graph).toHaveAttribute("data-focused-node", a.id);
+  await expect(graph).toHaveAttribute("data-settle-requests", "1");
+  // The neighborhood's settle has asked for its layout and is waiting on the
+  // held script: it is in flight when focus is cleared.
+  await expect.poll(() => workerRequests).toBe(1);
+  expect(workerReleases).toBe(0);
+  const completionsAtClear = Number(await graph.getAttribute("data-motion-completions") ?? 0);
+
+  await page.locator("[data-graph-focus-clear]").click();
+  await expect(graph).not.toHaveAttribute("data-focused-node");
+  await expect(page).toHaveURL(`${workspace}/`);
+  await expect(graph).toHaveAttribute("data-visible-nodes", String(data.nodes.length));
+  // The cancelled settle never completes; the graph's own settle does.
+  await expect.poll(async () => Number(await graph.getAttribute("data-motion-completions")), { timeout: 10_000 })
+    .toBeGreaterThan(completionsAtClear);
+
+  const everyMarkerInView = async () => {
+    await graph.evaluate((host) => {
+      host.setAttribute("data-geometry-check-pending", "");
+      host.setAttribute("data-measure-markers", "");
+    });
+    await expect(graph).not.toHaveAttribute("data-geometry-check-pending");
+    const inView = await graph.evaluate((host) => {
+      const element = host as HTMLElement;
+      const markers = JSON.parse(element.dataset.markerGeometry!) as { x: number; y: number }[];
+      return markers.length > 0 && markers.every((marker) =>
+        marker.x >= 0 && marker.x <= element.clientWidth && marker.y >= 0 && marker.y <= element.clientHeight);
+    });
+    await graph.evaluate((host) => host.removeAttribute("data-measure-markers"));
+    return inView;
+  };
+  // The whole graph is in view, not the cleared neighborhood, and it got
+  // there by a settle of its own rather than the neighborhood's.
+  expect(await everyMarkerInView()).toBe(true);
+  expect(workerRequests).toBe(2);
+  await expect.poll(() => savedLayout(page, "all")).not.toBeNull();
+  const beforeReload = await geometry(graph);
+
+  await page.reload();
+  await expect(graph).toHaveAttribute("data-visible-nodes", String(data.nodes.length));
+  await expect(graph).not.toHaveAttribute("data-focused-node");
+  await expect(graph).not.toHaveAttribute("data-settle-requests");
+  expect(await geometry(graph)).toEqual(beforeReload);
+  expect(await everyMarkerInView()).toBe(true);
+});
+
 for (const brainScoped of [false, true]) {
   test(`a rotated saved ${brainScoped ? "Brain" : "workspace"} view restores upright without losing pan or zoom`, async ({ page }) => {
     const { a } = await twoNoteGraph(page, true);

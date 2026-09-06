@@ -1432,11 +1432,16 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     location: window.location,
     history: window.history,
   });
+  /**
+   * Set when changing scope cancelled a settle in flight, so the scope that
+   * was left never received that settle's commit; the new scope needs one.
+   */
+  let scopeChangeInterruptedMotion = false;
   const syncFocusUrl = () => {
     const focus = focusedCompositeId();
     syncFocusUrlState(focus);
     neighborhoodFocus = focus;
-    motion.setSessionScope(motionScope());
+    if (motion.setSessionScope(motionScope())) scopeChangeInterruptedMotion = true;
     if (data.mode === "workspace") {
       const owner = state.focused
         ? graph.getNodeAttribute(state.focused, "brainId") as string
@@ -1519,6 +1524,13 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     recomputeHidden();
     applyReducers();
     if (fit && next) fitFocus();
+    else if (scopeChangeInterruptedMotion) {
+      // Clearing focus while the neighborhood was still settling: that settle
+      // was cancelled so it could not commit its close-up under the graph's
+      // own scope. Settle the graph itself instead.
+      scopeChangeInterruptedMotion = false;
+      requestSettle("filter", visibleIds());
+    }
   };
 
   function recomputeHidden(): void {
@@ -1938,6 +1950,8 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   };
 
   const settleFilter = () => {
+    // A settle is being requested for the current scope either way.
+    scopeChangeInterruptedMotion = false;
     cancelFilterSettle();
     ui.host.setAttribute("data-filter-settle-pending", "");
     filterSettleTimer = window.setTimeout(() => {

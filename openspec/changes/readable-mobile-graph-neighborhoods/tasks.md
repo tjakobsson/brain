@@ -137,6 +137,11 @@ PR-review verification: strict change validation passed, 675 unit tests passed, 
 - [x] 12.27 Name the Z key on the connection map's Fit view control, in its tooltip and accessible name, as the global control does. Verify in the browser test for the local controls.
 - [x] 12.28 After final edits, run strict OpenSpec validation, `npm test`, `npm run test:browser`, and `npm run test:stress-graph`; review the results before checking off 12.27.
 
+- [x] 12.29 Cancel a layout, animation, or camera fit still in flight when the session scope changes, report it, and settle the new scope when focus is cleared. Verify with unit tests over the controller and in the browser that clearing focus before a neighborhood's initial settle finishes leaves and restores an overview rather than the neighborhood's close-up.
+- [x] 12.30 After final edits, run strict OpenSpec validation, `npm test`, `npm run test:browser`, and `npm run test:stress-graph`; review the results before checking off 12.29.
+
+Ninth-review verification: strict change validation passed; 693 unit tests passed; 191 browser tests passed; both stress tests passed with unchanged budgets, the 2,000-note run measuring a 401.7 ms maximum frame gap and a 361 ms maximum long task. The new browser regression was run once with the production fix stashed and failed, then passed with it restored.
+
 Eighth-review verification: strict change validation passed; 692 unit tests passed; 190 browser tests passed; both stress tests passed with unchanged budgets, the 2,000-note run measuring a 379.3 ms maximum frame gap and a 357 ms maximum long task.
 
 Seventh-review verification: strict change validation passed; 692 unit tests passed; 190 browser tests passed; both stress tests passed with unchanged budgets, the 2,000-note run measuring a 384.1 ms maximum frame gap and a 361 ms maximum long task. In-page frame recording on the 400-note fixture showed the inspection fade-out drawn in twelve translucent frames at roughly 18 ms spacing, against two frames before, with every title still drawn in the first frame after D.
