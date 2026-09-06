@@ -303,6 +303,8 @@ export function planRenderedGraphFit(
   const inset = fitInsets(padding);
   let bestFit: GraphCameraState | null = null;
   let previous: { ratio: number; width: number } | null = null;
+  /** The fixed extent and camera before the last plateau step, if any. */
+  let plateau: { fixed: { width: number; height: number }; camera: GraphCameraState } | null = null;
   const rememberFit = (bounds: ViewportBounds) => {
     const camera = renderer.getCamera().getState();
     if (
@@ -350,9 +352,24 @@ export function planRenderedGraphFit(
       measurement.fixedExtent.width >= dimensions.width - inset.left - inset.right ||
       measurement.fixedExtent.height >= dimensions.height - inset.top - inset.bottom
     )) {
+      if (
+        plateau &&
+        measurement.fixedExtent.width >= plateau.fixed.width - 0.5 &&
+        measurement.fixedExtent.height >= plateau.fixed.height - 0.5
+      ) {
+        // The last plateau step did not shrink the plate: its text is at the
+        // minimum legible size, and no zoom can make it fit. Stepping on would
+        // only collapse the graph around it. Take the step back and stop.
+        renderer.getCamera().setState(plateau.camera);
+        labelsCurrent = false;
+        break;
+      }
       // At the text-size ceiling, tiny proportional steps cannot shrink an
       // oversized plate. Leave that plateau within the bounded fit budget.
       zoomScale = Math.max(zoomScale, 1.5);
+      plateau = { fixed: { ...measurement.fixedExtent }, camera: state };
+    } else {
+      plateau = null;
     }
     const width = measurement.bounds.right - measurement.bounds.left;
     if (!includeLabels && requiredLabels.length > 0 && !bestFit && previous &&

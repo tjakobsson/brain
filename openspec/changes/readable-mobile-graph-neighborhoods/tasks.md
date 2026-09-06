@@ -144,6 +144,12 @@ PR-review verification: strict change validation passed, 675 unit tests passed, 
 - [x] 12.32 Suppress debounced and page-leave commits while the replacement settle is pending, and invalidate the new scope's stored session on leaving the page instead. Verify in the browser that reloading before the graph's own settle finishes settles the graph afresh as an overview.
 - [x] 12.33 After final edits, run strict OpenSpec validation, `npm test`, `npm run test:browser`, and `npm run test:stress-graph`; review the results before checking off 12.31 and 12.32.
 
+- [x] 12.34 Keep the pending scope settle across a persisted page hide and settle the owed scope on a persisted page show. Verify in the browser, with synthetic persisted pagehide and pageshow events mid-settle, that a further settle is requested and completes with every marker in view.
+- [x] 12.35 Stop the fit's plateau correction once required text is at its minimum size and the fixed plate still exceeds the inset viewport, keeping the tightest measured camera. Verify with a unit test that a required title whose plate cannot fit does not collapse the camera through the correction budget.
+- [x] 12.36 After final edits, run strict OpenSpec validation, `npm test`, `npm run test:browser`, and `npm run test:stress-graph`; review the results before checking off 12.34 and 12.35.
+
+Eleventh-review verification: strict change validation passed; 694 unit tests passed; 194 browser tests passed; both stress tests passed with unchanged budgets, the 2,000-note run measuring a 388.4 ms maximum frame gap and a 360 ms maximum long task. The new fit unit test and the new back-forward-cache browser test were each run once with their production change stashed and failed, then passed with it restored.
+
 Tenth-review verification: strict change validation passed; 693 unit tests passed; 193 browser tests passed; both stress tests passed with unchanged budgets, the 2,000-note run measuring a 399.8 ms maximum frame gap and a 365 ms maximum long task. Both new browser regressions were run once with the production change stashed and failed, then passed with it restored.
 
 Ninth-review verification: strict change validation passed; 693 unit tests passed; 191 browser tests passed; both stress tests passed with unchanged budgets, the 2,000-note run measuring a 401.7 ms maximum frame gap and a 361 ms maximum long task. The new browser regression was run once with the production fix stashed and failed, then passed with it restored.

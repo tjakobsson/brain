@@ -1198,7 +1198,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       commitSession();
     }, 120);
   };
-  const flushSession = () => {
+  const flushSession = (event?: PageTransitionEvent) => {
     if (sessionTimer !== null) window.clearTimeout(sessionTimer);
     sessionTimer = null;
     if (relatedBrainsStatePending) {
@@ -1209,16 +1209,24 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     if (scopeSettlePending) {
       // Leaving mid-settle: rather than keep the old scope's layout and
       // close-up under this scope, forget this scope's session so the next
-      // visit settles afresh.
+      // visit settles afresh. A page the browser keeps for Back is not a
+      // next visit: it comes back as it is, still owing this scope a settle.
       motion.cancel();
       motion.invalidateSession();
-      scopeSettlePending = false;
+      if (!event?.persisted) scopeSettlePending = false;
       return;
     }
     commitSession();
   };
+  const resumeSession = (event: PageTransitionEvent) => {
+    if (!event.persisted || !scopeSettlePending) return;
+    // Back to a page that was hidden mid-settle: the layout on screen is the
+    // old scope's, half settled. Settle this scope now that it is visible.
+    requestSettle("filter", visibleIds());
+  };
   renderer.getCamera().on("updated", saveSession);
   window.addEventListener("pagehide", flushSession);
+  window.addEventListener("pageshow", resumeSession);
 
   const hidden = new Set<string>();
   let contextEdges = new Set<string>();
@@ -2435,6 +2443,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
     renderer.getCamera().off("updated", saveSession);
     renderer.getCamera().off("updated", scheduleLabelRefresh);
     window.removeEventListener("pagehide", flushSession);
+    window.removeEventListener("pageshow", resumeSession);
     ui.fitViewButton.removeEventListener("click", onFitView);
     ui.focusDisclosure.removeEventListener("click", onFocusDisclosure);
     document.removeEventListener("keydown", onGraphEscape);

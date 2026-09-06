@@ -513,6 +513,45 @@ describe("rendered graph fitting", () => {
     expect(far.x + renderer.scaleSize(right.size)).toBeLessThanOrEqual(dimensions.width - 23);
   });
 
+  it("stops zooming out once a required plate that cannot fit has stopped shrinking", () => {
+    const { graph, renderer, camera, dimensions } = fakeRenderer();
+    dimensions.width = 360;
+    dimensions.height = 844;
+    // One unbroken token: the shortened line fills the whole label budget, so
+    // with plate padding and the insets the plate is wider than the viewport
+    // at any zoom once its text has reached the minimum legible size.
+    graph.setNodeAttribute("left", "label", "Supercalifragilisticexpialidocious".repeat(3));
+    graph.setNodeAttribute("left", "x", 0);
+    graph.setNodeAttribute("right", "x", 100);
+    graph.setNodeAttribute("left", "size", 2);
+    graph.setNodeAttribute("right", "size", 2);
+    const readDisplay = renderer.getNodeDisplayData.getMockImplementation()!;
+    let size = 12;
+    const layout = (title: string) => layoutGraphLabel(title, 320, size, (text) => text.length * size * 0.55);
+    renderer.getNodeDisplayData.mockImplementation((id) => {
+      const data = readDisplay(id);
+      return { ...data, fitLabelLayout: layout(data.label) };
+    });
+    const ratios: number[] = [];
+    setGraphFitLabelRefresh(renderer as never, () => {
+      ratios.push(camera.getState().ratio);
+      size = renderedLabelSize(11, camera.getState().ratio);
+    });
+
+    fitRenderedGraph(renderer as never, ["left", "right"], { padding: 24, includeLabels: false, labelIds: ["left"] });
+
+    const left = renderer.getNodeDisplayData("left");
+    const plate = graphHoverPlate(renderer.framedGraphToViewport(left), renderer.scaleSize(left.size), layout(left.label));
+    // The premise: even at the floor, this plate is wider than the inset viewport.
+    expect(size).toBeCloseTo(9, 5);
+    expect(plate.right - plate.left).toBeGreaterThan(dimensions.width - 48);
+    // Eight plateau steps of 1.5x would have collapsed the graph 25x; the fit
+    // stops as soon as a step gains nothing, and takes that step back.
+    expect(camera.getState().ratio).toBeLessThan(3);
+    expect(Math.max(...ratios)).toBeLessThan(4);
+    expect(ratios.length).toBeLessThanOrEqual(5);
+  });
+
   it.each([
     { characterWidth: 0.534, backtracks: 1 },
     { characterWidth: 0.5413, backtracks: 2 },

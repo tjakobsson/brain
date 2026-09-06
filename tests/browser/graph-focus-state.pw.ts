@@ -300,6 +300,44 @@ test("leaving before the graph's own settle finishes does not keep the neighborh
   })).toBe(true);
 });
 
+test("a page kept for Back that was hidden mid-settle settles its scope when shown again", async ({ page }) => {
+  const worker = await heldWorker(page);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  const { data, a } = await focusedNoteOfFixture(page);
+  await page.goto(`${workspace}${a.route}/graph`);
+  const graph = page.locator("#global-graph");
+  await expect(graph).toHaveAttribute("data-focused-node", a.id);
+  await expect.poll(() => worker.requests).toBe(1);
+  await page.locator("[data-graph-focus-clear]").click();
+  await expect(page).toHaveURL(`${workspace}/`);
+  await expect(graph).toHaveAttribute("data-settle-requests", "2");
+  await expect.poll(() => worker.requests).toBe(2);
+  expect(worker.releases).toBe(0);
+  const completions = async () => Number(await graph.getAttribute("data-motion-completions") ?? 0);
+  const hiddenAt = await completions();
+
+  // The browser hides the page into its back-forward cache mid-settle and
+  // later shows the same document again: no remount, the same graph.
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true })));
+  await page.waitForTimeout(200);
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true })));
+  await expect(graph).toHaveAttribute("data-settle-requests", "3");
+  await expect.poll(completions, { timeout: 10_000 }).toBeGreaterThan(hiddenAt);
+  await expect(graph).toHaveAttribute("data-visible-nodes", String(data.nodes.length));
+  await graph.evaluate((host) => {
+    host.setAttribute("data-geometry-check-pending", "");
+    host.setAttribute("data-measure-markers", "");
+  });
+  await expect(graph).not.toHaveAttribute("data-geometry-check-pending");
+  expect(await graph.evaluate((host) => {
+    const element = host as HTMLElement;
+    const markers = JSON.parse(element.dataset.markerGeometry!) as { x: number; y: number }[];
+    return markers.length > 0 && markers.every((marker) =>
+      marker.x >= 0 && marker.x <= element.clientWidth && marker.y >= 0 && marker.y <= element.clientHeight);
+  })).toBe(true);
+  await expect.poll(() => savedLayout(page, "all")).not.toBeNull();
+});
+
 test("a focus move that interrupts the settle does not leave a later clear re-settling the graph", async ({ page }) => {
   const worker = await heldWorker(page);
   await page.emulateMedia({ reducedMotion: "no-preference" });
