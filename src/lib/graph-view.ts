@@ -45,6 +45,7 @@ import {
   flooredNodeSize,
   labelFadeAlpha,
   labelFadesRunning,
+  labelSelectionChange,
   forceForeignLabel,
   GRAPH_LABEL_GAP,
   graphLabelAvailableWidth,
@@ -105,6 +106,8 @@ interface GraphTheme {
 }
 
 type NodeLabelData = Parameters<typeof drawDiscNodeLabel>[1] & {
+  /** Drawn only while fading out; not a pointer or touch target. */
+  labelLeaving?: boolean;
   brainAccent?: string;
   foreign?: boolean;
   labelColor?: string;
@@ -328,7 +331,7 @@ function updateInspectionTargetStats(
     y: center.y,
     radius: renderer.scaleSize(data.size),
     label,
-    labelRendered: renderer.getNodeDisplayedLabels().has(node),
+    labelRendered: renderer.getNodeDisplayedLabels().has(node) && !(data as NodeLabelData).labelLeaving,
     labelWidth: (data as NodeLabelData).labelWidth,
     labelHeight: (data as NodeLabelData).labelHeight,
   }], renderer.getDimensions());
@@ -525,7 +528,7 @@ function graphTargetNode(renderer: Sigma, graph: Graph, state: GraphHoverState, 
       y: center.y,
       radius: visualRadius,
       label,
-      labelRendered: displayedLabels.has(node),
+      labelRendered: displayedLabels.has(node) && !(data as NodeLabelData).labelLeaving,
       labelWidth: (data as NodeLabelData).labelWidth,
       labelHeight: (data as NodeLabelData).labelHeight,
     });
@@ -1580,7 +1583,7 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
         // A label that has finished leaving stops being drawn at all, which
         // needs the reducer to run again, unlike the fade itself.
         for (const node of retired) retiringLabels.delete(node);
-        renderer.refresh();
+        repaintNodes(retired);
       } else {
         renderer.refresh({ skipIndexation: true });
       }
@@ -1590,6 +1593,16 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   };
   const scaleMarkerSize = (size: number) => renderer.scaleSize(size);
   const labelLayouts = createGraphLabelLayouts(renderer);
+  /**
+   * Re-applies the reducer to just these nodes. Sigma's partial refresh
+   * updates their labels without re-indexing the graph, which a full refresh
+   * would do in the middle of whatever gesture is under way.
+   */
+  const repaintNodes = (nodes: readonly string[]) => {
+    const visible = nodes.filter((node) => graph.hasNode(node) && !renderer.getNodeDisplayData(node)?.hidden);
+    if (visible.length) renderer.refresh({ partialGraph: { nodes: visible }, skipIndexation: true });
+    else renderer.refresh({ skipIndexation: true });
+  };
   const baseLabelSize = renderer.getSetting("labelSize");
   /** Labels collision selection has kept; `null` during the layout pass. */
   let selectedLabels: Set<string> | null = null;
@@ -1597,6 +1610,8 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
   let drawnLabels = new Set<string>();
   /** Labels still drawn while they fade out, before they stop being drawn. */
   let retiringLabels = new Set<string>();
+  /** What each drawn label last looked like, so a retiring one can keep it. */
+  const drawnLayouts = new Map<string, { label: string; layout: GraphLabelLayout }>();
   /** The node under the pointer, which always gets to show its title. */
   let pointerLabelNode: string | null = null;
   /**
@@ -1689,6 +1704,22 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       // One layout, shared: the renderer draws these lines, `graphScreenTargets`
       // hit-tests the box they occupy, and label-aware fitting measures the
       // same box. Nothing downstream recomputes where a label sits.
+      // A title that inspection or search styling has just cleared may still
+      // be on its way out. Draw what was drawn until its fade finishes; the
+      // provisional pass skips this so it never becomes a candidate again.
+      if (!displayLabel && selectedLabels && !fitting && retiringLabels.has(node)) {
+        const previous = drawnLayouts.get(node);
+        if (previous) {
+          styled.label = previous.label;
+          styled.forceLabel = true;
+          styled.labelLeaving = true;
+          styled.labelLines = previous.layout.lines;
+          styled.labelWidth = previous.layout.width;
+          styled.labelHeight = previous.layout.height;
+          styled.labelLineHeight = previous.layout.lineHeight;
+          return styled as typeof attrs;
+        }
+      }
       const placed = labelFor(node, displayLabel, Boolean(styled.foreign));
       if (!placed && displayLabel) {
         // No legible line fits: omit rather than draw a label cut off.
@@ -1719,6 +1750,10 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
         styled.labelWidth = placed.layout.width;
         styled.labelHeight = placed.layout.height;
         styled.labelLineHeight = placed.layout.lineHeight;
+        if (selectedLabels) {
+          if (selectedLabels.has(node)) drawnLayouts.set(node, { label: displayLabel, layout: placed.layout });
+          else if (!underPointer) styled.labelLeaving = true;
+        }
       }
       return styled as typeof attrs;
     };
@@ -1777,11 +1812,10 @@ export async function mountGlobalGraph(ui: GlobalGraphUI): Promise<void> {
       // A selection change that swaps several titles at once reads as a
       // flicker. Arriving labels fade in and leaving ones fade out, so the
       // same change reads as the graph resolving instead.
-      const appearing = [...selectedLabels].filter((node) => !drawnLabels.has(node));
-      const leaving = [...drawnLabels].filter((node) => !selectedLabels!.has(node));
-      retiringLabels = new Set(leaving);
+      const change = labelSelectionChange(drawnLabels, retiringLabels, selectedLabels);
+      retiringLabels = change.retiring;
       drawnLabels = new Set(selectedLabels);
-      if (beginLabelFades(labelContext, appearing, leaving)) {
+      if (beginLabelFades(labelContext, change.appearing, change.leaving)) {
         renderer.refresh();
         runLabelFades(labelContext);
         return;
@@ -2427,6 +2461,12 @@ export async function mountLocalGraphs(): Promise<void> {
     let localDrawnLabels = new Set<string>();
     let localRetiringLabels = new Set<string>();
     let localFadeFrame: number | null = null;
+    const localDrawnLayouts = new Map<string, { label: string; layout: GraphLabelLayout }>();
+    const repaintLocalNodes = (nodes: readonly string[]) => {
+      const visible = nodes.filter((node) => graph.hasNode(node) && !renderer.getNodeDisplayData(node)?.hidden);
+      if (visible.length) renderer.refresh({ partialGraph: { nodes: visible }, skipIndexation: true });
+      else renderer.refresh({ skipIndexation: true });
+    };
     const runLocalLabelFades = (context: CanvasRenderingContext2D | null | undefined) => {
       if (!context || localFadeFrame !== null || !labelFadesRunning(context)) return;
       const step = () => {
@@ -2434,7 +2474,7 @@ export async function mountLocalGraphs(): Promise<void> {
         const retired = finishedLabelFadeOuts(context);
         if (retired.length > 0) {
           for (const node of retired) localRetiringLabels.delete(node);
-          renderer.refresh();
+          repaintLocalNodes(retired);
         } else {
           renderer.refresh({ skipIndexation: true });
         }
@@ -2499,6 +2539,23 @@ export async function mountLocalGraphs(): Promise<void> {
 
           const label = typeof styled.label === "string" ? styled.label : "";
           const center = centers.get(node);
+          if (!label && center && localSelectedLabels && !fitting && localRetiringLabels.has(node)) {
+            // Cleared by inspection styling while still fading out: keep
+            // drawing what was drawn, as the global graph does.
+            const previous = localDrawnLayouts.get(node);
+            if (previous) {
+              return {
+                ...styled,
+                label: previous.label,
+                forceLabel: true,
+                labelLeaving: true,
+                labelLines: previous.layout.lines,
+                labelWidth: previous.layout.width,
+                labelHeight: previous.layout.height,
+                labelLineHeight: previous.layout.lineHeight,
+              } as typeof attrs;
+            }
+          }
           if (!label || !center) return styled as typeof attrs;
           const layout = localLabelLayouts.layout(
             label,
@@ -2520,9 +2577,11 @@ export async function mountLocalGraphs(): Promise<void> {
           ) {
             return { ...styled, label: "", forceLabel: false } as typeof attrs;
           }
+          if (localSelectedLabels?.has(node)) localDrawnLayouts.set(node, { label, layout });
           return {
             ...styled,
             forceLabel: true,
+            labelLeaving: Boolean(localSelectedLabels && !localSelectedLabels.has(node) && !underPointer),
             labelLines: layout.lines,
             labelWidth: layout.width,
             labelHeight: layout.height,
@@ -2560,11 +2619,10 @@ export async function mountLocalGraphs(): Promise<void> {
       );
       const labelContext = fitting ? null : renderer.getCanvases().labels?.getContext("2d");
       if (labelContext) {
-        const appearing = [...localSelectedLabels].filter((node) => !localDrawnLabels.has(node));
-        const leaving = [...localDrawnLabels].filter((node) => !localSelectedLabels!.has(node));
-        localRetiringLabels = new Set(leaving);
+        const change = labelSelectionChange(localDrawnLabels, localRetiringLabels, localSelectedLabels);
+        localRetiringLabels = change.retiring;
         localDrawnLabels = new Set(localSelectedLabels);
-        if (beginLabelFades(labelContext, appearing, leaving)) {
+        if (beginLabelFades(labelContext, change.appearing, change.leaving)) {
           renderer.refresh();
           runLocalLabelFades(labelContext);
           return;

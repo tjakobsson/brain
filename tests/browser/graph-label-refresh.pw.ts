@@ -129,6 +129,11 @@ test("local label selection changes fade rather than flicker", async ({ page }) 
   await expect(graph).toHaveAttribute("data-hover-preview", "true");
   await page.mouse.move(target.x, target.y);
   await expect(graph).toHaveAttribute("data-transient-inspection", /.+/u);
+  // Inspection clears the titles outside the neighborhood, and they leave
+  // through translucent frames rather than in one: what was drawn is drawn
+  // until its fade ends. (The lit titles move to Sigma's hover layer.)
+  const leaving = await midFade();
+  for (const text of leaving) expect(before).toContain(text);
   await expect.poll(async () => (await frame()).partial.length, { timeout: 3000 }).toBe(0);
   await page.waitForTimeout(400);
   const inspected = (await frame()).texts;
@@ -204,6 +209,10 @@ test("global preview toggle refreshes labels under a stationary pointer", async 
 
   await page.keyboard.press("d");
   await expect(graph).toHaveAttribute("data-transient-inspection", under);
+  // Titles the inspection takes away leave through translucent frames.
+  await expect.poll(async () => graph.locator("canvas.sigma-labels").evaluate((canvas) =>
+    (canvas as HTMLCanvasElement).graphTestLines!.some(({ alpha }) => alpha > 0 && alpha < 1)),
+  { intervals: [5], timeout: 3000 }).toBe(true);
   await expect.poll(async () => (await graph.getAttribute("data-rendered-label-ids"))!.split(","))
     .toContain(neighbor);
   await expect.poll(async () => graph.locator("canvas.sigma-labels").evaluate((canvas, normalLines) =>

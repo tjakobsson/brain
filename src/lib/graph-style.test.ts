@@ -25,6 +25,7 @@ import { graphScreenTargets } from "./graph-interaction";
 import {
   beginLabelFades,
   createLabelLayoutCache,
+  labelSelectionChange,
   LABEL_LAYOUT_CACHE_SIZES,
   finishedLabelFadeOuts,
   graphEdgeAttributes,
@@ -836,6 +837,30 @@ describe("label layouts are cached per size and bounded", () => {
     expect(cache.count()).toBe(LABEL_LAYOUT_CACHE_SIZES * titles);
     cache.clear();
     expect(cache.count()).toBe(0);
+  });
+});
+
+describe("selection changes keep earlier leavers fading", () => {
+  it("names what arrives and what leaves against the drawn set", () => {
+    const change = labelSelectionChange(new Set(["a", "b"]), new Set(), new Set(["b", "c"]));
+    expect(change.appearing).toEqual(["c"]);
+    expect(change.leaving).toEqual(["a"]);
+    expect([...change.retiring]).toEqual(["a"]);
+  });
+
+  it("carries an unfinished leaver through the next change", () => {
+    // "a" left under the previous selection and is still fading out.
+    const change = labelSelectionChange(new Set(["b"]), new Set(["a"]), new Set(["c"]));
+    expect(change.leaving).toEqual(["b"]);
+    expect([...change.retiring].sort()).toEqual(["a", "b"]);
+  });
+
+  it("takes a leaver back when the new selection wants it", () => {
+    const change = labelSelectionChange(new Set(["b"]), new Set(["a"]), new Set(["a", "b"]));
+    // Not drawn, so it arrives again; and no longer on its way out.
+    expect(change.appearing).toEqual(["a"]);
+    expect(change.leaving).toEqual([]);
+    expect(change.retiring.size).toBe(0);
   });
 });
 

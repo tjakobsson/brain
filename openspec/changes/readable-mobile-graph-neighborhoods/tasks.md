@@ -122,6 +122,13 @@ PR-review verification: strict change validation passed, 675 unit tests passed, 
 - [x] 12.16 Bound the label layout cache to the most recent few rendered sizes, keyed per size with recency eviction. Verify with unit tests over eviction order, hits refreshing recency, and bounded growth across many distinct zoom levels.
 - [x] 12.17 After final edits, run strict OpenSpec validation, `npm test`, `npm run test:browser`, and `npm run test:stress-graph`; review the results before checking off 12.15 and 12.16.
 
+- [x] 12.18 Keep a retiring label drawn from its last text and layout when inspection or search styling clears it, on both graphs and on the final pass only. Verify in the browser that inspection beginning on the global graph and on a connection map passes through translucent frames for the titles it removes.
+- [x] 12.19 Carry unfinished leavers through a later selection change with a shared helper, taking back any the new selection selects. Verify with unit tests over arrival, departure, carried leavers, and taken-back leavers.
+- [x] 12.20 Mark labels that are only fading out as leaving, exclude them from pointer and touch hit-testing, and repaint only retired nodes when a fade-out ends. Verify the connection-map long-press and marker-start pinch tests pass on the CI runner, where the press landed inside the post-fit fade.
+- [x] 12.21 After final edits, run strict OpenSpec validation, `npm test`, `npm run test:browser`, and `npm run test:stress-graph`; review the results before checking off 12.18 to 12.20.
+
+Fifth-review verification: strict change validation passed; 689 unit tests passed; 190 browser tests passed once the hovered-node test took its reference frame after the removed titles had finished fading; both stress tests passed with unchanged budgets, the 2,000-note run measuring a 379.5 ms maximum frame gap and a 362 ms maximum long task. The CI regression was replayed locally with the press landing inside the post-fit fade, unthrottled and at 4x CPU throttling, and pinned every time after the fix.
+
 Fourth-review verification: strict change validation passed; 686 unit tests passed; 190 browser tests passed once the mobile reveal test polled for the settled label count instead of reading it during the fade-out; both stress tests passed with unchanged budgets, the 2,000-note run measuring a 399 ms maximum frame gap and a 359 ms maximum long task.
 
 Third-review verification: strict change validation passed; 683 unit tests passed; the browser suite passed once the one outdated fine-pointer toolbar count was corrected for the now-visible Hover preview control; both stress tests passed with unchanged budgets, the 2,000-note run measuring a 390.1 ms maximum frame gap and a 361 ms maximum long task.

@@ -337,8 +337,21 @@ test(`a hovered graph node stays emphasized and clickable in ${colorScheme} mode
   const target = await nodeAboveLabel(page, graph, label);
   await page.waitForTimeout(50);
 
-  const emphasizedNodes = await nodesCanvas.screenshot();
-  const emphasizedLabels = await labelsCanvas.screenshot();
+  // The titles inspection takes away fade out over a few frames, and an
+  // element screenshot includes every layer over the box. Take the reference
+  // once the picture has stopped changing, not at a fixed moment.
+  const settledShot = async (canvas: Locator) => {
+    let previous = await canvas.screenshot();
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await page.waitForTimeout(100);
+      const next = await canvas.screenshot();
+      if (next.equals(previous)) return next;
+      previous = next;
+    }
+    throw new Error("Graph did not settle after hover");
+  };
+  const emphasizedNodes = await settledShot(nodesCanvas);
+  const emphasizedLabels = await settledShot(labelsCanvas);
   expect(emphasizedNodes.equals(normalNodes)).toBe(false);
   expect(emphasizedLabels.equals(normalLabels)).toBe(false);
   await expect(graph).toHaveAttribute("data-rendered-label-ids", "hover-target,neighbor");

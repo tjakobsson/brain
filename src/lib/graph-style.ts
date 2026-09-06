@@ -545,6 +545,36 @@ export function labelFadesRunning(context: object): boolean {
   return (labelFadeStarts.get(context)?.size ?? 0) > 0;
 }
 
+export interface LabelSelectionChange {
+  /** Selected now but not drawn before: fade in. */
+  appearing: string[];
+  /** Drawn before but not selected now: start fading out. */
+  leaving: string[];
+  /** Every label still on its way out, earlier ones included. */
+  retiring: Set<string>;
+}
+
+/**
+ * What a new selection changes against what is drawn and what is leaving.
+ *
+ * A label that started leaving under an earlier selection is no longer in the
+ * drawn set, so it is not in `leaving` again; it stays retiring until its
+ * fade-out finishes, unless the new selection takes it back, in which case it
+ * fades in from wherever it was. Otherwise two selection changes inside one
+ * fade window would drop the first one's leavers in a single frame.
+ */
+export function labelSelectionChange(
+  drawn: ReadonlySet<string>,
+  retiring: ReadonlySet<string>,
+  selected: ReadonlySet<string>,
+): LabelSelectionChange {
+  const appearing = [...selected].filter((node) => !drawn.has(node));
+  const leaving = [...drawn].filter((node) => !selected.has(node));
+  const next = new Set(leaving);
+  for (const node of retiring) if (!selected.has(node)) next.add(node);
+  return { appearing, leaving, retiring: next };
+}
+
 /** Labels whose fade-out has finished, so they can stop being drawn at all. */
 export function finishedLabelFadeOuts(context: object): string[] {
   const fades = labelFadeStarts.get(context);
