@@ -425,6 +425,58 @@ export function graphHoverPlate(
   };
 }
 
+/** How many distinct rendered label sizes keep their layouts cached. */
+export const LABEL_LAYOUT_CACHE_SIZES = 3;
+
+/**
+ * Layouts keyed by rendered label size, holding only the most recent sizes.
+ *
+ * Every settled zoom produces a distinct floating-point label size, and each
+ * new size lays out every visible title again, so a cache without a bound
+ * grows by a graph's worth of layouts at every zoom level a reader ever rests
+ * at. The last few sizes still serve panning and a zoom step back; older
+ * sizes are dropped whole, since no lookup at a new size can hit them.
+ */
+export function createLabelLayoutCache<T>(maximumSizes = LABEL_LAYOUT_CACHE_SIZES) {
+  const bySize = new Map<number, Map<string, T>>();
+  // Insertion order is recency: touching a size moves it to the end, and the
+  // first size is the one to drop.
+  const touch = (size: number): Map<string, T> | undefined => {
+    const entries = bySize.get(size);
+    if (!entries) return undefined;
+    bySize.delete(size);
+    bySize.set(size, entries);
+    return entries;
+  };
+  return {
+    get(size: number, key: string): T | undefined {
+      return touch(size)?.get(key);
+    },
+    set(size: number, key: string, value: T): void {
+      let entries = touch(size);
+      if (!entries) {
+        entries = new Map();
+        bySize.set(size, entries);
+        while (bySize.size > maximumSizes) bySize.delete(bySize.keys().next().value!);
+      }
+      entries.set(key, value);
+    },
+    /** The sizes currently held, oldest first. */
+    sizes(): number[] {
+      return [...bySize.keys()];
+    },
+    /** How many layouts are held across every size. */
+    count(): number {
+      let total = 0;
+      for (const entries of bySize.values()) total += entries.size;
+      return total;
+    },
+    clear(): void {
+      bySize.clear();
+    },
+  };
+}
+
 /** How long a label takes to fade in once it has been placed. */
 const LABEL_FADE_MS = 220;
 

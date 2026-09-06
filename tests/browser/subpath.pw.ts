@@ -896,7 +896,9 @@ test("mobile local graphs reveal titles relative to their fitted view", async ({
 
   await page.getByRole("button", { name: "Fit view" }).click();
   await page.waitForTimeout(400);
-  expect(Number(await graph.getAttribute("data-rendered-labels"))).toBe(overviewLabels);
+  // Labels the fit takes away stay drawn while they fade out, so wait for the
+  // count to settle rather than reading it at a fixed moment.
+  await expect.poll(async () => Number(await graph.getAttribute("data-rendered-labels"))).toBe(overviewLabels);
   expect((await graphInkBounds(graph)).labelPixels).toBeGreaterThan(0);
   expect(Math.abs(Number(await graph.getAttribute("data-fitted-ratio")) - fittedRatio)).toBeLessThan(0.01);
   const resetInk = await graphInkBounds(graph);

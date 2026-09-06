@@ -39,6 +39,7 @@ import {
 } from "./graph-data";
 import {
   beginLabelFades,
+  createLabelLayoutCache,
   easedEdgeSize,
   finishedLabelFadeOuts,
   flooredNodeSize,
@@ -374,7 +375,7 @@ function renderedMarkerGeometry(
  * cache on every frame.
  */
 function createGraphLabelLayouts(renderer: Sigma) {
-  const cache = new Map<string, GraphLabelLayout>();
+  const cache = createLabelLayoutCache<GraphLabelLayout>();
   const measureContext = document.createElement("canvas").getContext("2d")!;
   let appliedFont = "";
 
@@ -392,8 +393,8 @@ function createGraphLabelLayouts(renderer: Sigma) {
       return Math.round(available / 4) * 4;
     },
     layout(label: string, budget: number, size: number, foreign: boolean): GraphLabelLayout {
-      const key = `${size}\u001f${budget}\u001f${foreign ? 1 : 0}\u001f${label}`;
-      const cached = cache.get(key);
+      const key = `${budget}\u001f${foreign ? 1 : 0}\u001f${label}`;
+      const cached = cache.get(size, key);
       if (cached) return cached;
       const settings = renderer.getSettings();
       const font = `${settings.labelWeight} ${size}px ${settings.labelFont}`;
@@ -407,7 +408,7 @@ function createGraphLabelLayouts(renderer: Sigma) {
         measureContext.measureText(value).width +
         (foreign && /^[○◇◆]\s/u.test(value) ? foreignLabelMarkWidth(size) : 0);
       const layout = layoutGraphLabel(label, budget, size, measure);
-      cache.set(key, layout);
+      cache.set(size, key, layout);
       return layout;
     },
   };
@@ -2421,6 +2422,26 @@ export async function mountLocalGraphs(): Promise<void> {
     let localSelectedLabels: Set<string> | null = null;
     /** The node under the pointer on the connection map; it wears the plate. */
     let localPointerNode: string | null = null;
+    // The same arriving/leaving lifecycle as the global graph: a selection
+    // change fades titles in and out instead of swapping them in one frame.
+    let localDrawnLabels = new Set<string>();
+    let localRetiringLabels = new Set<string>();
+    let localFadeFrame: number | null = null;
+    const runLocalLabelFades = (context: CanvasRenderingContext2D | null | undefined) => {
+      if (!context || localFadeFrame !== null || !labelFadesRunning(context)) return;
+      const step = () => {
+        localFadeFrame = null;
+        const retired = finishedLabelFadeOuts(context);
+        if (retired.length > 0) {
+          for (const node of retired) localRetiringLabels.delete(node);
+          renderer.refresh();
+        } else {
+          renderer.refresh({ skipIndexation: true });
+        }
+        if (labelFadesRunning(context)) localFadeFrame = window.requestAnimationFrame(step);
+      };
+      localFadeFrame = window.requestAnimationFrame(step);
+    };
     const applyResponsiveLabelThreshold = (narrow = narrowGraphQuery.matches) => {
       renderer.setSettings(responsiveLabelSettings(narrow, 3, 100));
     };
@@ -2439,7 +2460,7 @@ export async function mountLocalGraphs(): Promise<void> {
     const hoverReducers = createHoverReducers(graph, state);
     const scaleMarkerSize = (size: number) => renderer.scaleSize(size);
     let revealNarrowLabels = false;
-    const applyLocalReducers = () => {
+    const applyLocalReducers = (fitting = false) => {
       const dimensions = renderer.getDimensions();
       const labelSize = renderedLabelSize(localBaseLabelSize, renderer.getCamera().getState().ratio);
       const centers = new Map<string, { x: number; y: number; radius: number }>();
@@ -2491,7 +2512,12 @@ export async function mountLocalGraphs(): Promise<void> {
           }
           laidOut.set(node, { layout, box });
           styled.fitLabelLayout = layout;
-          if (localSelectedLabels && !localSelectedLabels.has(node) && !underPointer) {
+          if (
+            localSelectedLabels &&
+            !localSelectedLabels.has(node) &&
+            (fitting || !localRetiringLabels.has(node)) &&
+            !underPointer
+          ) {
             return { ...styled, label: "", forceLabel: false } as typeof attrs;
           }
           return {
@@ -2532,9 +2558,21 @@ export async function mountLocalGraphs(): Promise<void> {
         labelSize,
         [...centers].map(([node, center]) => ({ node, box: graphMarkerBox(center, center.radius) })),
       );
+      const labelContext = fitting ? null : renderer.getCanvases().labels?.getContext("2d");
+      if (labelContext) {
+        const appearing = [...localSelectedLabels].filter((node) => !localDrawnLabels.has(node));
+        const leaving = [...localDrawnLabels].filter((node) => !localSelectedLabels!.has(node));
+        localRetiringLabels = new Set(leaving);
+        localDrawnLabels = new Set(localSelectedLabels);
+        if (beginLabelFades(labelContext, appearing, leaving)) {
+          renderer.refresh();
+          runLocalLabelFades(labelContext);
+          return;
+        }
+      }
       renderer.refresh();
     };
-    setGraphFitLabelRefresh(renderer, applyLocalReducers);
+    setGraphFitLabelRefresh(renderer, () => applyLocalReducers(true));
     applyLocalReducers();
     let labelInspection = activeInspectionNode(state);
     const updateRenderedLabelStats = () => {
@@ -2796,6 +2834,7 @@ export async function mountLocalGraphs(): Promise<void> {
       resizeObserver.disconnect();
       responsiveScheduler.cancel();
       if (localLabelBudgetFrame !== null) window.clearTimeout(localLabelBudgetFrame);
+      if (localFadeFrame !== null) window.cancelAnimationFrame(localFadeFrame);
       camera.off("updated", scheduleLocalLabelRefresh);
       motion.destroy();
       labelReveal.destroy();

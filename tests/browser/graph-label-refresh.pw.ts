@@ -84,6 +84,77 @@ for (const exit of ["pointer leave", "preview toggle"] as const) {
   });
 }
 
+test("local label selection changes fade rather than flicker", async ({ page }) => {
+  await page.goto(`./${notePath}`);
+  const graph = page.locator(".local-graph");
+  await graph.scrollIntoViewIfNeeded();
+  await expect(graph).toHaveAttribute("data-fit-completions", /[1-9]/u);
+  await page.waitForTimeout(500);
+  const labels = graph.locator("canvas.sigma-labels");
+  // Only the labels canvas: Sigma paints a lit neighborhood's titles on its
+  // hover layer, so what fades here is the plain selection around it.
+  const frame = () => labels.evaluate((canvas) => {
+    const lines = (canvas as HTMLCanvasElement).graphTestLines ?? [];
+    return {
+      texts: [...new Set(lines.map(({ text }) => text))].sort(),
+      partial: [...new Set(lines.filter(({ alpha }) => alpha > 0 && alpha < 1).map(({ text }) => text))],
+      opaque: lines.length > 0 && lines.every(({ alpha }) => alpha === 1),
+    };
+  });
+  const settled = async () => {
+    await expect.poll(async () => (await frame()).opaque).toBe(true);
+    return (await frame()).texts;
+  };
+  // A frame drawn partway through a fade, whichever titles it holds.
+  const midFade = async () => {
+    let seen: string[] = [];
+    await expect.poll(async () => {
+      seen = (await frame()).partial;
+      return seen.length;
+    }, { intervals: [5], timeout: 3000 }).toBeGreaterThan(0);
+    return seen;
+  };
+  const before = await settled();
+  expect(before.length).toBeGreaterThan(1);
+
+  // Preview ending is a selection change without a camera move: the titles
+  // that inspection took away come back through translucent frames.
+  const target = await labels.evaluate((canvas) => {
+    const line = (canvas as HTMLCanvasElement).graphTestLines!.find((line) => line.text.includes("design review ritual"));
+    if (!line) throw new Error("Missing connection-map root label");
+    const bounds = canvas.getBoundingClientRect();
+    return { x: bounds.x + line.x, y: bounds.y + line.y };
+  });
+  await page.keyboard.press("d");
+  await expect(graph).toHaveAttribute("data-hover-preview", "true");
+  await page.mouse.move(target.x, target.y);
+  await expect(graph).toHaveAttribute("data-transient-inspection", /.+/u);
+  await expect.poll(async () => (await frame()).partial.length, { timeout: 3000 }).toBe(0);
+  await page.waitForTimeout(400);
+  const inspected = (await frame()).texts;
+  expect(inspected).not.toEqual(before);
+  await page.keyboard.press("d");
+  await expect(graph).not.toHaveAttribute("data-transient-inspection");
+  const returning = await midFade();
+  const restored = await settled();
+  // What was translucent was on its way in or out, never a title outside both.
+  for (const text of returning) expect([...inspected, ...restored]).toContain(text);
+  await page.mouse.move(0, 0);
+  await expect(graph).not.toHaveAttribute("data-pointer-node");
+  expect(await settled()).toEqual(before);
+
+  // A camera change swaps titles the same way.
+  const box = (await graph.boundingBox())!;
+  for (let step = 0; step < 2; step += 1) {
+    await graph.locator("canvas.sigma-mouse").dispatchEvent("wheel", {
+      clientX: box.x + box.width / 2, clientY: box.y + box.height / 2, deltaY: -120, bubbles: true,
+    });
+    await page.waitForTimeout(150);
+  }
+  await midFade();
+  expect(await settled()).not.toEqual(before);
+});
+
 test("global preview toggle refreshes labels under a stationary pointer", async ({ page }) => {
   const under = "product-strategy-and-planning-notes/a-design-review-ritual-trades-away-every-clever-abstraction";
   const neighbor = "product-strategy-and-planning-notes/feature-flag-hygiene-predicts-the-shared-context-of-a-team";

@@ -140,6 +140,12 @@ Local connection maps expose Hover preview beside Fit view. The button and D sho
 
 Toggling the preference on either graph recomputes label selection at once. Re-applying the pointer updates the transient inspection, but does not report a pointer-node change when the target is unchanged, so the toggle handler schedules the label refresh itself rather than relying on that callback.
 
+### Local labels fade, and layouts are cached within a bound
+
+The note-page connection map runs the same arriving/leaving lifecycle as the global graph: when collision selection changes on zoom or when hover preview begins, ends, or is toggled, arriving titles fade in and leaving ones stay drawn while they fade out, then drop from the reducer. Fit planning measures without fades, as on the global graph. The fade state is keyed by the label canvas context, so the two graphs never share it.
+
+Label layouts are cached per rendered size, and only the most recent three sizes are kept. Every settled zoom is a distinct floating-point size, and a cache that keeps them all grows by a graph's worth of layouts at every level a reader ever rests at. Panning and a zoom step back still hit the cache; older sizes are dropped whole because no lookup at a new size can use them.
+
 ### Fixtures that can fail
 
 `scripts/generate-stress-vault.mjs` gains sentence-length titles and realistic brain ids. Reference distribution from `tjakobsson/brain-vault`: titles min 7, median 37, max 60 characters; longest brain id `capability-backed-product-engineering` at 37. The fixture should sit at or slightly above that so it stresses rather than merely matches.

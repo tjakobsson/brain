@@ -118,4 +118,10 @@ PR-review verification: strict change validation passed, 675 unit tests passed, 
 - [x] 12.13 Re-evaluate the owner-labels default at breakpoint changes until the reader chooses, and keep an explicit choice through breakpoint changes when storage is unavailable or rejects writes. Verify both directions of the 700px crossing with and without a stored preference, that no preference is written by the default, and that failed writes do not surrender the choice.
 - [x] 12.14 After final edits, run strict OpenSpec validation, `npm test`, `npm run test:browser`, and `npm run test:stress-graph`; review the results before checking off 12.11 to 12.13.
 
+- [x] 12.15 Give the note-page connection map the global graph's label fade lifecycle: arriving titles fade in, leaving titles stay drawn while fading out, fit planning measures without fades, and unmount cancels a running fade. Verify in the browser that preview beginning and ending on a connection map pass through translucent frames and settle to the expected selections.
+- [x] 12.16 Bound the label layout cache to the most recent few rendered sizes, keyed per size with recency eviction. Verify with unit tests over eviction order, hits refreshing recency, and bounded growth across many distinct zoom levels.
+- [x] 12.17 After final edits, run strict OpenSpec validation, `npm test`, `npm run test:browser`, and `npm run test:stress-graph`; review the results before checking off 12.15 and 12.16.
+
+Fourth-review verification: strict change validation passed; 686 unit tests passed; 190 browser tests passed once the mobile reveal test polled for the settled label count instead of reading it during the fade-out; both stress tests passed with unchanged budgets, the 2,000-note run measuring a 399 ms maximum frame gap and a 359 ms maximum long task.
+
 Third-review verification: strict change validation passed; 683 unit tests passed; the browser suite passed once the one outdated fine-pointer toolbar count was corrected for the now-visible Hover preview control; both stress tests passed with unchanged budgets, the 2,000-note run measuring a 390.1 ms maximum frame gap and a 361 ms maximum long task.

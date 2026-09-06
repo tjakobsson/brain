@@ -24,6 +24,8 @@ import {
 import { graphScreenTargets } from "./graph-interaction";
 import {
   beginLabelFades,
+  createLabelLayoutCache,
+  LABEL_LAYOUT_CACHE_SIZES,
   finishedLabelFadeOuts,
   graphEdgeAttributes,
   labelFadeAlpha,
@@ -797,6 +799,43 @@ describe("label width is independent of where its node sits", () => {
     const shapes = [2, 100, 195, 300, 388].map((centerX) =>
       layoutGraphLabel(title, graphLabelAvailableWidth(centerX, 390, maximum), 11, measure).lines);
     for (const shape of shapes) expect(shape).toEqual(shapes[0]);
+  });
+});
+
+describe("label layouts are cached per size and bounded", () => {
+  it("keeps the most recent sizes and drops the oldest whole", () => {
+    const cache = createLabelLayoutCache<string>(3);
+    for (const size of [9, 9.5, 10, 10.5]) {
+      for (const title of ["a", "b"]) cache.set(size, title, `${title}@${size}`);
+    }
+    expect(cache.sizes()).toEqual([9.5, 10, 10.5]);
+    expect(cache.count()).toBe(6);
+    expect(cache.get(9, "a")).toBeUndefined();
+    expect(cache.get(10.5, "b")).toBe("b@10.5");
+  });
+
+  it("treats a hit as recent use, so a zoom step back keeps its layouts", () => {
+    const cache = createLabelLayoutCache<string>(2);
+    cache.set(9, "a", "a@9");
+    cache.set(10, "a", "a@10");
+    expect(cache.get(9, "a")).toBe("a@9");
+    cache.set(11, "a", "a@11");
+    expect(cache.sizes()).toEqual([9, 11]);
+    expect(cache.get(10, "a")).toBeUndefined();
+  });
+
+  it("stays bounded across many distinct zoom levels of a large graph", () => {
+    const cache = createLabelLayoutCache<number>();
+    const titles = 2000;
+    for (let step = 0; step < 200; step += 1) {
+      // Wheel steps settle at sizes that differ by floating-point amounts.
+      const size = 9 + step * 0.015;
+      for (let node = 0; node < titles; node += 1) cache.set(size, `node-${node}`, step);
+    }
+    expect(cache.sizes()).toHaveLength(LABEL_LAYOUT_CACHE_SIZES);
+    expect(cache.count()).toBe(LABEL_LAYOUT_CACHE_SIZES * titles);
+    cache.clear();
+    expect(cache.count()).toBe(0);
   });
 });
 
