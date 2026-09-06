@@ -50,7 +50,7 @@ jobs:
 
       - name: Generate site
         env:
-          GENERATOR_IMAGE: ghcr.io/tjakobsson/brain@sha256:8e414bc2baaaa2e56b63120bf8d54241719fa6c28485ccd0a6972fba9217ac6c
+          GENERATOR_IMAGE: ghcr.io/tjakobsson/brain@sha256:2d278f4bf651bc569750d85d92303d4b8e777a97afaab26413b5e222e008cde9
           INPUT_VAULT: ${{ inputs.vault }}
           INPUT_WORKSPACE: ${{ inputs.workspace }}
           INPUT_EXCLUSIONS: ${{ inputs.exclusions }}
