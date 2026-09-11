@@ -52,7 +52,7 @@
     "esbuild": true
   },
   "devDependencies": {
-    "@playwright/test": "1.62.1",
+    "@playwright/test": "1.63.0",
     "@types/mdast": "4.0.4",
     "@types/seedrandom": "3.0.8",
     "vitest": "4.1.11",
